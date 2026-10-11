@@ -28030,3 +28030,36 @@ YEngine on. Note for later boots: start it as `dotnet OpenSim.dll -background=tr
 redirected; a plain hidden-window `OpenSim.exe` stalls on the local console before "Startup complete", on either
 binding. Jolt is still not live; the deploy carries the new `joltc.dll`, `JoltPhysicsSharp.dll` and Jolt module
 DLLs, which no region loads while none selects `physics = Jolt`.
+
+## Legion `lane/jolt` review: adopt or not (2026-10-12)
+
+`tranquillity-johnlegionh/lane/jolt` (head `fbd824abeb`, 10-11) is 185 commits on Tranquillity `develop` (base
+10-10). **Its core footprint is small:** outside the Jolt projects it only adds a `[Jolt]` section to
+`OpenSimDefaults.ini` and project/solution entries. Its one core dependency is Tranquillity #270 (`1162fc6dda`:
+`PhysicsActor`, `ScenePresence`, `ChildAgentDataUpdate` constant force on an avatar; the LSL half is Phlox's), which
+Confluence does not have. Size: module/backend/vehicles about 15.8k lines (ours 10.3k), plus 86 test files and a
+42-file harness. It is the actively maintained lineage of the code we vendored on 09-10.
+
+What it has that ours lacks: SL-documented walk/run/fly speeds; avatars set out of objects they stand up inside;
+physical objects and avatars meeting as bodies (fast objects no longer pass through avatars or thin walls); phantom
+and volume-detect pass-through; physics material; move-to-target and hover; selection hold; buoyancy and constant
+force on avatars; step-rate-independent vehicle motors/friction/hover/banking, SL presets, mouselook steering,
+parked vehicles sleeping; ray-cast budgets; native leak fixes; the `SetVehicle` override (our #279 port).
+
+What ours has that it lacks: **the mesh-asset retry** (`RequestMeshAssetRebuild`, 2026-09-09). Their
+`JoltScene.cs:1171` still says "Bounding box for now", so a mesh prim whose asset is unfetched at load keeps a
+bounding-box collision shape for good; this fired 5,160 times on Starbase Andromeda's first Jolt boot. Also our
+`sweepstatics` diagnostic.
+
+**Neither tree targets the 09-11 reversion symptom** ("mesh isn't registered while you're walking; stop and the
+avatar adjusts", stairs, walking through walls). Their character step is the same structure as ours, they dropped
+`EnhancedInternalEdgeRemoval`, and no test of theirs walks an avatar over mesh or stairs. Measured with the headless
+harness (scratch): an avatar running at 3.2 m/s across a static triangle-mesh floor, up six 0.25 m mesh stairs and
+over a mesh landing never sank in, was never unsupported, and finished identically on Jolt v5.4 and v5.6. So the
+backend handles clean mesh; the live symptom lies above it (the module's character integration) or in how real
+content cooks, and needs a reproduction against real content.
+
+**Recommendation:** adopt `lane/jolt` as the base rather than cherry-picking into ours, re-applying our mesh-asset
+retry and `sweepstatics`, mapping their `ILogger` back to log4net, and porting #270's core half (with an `llSetForce`
+on attachments in YEngine's LSL API). Then reproduce the mesh-walk symptom on the local standalone with real content
+(an OAR of Starbase Andromeda) before Jolt goes near a live region again.
