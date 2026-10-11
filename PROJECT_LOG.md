@@ -27722,3 +27722,9 @@ first.
 
 Not yet live-tested in-world: Place Profile on a Confluence region, and a zero-offset sit target surviving a
 region restart.
+**Follow-up, same day: nightly backup restored.** Re-registered as Windows scheduled task "Casperia DB Backup"
+(daily 03:30, runs as the operator while signed in, hidden, StartWhenAvailable) running
+`S:\Opensim\AutoBackup\Backup-CasperiaDB.ps1`. Test-run through Task Scheduler: exit 0, 386.3 MB -> 240.8 MB gz,
+status SUCCESS. Laragon's Cronical was deliberately not reused (the script exists because Cronical had silently
+stopped and produced a 0-byte dump). The task itself lives on C:, so it has to be re-registered after any future
+reinstall.
