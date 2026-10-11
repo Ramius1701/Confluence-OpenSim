@@ -27847,3 +27847,10 @@ local standalone boot** (repo `bin`, SQLite, port 9000, Jolt physics) reached "S
 Enabled for region", BotManager loaded and zero ERROR/FATAL lines. **Not yet tested in-world:** wait points,
 multi-script `bot_update`, timeouts, follow, wander, `botMessageLinked`, respawn key. Nothing on the live grid
 used `bot_update` (it couldn't have), so no existing content changes behaviour, but test before relying on it.
+**Bots port deployed to live, same day (Robust restarted 20:25, regions 20:28-20:39).** I had expected a
+region-only deploy, but 202 of 290 files differed (every rebuild rewrites most DLLs' bytes) and the running
+Robust held 55 of them, including `OpenSim.Region.Framework.dll`, whose event enums gained `bot_update`. So it was
+the full routine: Robust stopped, full tree copied (290 files, 0 failures, 0 md5 mismatches), Robust started,
+Restart All. Verified: all 15 regions on fresh processes with `bin` md5-identical to the root, all "Startup
+complete", **YEngine "Enabled for region" on every one** (the enum change passed its startup check live), Robust 0
+errors, no new error types. Bot behaviour itself is still to be tested in-world.
