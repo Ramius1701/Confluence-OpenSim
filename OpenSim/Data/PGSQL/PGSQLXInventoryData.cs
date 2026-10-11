@@ -142,7 +142,9 @@ namespace OpenSim.Data.PGSQL
             {
                 using (NpgsqlCommand cmd = new NpgsqlCommand())
                 {
-                    cmd.CommandText = $"update {m_Realm} set parentFolderID = :ParentFolderID where inventoryID = :InventoryID";
+                    // Columns are created quoted and mixed-case; unquoted, PostgreSQL
+                    // folds them to lower case and the update fails. Tranquillity #273.
+                    cmd.CommandText = $"update {m_Realm} set \"parentFolderID\" = :ParentFolderID where \"inventoryID\" = :InventoryID";
                     cmd.Parameters.Add(m_database.CreateParameter("ParentFolderID", newParent));
                     cmd.Parameters.Add(m_database.CreateParameter("InventoryID", id ));
                     cmd.Connection = conn;
@@ -260,7 +262,9 @@ namespace OpenSim.Data.PGSQL
                 using (NpgsqlCommand cmd = new NpgsqlCommand())
                 {
 
-                    cmd.CommandText = $"update {m_Realm} set parentFolderID = :ParentFolderID where folderID = :folderID";
+                    // Same quoting fix as the item move above (Tranquillity #273
+                    // fixed only items; folders have the same quoted columns).
+                    cmd.CommandText = $"update {m_Realm} set \"parentFolderID\" = :ParentFolderID where \"folderID\" = :folderID";
                     cmd.Parameters.Add(m_database.CreateParameter("ParentFolderID", newPar));
                     cmd.Parameters.Add(m_database.CreateParameter("folderID", foldID));
                     cmd.Connection = conn;

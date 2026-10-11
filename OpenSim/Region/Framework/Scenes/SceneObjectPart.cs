@@ -2675,6 +2675,12 @@ namespace OpenSim.Region.Framework.Scenes
 
             dupe.m_sittingAvatars = new HashSet<ScenePresence>();
             dupe.SitTargetAvatar = UUID.Zero;
+
+            // MemberwiseClone shares the vehicle record, so llSetVehicleFlags or a
+            // vehicle param on either object changed both. The copy gets its own
+            // (VehicleData holds only values). Tranquillity #279.
+            if (m_vehicleParams != null)
+                dupe.m_vehicleParams = new SOPVehicle { vd = m_vehicleParams.vd };
             // safeguard  actual copy is done in sog.copy
             dupe.KeyframeMotion = null;
             dupe.PayPrice = (int[])PayPrice.Clone();
@@ -3371,8 +3377,11 @@ namespace OpenSim.Region.Framework.Scenes
                 "[SCENE OBJECT PART]: Physical object {0}, localID {1} went out of bounds at {2} in {3}.  Stopping at {4} and making non-physical.",
                 Name, LocalId, pos, ParentGroup.Scene.Name, AbsolutePosition);
 
-            RemFlag(PrimFlags.Physics);
-            DoPhysicsPropertyUpdate(false, true);
+            // The whole object, as llSetStatus(STATUS_PHYSICS, FALSE) does: every part's
+            // flag, the region's physical-prim count, and the parts' actor events. The
+            // old RemFlag + DoPhysicsPropertyUpdate(false, true) cleared this part only
+            // and, with isNew set, skipped RemovePhysicalPrim. Tranquillity #280.
+            ParentGroup.ScriptSetPhysicsStatus(false);
         }
 
         /// <summary>

@@ -531,9 +531,25 @@ namespace OpenSim.Data.SQLite
             }
         }
 
+        // Read from estate_map, as the MySQL and PostgreSQL estate stores do
+        // (it always returned an empty list). Ported from Tranquillity #266.
         public List<UUID> GetRegions(int estateID)
         {
-            return new List<UUID>();
+            List<UUID> result = new List<UUID>();
+
+            using (SQLiteCommand cmd = (SQLiteCommand)m_connection.CreateCommand())
+            {
+                cmd.CommandText = "select RegionID from estate_map where EstateID = :EstateID";
+                cmd.Parameters.AddWithValue(":EstateID", estateID);
+
+                using (IDataReader r = cmd.ExecuteReader())
+                {
+                    while (r.Read())
+                        result.Add(new UUID(r["RegionID"].ToString()));
+                }
+            }
+
+            return result;
         }
 
         public bool DeleteEstate(int estateID)

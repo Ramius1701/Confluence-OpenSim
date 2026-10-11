@@ -216,6 +216,14 @@ namespace OpenSim.Region.ScriptEngine.Shared
 
                 if (presence.Velocity != Vector3.Zero)
                     Type |= ACTIVE;
+                else if (Type == AGENT && presence.ParentPart is not null)
+                {
+                    // A seated avatar is out of the physics scene, so its own velocity is
+                    // zero. SL's llDetectedType gives a sitting agent 3 (ACTIVE | AGENT) on a
+                    // moving seat and 5 (PASSIVE | AGENT) on a still one: the seat decides.
+                    // Ported from Tranquillity #269.
+                    Type |= presence.ParentPart.ParentGroup.RootPart.Velocity.IsZero() ? PASSIVE : ACTIVE;
+                }
 
                 Group = presence.ControllingClient.ActiveGroupId;
 
@@ -276,6 +284,10 @@ namespace OpenSim.Region.ScriptEngine.Shared
                 Velocity = new LSL_Types.Vector3(obj.velVector);
                 LinkNum = obj.linkNumber;
                 Type = obj.colliderType;
+                // A moving agent is 3 (ACTIVE | AGENT), as the overload above types a
+                // moving avatar. Tranquillity #269.
+                if (Type == AGENT && !obj.velVector.IsZero())
+                    Type |= ACTIVE;
                 return;
             }
 

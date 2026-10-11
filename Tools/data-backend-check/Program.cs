@@ -467,6 +467,110 @@ static class Program
         Eq(label + " deleted asset is gone", null, d.Get(idB, out string afterDeleteHash));
     }
 
+    // Runs a check body, counting an exception as a failure (several of the bugs
+    // these cover threw rather than returning a wrong value).
+    static void NoThrow(string name, Action body)
+    {
+        try { body(); }
+        catch (Exception e)
+        {
+            checks++;
+            failures++;
+            Console.WriteLine("FAIL " + name + " threw " + e.GetType().Name + ": " + e.Message);
+        }
+    }
+
+    // Region extra settings (Scene.StoreExtraSetting). SQLite used to drop them:
+    // SaveExtra/RemoveExtra did nothing and GetExtra returned null.
+    static void RegionExtra(string label, OpenSim.Data.SQLite.SQLiteSimulationData d)
+    {
+        UUID a = UUID.Random(), b = UUID.Random();
+        Dictionary<string, string> none = d.GetExtra(a);
+        Eq(label + " extra: unknown region gives an empty dictionary, not null", 0, none is null ? -1 : none.Count);
+        d.SaveExtra(a, "flag", "on");
+        d.SaveExtra(a, "note", "it's \"quoted\" ünïcode");
+        Eq(label + " extra: round trip", "on", d.GetExtra(a).TryGetValue("flag", out string v1) ? v1 : null);
+        Eq(label + " extra: quotes and unicode", "it's \"quoted\" ünïcode", d.GetExtra(a).TryGetValue("note", out string v2) ? v2 : null);
+        d.SaveExtra(a, "flag", "off");
+        Eq(label + " extra: save again replaces", "off", d.GetExtra(a)["flag"]);
+        Eq(label + " extra: two settings", 2, d.GetExtra(a).Count);
+        d.SaveExtra(b, "flag", "other");
+        Eq(label + " extra: other region independent", "off", d.GetExtra(a)["flag"]);
+        d.RemoveExtra(a, "flag");
+        Eq(label + " extra: remove", false, d.GetExtra(a).ContainsKey("flag"));
+        Eq(label + " extra: remove leaves the rest", true, d.GetExtra(a).ContainsKey("note"));
+        Eq(label + " extra: remove leaves other region", "other", d.GetExtra(b)["flag"]);
+    }
+
+    // An estate's linked regions. SQLite's GetRegions always returned an empty list.
+    static void EstateRegions(string label, OpenSim.Data.SQLite.SQLiteEstateStore d)
+    {
+        int e1 = 7001, e2 = 7002;
+        UUID r1 = UUID.Random(), r2 = UUID.Random(), r3 = UUID.Random();
+        Eq(label + " estate: no regions yet", 0, d.GetRegions(e1).Count);
+        d.LinkRegion(r1, e1);
+        d.LinkRegion(r2, e1);
+        d.LinkRegion(r3, e2);
+        List<UUID> got = d.GetRegions(e1);
+        Eq(label + " estate: two linked regions", 2, got.Count);
+        Eq(label + " estate: has first", true, got.Contains(r1));
+        Eq(label + " estate: has second", true, got.Contains(r2));
+        Eq(label + " estate: other estate's region excluded", false, got.Contains(r3));
+        Eq(label + " estate: other estate", 1, d.GetRegions(e2).Count);
+    }
+
+    // SetDataItem threw (the :UUID parameter was never added) and named the
+    // column unquoted although the auth columns are quoted mixed-case.
+    static void AuthSetDataItem(string label, OpenSim.Data.PGSQL.PGSQLAuthenticationData d)
+    {
+        UUID u1 = UUID.Random(), u2 = UUID.Random();
+        foreach (UUID u in new[] { u1, u2 })
+        {
+            AuthenticationData ad = new AuthenticationData { PrincipalID = u, Data = new Dictionary<string, object>() };
+            ad.Data["passwordHash"] = "h";
+            ad.Data["passwordSalt"] = "s";
+            ad.Data["webLoginKey"] = UUID.Zero.ToString();
+            ad.Data["accountType"] = "UserAccount";
+            d.Store(ad);
+        }
+        string key = UUID.Random().ToString();
+        bool ok = false;
+        NoThrow(label + " auth: SetDataItem", () => ok = d.SetDataItem(u1, "webLoginKey", key));
+        Eq(label + " auth: SetDataItem returns true", true, ok);
+        Eq(label + " auth: value written", key, d.Get(u1)?.Data["webLoginKey"]?.ToString());
+        Eq(label + " auth: other user unchanged", UUID.Zero.ToString(), d.Get(u2)?.Data["webLoginKey"]?.ToString());
+    }
+
+    // MoveItem and MoveFolder named the quoted mixed-case columns unquoted, so
+    // PostgreSQL folded them and the update failed (Tranquillity fixed only items).
+    static void InventoryMoves(string label, OpenSim.Data.PGSQL.PGSQLXInventoryData d)
+    {
+        UUID owner = UUID.Random();
+        UUID root = UUID.Random(), fa = UUID.Random(), fb = UUID.Random(), sub = UUID.Random(), item = UUID.Random();
+        XInventoryFolder Folder(UUID id, UUID parent, string name) =>
+            new XInventoryFolder { folderID = id, parentFolderID = parent, agentID = owner, folderName = name, type = -1, version = 1 };
+        d.StoreFolder(Folder(root, UUID.Zero, "My Inventory"));
+        d.StoreFolder(Folder(fa, root, "A"));
+        d.StoreFolder(Folder(fb, root, "B"));
+        d.StoreFolder(Folder(sub, fa, "Sub"));
+        d.StoreItem(new XInventoryItem
+        {
+            inventoryID = item, parentFolderID = fa, avatarID = owner, assetID = UUID.Random(),
+            assetType = 7, inventoryName = "note", inventoryDescription = "", creatorID = owner.ToString()
+        });
+
+        bool movedItem = false, movedFolder = false;
+        NoThrow(label + " inventory: MoveItem", () => movedItem = d.MoveItem(item.ToString(), fb.ToString()));
+        Eq(label + " inventory: MoveItem returns true", true, movedItem);
+        XInventoryItem[] items = d.GetItems(new[] { "inventoryID" }, new[] { item.ToString() });
+        Eq(label + " inventory: item now in B", fb, items.Length == 1 ? items[0].parentFolderID : UUID.Zero);
+
+        NoThrow(label + " inventory: MoveFolder", () => movedFolder = d.MoveFolder(sub.ToString(), fb.ToString()));
+        Eq(label + " inventory: MoveFolder returns true", true, movedFolder);
+        XInventoryFolder[] folders = d.GetFolders(new[] { "folderID" }, new[] { sub.ToString() });
+        Eq(label + " inventory: folder now in B", fb, folders.Length == 1 ? folders[0].parentFolderID : UUID.Zero);
+    }
+
     static int Main(string[] args)
     {
         string sqliteFile = args.Length > 0 ? args[0] : "datatest.db";
@@ -497,6 +601,12 @@ static class Program
         var sqliteFSAssets = new OpenSim.Data.SQLite.SQLiteFSAssetData();
         sqliteFSAssets.Initialise(sq, "fsassets", 0);
         FSAssets("sqlite", sqliteFSAssets);
+        var sqliteSim = new OpenSim.Data.SQLite.SQLiteSimulationData();
+        sqliteSim.Initialise(sq);
+        NoThrow("sqlite extra", () => RegionExtra("sqlite", sqliteSim));
+        var sqliteEstate = new OpenSim.Data.SQLite.SQLiteEstateStore();
+        sqliteEstate.Initialise(sq);
+        NoThrow("sqlite estate", () => EstateRegions("sqlite", sqliteEstate));
 
         // constructing again over the same file must not fail (migration is idempotent)
         Eq("sqlite reopen ok", true, new OpenSim.Data.SQLite.SQLiteMarketplaceListingsData(sq) != null);
@@ -530,6 +640,8 @@ static class Program
             var pgsqlFSAssets = new OpenSim.Data.PGSQL.PGSQLFSAssetData();
             pgsqlFSAssets.Initialise(pg, "fsassets", 0);
             FSAssets("pgsql", pgsqlFSAssets);
+            NoThrow("pgsql auth", () => AuthSetDataItem("pgsql", new OpenSim.Data.PGSQL.PGSQLAuthenticationData(pg, "auth")));
+            NoThrow("pgsql inventory", () => InventoryMoves("pgsql", new OpenSim.Data.PGSQL.PGSQLXInventoryData(pg, string.Empty)));
 
             Eq("pgsql reopen ok", true, new OpenSim.Data.PGSQL.PGSQLMarketplaceListingsData(pg) != null);
         }

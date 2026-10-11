@@ -142,8 +142,11 @@ namespace OpenSim.Region.PhysicsModules.SharedBase
             {
                 if (curcp.PenetrationDepth < contact.PenetrationDepth)
                 {
-                    if (Math.Abs(curcp.PenetrationDepth) > Math.Abs(contact.RelativeSpeed))
-                        contact.RelativeSpeed = curcp.PenetrationDepth;
+                    // Keep the largest relative speed seen; the CollectionsMarshal
+                    // rewrite had put PenetrationDepth here, so a depth could become
+                    // the speed that drives collision sounds. Tranquillity #280.
+                    if (Math.Abs(curcp.RelativeSpeed) > Math.Abs(contact.RelativeSpeed))
+                        contact.RelativeSpeed = curcp.RelativeSpeed;
                     curcp = contact;
                 }
                 else if (MathF.Abs(curcp.RelativeSpeed) < MathF.Abs(contact.RelativeSpeed))
@@ -331,7 +334,12 @@ namespace OpenSim.Region.PhysicsModules.SharedBase
             // vehicleActor.ProcessSetVehicle((VehicleData)vdata);
 
             this.VehicleType = (int)vdata.m_type;
-            this.VehicleFlags(-1, false);   // clears all flags
+            // remove = true clears all flags under both readings of -1: add/remove-bits
+            // engines (ubODE's ODEDynamics, JoltPhysics' vendored JoltVehicleController)
+            // and clear-on--1 engines (BulletS). With false, the add/remove engines set
+            // every flag and the saved flags below could never clear any. Jolt uses this
+            // base method, so on Confluence this was live for Jolt. Tranquillity #279.
+            this.VehicleFlags(-1, true);
             this.VehicleFlags((int)vdata.m_flags, false);
 
             // Linear properties

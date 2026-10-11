@@ -16,6 +16,14 @@ and PostgreSQL:
 - **FSAssets** - round trips (id, type, flags, hash), the empty-hash healing rule (a row storing no data at
   all is replaced in place by a later real store, never left empty forever), `AssetsExist` (including an
   empty request), count, and delete.
+- **Region extra settings** (SQLite) - `SaveExtra` / `GetExtra` / `RemoveExtra` round trips, replace, per-region
+  isolation, and an empty dictionary (never null) for a region with none.
+- **Estate regions** (SQLite) - `GetRegions` lists exactly the regions linked to that estate.
+- **Authentication `SetDataItem`** (PostgreSQL) - updates the one user's column and leaves others alone.
+- **Inventory moves** (PostgreSQL) - `MoveItem` and `MoveFolder` against the quoted mixed-case columns.
+
+Each of these four groups catches its own exceptions and counts them as failures, so one broken backend does
+not stop the rest of the run. Against the code before the 2026-10-11 fixes they report 15 failures; after, none.
 
 When a backend is added or changed (the remaining gaps are listed in
 `Tools/fresh-clone-matrix-expected.json`), add its checks here first.

@@ -2732,6 +2732,10 @@ namespace OpenSim.Region.Framework.Scenes
          // This is used by both Double-Click Auto-Pilot and llMoveToTarget() in an attached object
         public void MoveToTarget(Vector3 target, float tau)
         {
+            // A tau of 0 or less does nothing and leaves an earlier target as it is:
+            // "Calling llMoveToTarget with a tau of 0.0 or less will silently fail, and
+            // do nothing" (SL wiki llMoveToTarget). llStopMoveToTarget is what stops.
+            // Tranquillity #279.
             if(tau > 0)
             {
                 if (IsAttachment)
@@ -2751,8 +2755,6 @@ namespace OpenSim.Region.Framework.Scenes
                     }
                 }
             }
-            else
-                StopMoveToTarget();
         }
 
         public void StopMoveToTarget()
