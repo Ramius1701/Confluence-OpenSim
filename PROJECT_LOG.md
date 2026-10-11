@@ -27664,3 +27664,61 @@ session's own established gotcha: `_Database.CreateParameter` turns a null value
 which Npgsql would then refuse to write to a `smallint` column).
 
 Build clean, 0 warnings, 0 errors across both ports.
+
+---
+
+## Clean Windows reinstall: what was lost, what survived, and the recovery (2026-10-11)
+
+C: was wiped by a clean Windows reinstall; S: (this repo, every sibling repo, Laragon, the live deployment and
+its databases) survived intact. Lost with C:: git, GitHub CLI, the .NET 8 SDK (only the runtimes remained),
+Python, `~\.gitconfig`, GitHub credentials, and **all of Claude's local memory and session transcripts**.
+Reinstalled git, gh, the .NET 8 SDK (8.0.425) and Python 3.12 via winget; prebuild + full Release build clean,
+0 warnings, 0 errors.
+
+- **Every repo on S: hit git's "dubious ownership" refusal.** The reinstall gave the Windows account a new SID,
+  so files on S: are still owned by the old one. Fixed with `git config --global --add safe.directory "S:/Github/*"`.
+- **Claude's memory was rebuilt from this file**, which is exactly why this log is kept. The 12 memory notes
+  this log cites by name (`[[casperia-...]]`) were recreated under the same names. They're now mirrored to
+  `S:\ClaudeBackup\memory\OpenSim-Confluence`, so a future C: wipe can't take them.
+- **Real casualty found: the nightly live-database backup stopped.** `S:\Opensim\AutoBackup\Backup-CasperiaDB.ps1`
+  is intact, but the Windows scheduled task that ran it at 03:30 was on C: and is gone. Last nightly run was
+  2026-10-10 03:31; no run on 10-11. **Still needs re-creating.**
+- `S:\Opensim\Casperia-Dev` no longer exists, so there is no test grid: every deploy goes straight to live.
+
+## Deployed to live: Place Profile fix, #253 SitTargetActive, #258 PGSQL ban list (2026-10-11)
+
+Live was confirmed to be on the 2026-10-05 16:41 build. It included the Hypergrid IP-fallback fix
+(`85d8368d6d`) but not `06f8c95b3c` (Place Profile "Loading...") or `0e5a87457f` (#253/#258). Confirmed by
+searching the live DLLs for string literals unique to each commit, not by file hash: a rebuild with a newer SDK
+changes the hashes of most DLLs (208 of 290 differed) even when the source is identical. A literal search has to
+check both UTF-16 byte alignments, because string-heap entries can start at an odd offset. A first pass that
+didn't do that falsely reported the Hypergrid fix as absent.
+
+Pre-checks: build exactly at HEAD `0e5a87457f`; no source changes; no `*.config`/`*.json`/sidecar file differs
+from live, only DLL/EXE/PDB. A manual dump was taken (`AutoBackup\casperia_pre-deploy_20261011.sql`, complete).
+That isn't the usual practice; normally the nightly backup covers a deploy (see above).
+
+Deploy: the operator stopped Robust. The full build output (290 files, `SyncRegionBinaries`' own patterns +
+`lib64\*.dll`) was copied to the master root: 0 failures, 0 md5 mismatches. Then the operator started Robust and
+ran a WebUI Restart All.
+
+**Verified after the rolling restart:**
+- All 15 regions running, each started after Robust; every region's private `bin\` md5-identical to the root
+  (290/290, so no locked file was silently skipped by `SyncRegionBinaries`); new code confirmed in each.
+- MySQL RegionStore migration 73 (`prims.SitTargetActive`) applied once, by the first region up; every other
+  region logged "already up to date at revision 73".
+- All 15 regions logged "Startup complete"; Robust logged 0 errors since its restart.
+- Error counts per region match the pre-deploy 15:29 boot on the old build (missing script assets, mesh header
+  and degenerate-mesh errors are pre-existing content issues, identical counts every boot today). The only new
+  error type is WebRTC voice "viewer session 00000000-... not found" on two regions, consistent with viewers
+  re-establishing voice after the restart. Voice code is untouched by either commit.
+
+**Deploy-flow facts confirmed from code** (`WebInterfaceServiceConnector.cs`): every WebUI start, single
+Restart and Restart All goes through `TryStartRegionProcess` -> `SyncRegionBinaries`, which copies the root's
+binaries into `Simulators\<name>\bin` and launches `-background=true -console=rest`. Locked files are skipped
+silently (per-file `catch {}`), so hash-verify the region bins after every deploy, as done here. A region launched
+outside the WebUI does not sync. Restart All staggers each region's 120 s countdown 30 s apart, default/HG regions
+first.
+
+Not yet live-tested in-world: Place Profile on a Confluence region, and a zero-offset sit target surviving a
+region restart.
