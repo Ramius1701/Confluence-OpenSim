@@ -3,7 +3,7 @@
  *
  * Re-cooks a sculpt or mesh prim once its asset arrives. When the region loads, many mesh and sculpt assets are not
  * in the cache yet, so the mesher returns nothing and CookPrimShape falls back to a bounding box; lane/jolt leaves it
- * a box for good ("Bounding box for now"). On Starbase Andromeda's first Jolt boot (2026-09-09) that was 5,160 prims
+ * a box for good ("Bounding box for now"). On the first live region's first Jolt boot (2026-09-09) that was 5,160 prims
  * colliding as boxes. As BulletSim does (BSShapes.VerifyMeshCreated), this requests the asset once, stores its data
  * on the prim's shape, and re-cooks every live prim using that shape on the step thread before the next step.
  *

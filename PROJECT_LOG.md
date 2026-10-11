@@ -28015,7 +28015,7 @@ all in `JoltPhysicsBackend.cs`:
   so it now frees in a `finally`.
 
 Legion's `lane/jolt` deliberately stays on 2.19.1: they build a patched joltc (a TempAllocator per physics system
-and a lock on the global system map) so several regions can step at once in one process. Casperia runs one region
+and a lock on the global system map) so several regions can step at once in one process. This grid runs one region
 per process (all 15 `Regions.ini` hold one region), so the stock native's shared allocator is never shared.
 
 **Verified** with a headless harness against `JoltPhysics.Core`, the same scenarios on the old (2.19.1, the files
@@ -28048,7 +28048,7 @@ parked vehicles sleeping; ray-cast budgets; native leak fixes; the `SetVehicle` 
 
 What ours has that it lacks: **the mesh-asset retry** (`RequestMeshAssetRebuild`, 2026-09-09). Their
 `JoltScene.cs:1171` still says "Bounding box for now", so a mesh prim whose asset is unfetched at load keeps a
-bounding-box collision shape for good; this fired 5,160 times on Starbase Andromeda's first Jolt boot. Also our
+bounding-box collision shape for good; this fired 5,160 times on the first live region's first Jolt boot. Also our
 `sweepstatics` diagnostic.
 
 **Neither tree targets the 09-11 reversion symptom** ("mesh isn't registered while you're walking; stop and the
@@ -28062,7 +28062,7 @@ content cooks, and needs a reproduction against real content.
 **Recommendation:** adopt `lane/jolt` as the base rather than cherry-picking into ours, re-applying our mesh-asset
 retry and `sweepstatics`, mapping their `ILogger` back to log4net, and porting #270's core half (with an `llSetForce`
 on attachments in YEngine's LSL API). Then reproduce the mesh-walk symptom on the local standalone with real content
-(an OAR of Starbase Andromeda) before Jolt goes near a live region again.
+(an OAR of the region where it was seen) before Jolt goes near a live region again.
 
 **Correction (same day):** the 2.19.1 leak *was* fixable. The native 1.0.4 already exported
 `JPH_CollisionEstimationResult_FreeMembers`; only the managed binding left it out. Legion P/Invoked it directly on 2.19.1
@@ -28120,17 +28120,17 @@ v5.6-only failures came down to two Confluence-side causes, not to Jolt:
 
 **Result: Legion's suite passes on our port with Jolt v5.6, 2,099 of 2,099 run, 0 failed** (8 patched-native tests
 skipped). The local standalone boots on it with no errors and no crash events. Still to do before any live use: remove
-the old Jolt DLLs from live; reproduce the 09-11 mesh-walk symptom with real content (an OAR of Starbase Andromeda on
+the old Jolt DLLs from live; reproduce the 09-11 mesh-walk symptom with real content (an OAR of the region where it was seen, on
 the local standalone); then pick one region to try it on.
 
 **Jolt port and #270 deployed to live (Robust 09:57, Restart All 10:00-10:11, 2026-10-12).** Full tree copied (290 files: 4
 new, 204 changed, 0 failures, 0 md5 mismatches), after confirming locally that the old and new Jolt addins load side by
-side without conflict when neither is selected. Restart All paused about two minutes after Welcome Center, then went on
+side without conflict when neither is selected. Restart All paused about two minutes after the second region, then went on
 at one region every 30 s. Verified: all 15 region bins match the root on the key DLLs; each region chose its own engine
-(ubODE by default, BulletSim on Ranchero, Tangle and UFPGC) and Jolt stayed off everywhere; every region reached
+(ubODE by default, BulletSim on the three set to it) and Jolt stayed off everywhere; every region reached
 "Startup complete"; Robust 0 errors, 15 regions online. Region errors are all pre-existing, at the same rate per boot as
-in the 10-11 logs: missing script assets (Tangle 1,879, UFPGC 21, Welcome Center 1, "asset ID could not be found"),
-GFC's mesh-asset header errors (20, was about 28 per boot), and one degenerate mesh on Welcome Center. Found in
-passing: Sector_001 runs ubODE with `meshing = Meshmerizer`, and ubODE logs that it wants ubODEMeshmerizer (a
+in the 10-11 logs: missing script assets (1,879, 21 and 1 on three regions, "asset ID could not be found"),
+one region's mesh-asset header errors (20, was about 28 per boot), and one degenerate mesh on another. Found in
+passing: one region runs ubODE with `meshing = Meshmerizer`, and ubODE logs that it wants ubODEMeshmerizer (a
 pre-existing config mismatch, left as is). The old Jolt module's DLLs are still in the live root and all 15 region bins;
 both modules load, and neither enables unless a region selects Jolt.
