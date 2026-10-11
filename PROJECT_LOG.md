@@ -27920,3 +27920,12 @@ at startup. Eight other regions (Farm, Ranchero, Sector_001-004, Sol_Sector, Tan
 **Start All** brought them back. All 15 running the new build by 23:08, all "Startup complete", YEngine on,
 0 FATAL. **Suggested, not applied (operator's call):** `PrivURL = http://127.0.0.1` for intra-host private
 traffic, to remove the DNS dependency.
+**`PrivURL` switched to loopback on all 15 live regions (operator-approved).** Each `Simulators\<name>\OpenSim.ini` line 70
+`PrivURL = ${Const|BaseURL}` became `PrivURL = "http://127.0.0.1"`; exactly one line differs per file; backups are
+`OpenSim.ini.bak-20261011-privurl`. Audit first: `PrivURL` feeds only the 16 region-to-Robust private service URIs
+(`${Const|PrivURL}:${Const|PrivatePort}`, port 8003: assets, inventory, grid, estate, avatar, presence, accounts,
+Experience, abuse reports, grid user, auth, friends, map-tile upload, mute list, groups), and no code reads it.
+Everything public (viewers, Hypergrid, map tile fetch, website) uses `BaseURL`/`BaseHostname`:8002, unchanged.
+Removes the startup DNS dependency that crashed Sandbox during tonight's outage, and keeps that traffic off the
+router's NAT hairpin. Loopback is always trusted by ControlPlaneAccess. Takes effect per region on its next restart.
+Sandbox is the RegionOrderTemplateIniPath, so new regions inherit it.
