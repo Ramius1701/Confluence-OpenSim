@@ -27964,3 +27964,31 @@ headless physics harness with per-native baselines. Highlights:
 
 Their patched joltc (per-system TempAllocator plus a systems-map lock) only matters when several regions step in one
 process. Confluence runs one region per process, so the stock native is fine for us.
+---
+
+## Confluence now targets .NET 10 (2026-10-11)
+
+.NET 8 support ends **2026-11-10**, and newer JoltPhysicsSharp needs net9/net10. Tranquillity is already on net10;
+upstream OpenSim is still net8 (only the build target differs, so merges are unaffected). Commit `7f56536af2`.
+
+- **BinaryFormatter (removed in .NET 9+) was already gone.** All 16 code hits are comments from earlier ports
+  (FlotsamAssetCache XML format, YEngine state opcodes refused, KeyframeMotion KFM1). Prebuild still wrote
+  `<EnableUnsafeBinaryFormatterSerialization>true` into every project; that's removed.
+- **Prebuild:** added `net10_0`. `bin/prebuild.dll` is a checked-in binary (last upstream update 2024-04) and
+  `Prebuild/src/Prebuild.csproj` is a stale .NET Framework project that doesn't even compile `VS2022Target.cs`.
+  A first temp build from its compile list failed with `[X] Unknown Target "vs2022"`. New
+  **`Tools/build-prebuild/BuildPrebuild.csproj`** globs `Prebuild/src/**/*.cs`; `bin/prebuild.dll` is now built from
+  it. Verified the rebuilt tool at net8_0 reproduces all 102 generated projects except the removed property.
+  `OpenSim.sln` project GUIDs change on *every* run of either tool (`ProjectNode.cs:626` uses
+  `m_Name.GetHashCode()`, which .NET randomises per process).
+- `/targetframework` on the command line overrides every project's own `frameworkVersion` (`Kernel.cs:94`).
+  `runprebuild.bat`/`.sh` now pass `net10_0`, and the XML defaults are updated too. Jolt projects and
+  data-backend-check moved to net10.0, CI to `10.0.x`, and the docs to the .NET 10 SDK.
+- **Verified on runtime 10.0.12:** 0 build errors (solution and Jolt); local standalone boot with YEngine and Jolt;
+  both restart modes; data-backend-check 409/409 on SQLite and PostgreSQL; YEngine LSL parse check.
+- **New analyzer warnings, all pre-existing code, logged for later:** CA2022 inexact `Stream.Read` x19
+  (`TIFF.cs`, `Util.cs`, `HttpRequest.cs`, `WebStatsModule`, `DataSnapshotManager`, `EstateManagementModule`,
+  `AuthenticationServerPostHandler`) and SYSLIB0057 obsolete `X509Certificate2` ctor x3 (`BaseHttpServer`,
+  `NSLCertificateTools`). CA2022 is a real bug class: `Read` may return fewer bytes than asked.
+- Stale leftover: `addon-modules/OpenSimMutelist/Modules/OpenSimMutelist.Modules.csproj` (untracked, 08-16, net8,
+  not in the solution).
