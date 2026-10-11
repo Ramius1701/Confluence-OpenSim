@@ -159,7 +159,7 @@ public class RestingContactAndBounceTests
 
     private static (string Key, string Value)[] ShippedSolverSettings([CallerFilePath] string here = "")
     {
-        string ini = Path.Combine(Path.GetDirectoryName(here)!, "..", "..", "Source", "OpenSim.Server.RegionServer", "AppData",
+        string ini = Path.Combine(Path.GetDirectoryName(here)!, "..", "..", "bin", /* [Confluence: Source/OpenSim.Server.RegionServer/AppData in Tranquillity] */
             "OpenSimDefaults.ini");
         IConfig jolt = new IniConfigSource(ini).Configs["Jolt"];
         Assert.NotNull(jolt);

@@ -42,7 +42,7 @@ public class TempAllocatorLockDisciplineTests
     private static string BackendSource([CallerFilePath] string here = "")
     {
         var repo = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", ".."));
-        var path = Path.Combine(repo, "Source", "OpenSim.Region.PhysicsModules.Jolt.Backend", "JoltPhysicsBackend.cs");
+        var path = Path.Combine(repo, "OpenSim", "Region", "PhysicsModules", "Jolt.Backend" /* [Confluence path] */, "JoltPhysicsBackend.cs");
         Assert.True(File.Exists(path), $"backend source not found at {path}");
         return File.ReadAllText(path);
     }

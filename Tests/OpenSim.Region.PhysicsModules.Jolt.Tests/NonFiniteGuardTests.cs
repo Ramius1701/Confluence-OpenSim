@@ -328,7 +328,7 @@ public class NonFiniteGuardTests
     [InlineData("JoltCharacter.cs", "public override Vector3 Size", false, "Ok(value)")]
     public void Actor_setters_call_the_guard_first(string file, string signature, bool isMethod, string check)
     {
-        var body = SetterBody(Src("Source", "OpenSim.Region.PhysicsModules.Jolt", file), signature, isMethod);
+        var body = SetterBody(Src("OpenSim", "Region", "PhysicsModules", "Jolt" /* [Confluence path] */, file), signature, isMethod);
         var guard = body.IndexOf("NonFiniteGuard." + check, StringComparison.Ordinal);
         Assert.True(guard >= 0, $"{file} {signature} must check NonFiniteGuard.{check}");
         Assert.Contains("NonFiniteGuard.Rejected(", body);

@@ -348,7 +348,9 @@ public class VehicleRestoreRouteTests
     [Theory]
     [InlineData(SharedVehicle.TYPE_SLED, "AngularDeflectionTimescale: ended with 10, saved 1000|HoverTimescale: ended with 1000, saved 10|VerticalAttractionEfficiency: ended with 1, saved 0")]
     [InlineData(SharedVehicle.TYPE_CAR, "")]
-    [InlineData(SharedVehicle.TYPE_BOAT, "flags: ended with 0x00000065 NoDeflectionUp, HoverWaterOnly, HoverUpOnly, LimitMotorUp, saved 0x00000045 NoDeflectionUp, HoverWaterOnly, LimitMotorUp")]
+    // [Confluence: Confluence's core (upstream OpenSim d1d9a17c80) saves the documented boat flags, HOVER_UP_ONLY
+    // included; Tranquillity's leaves it out ("saved 0x00000045").]
+    [InlineData(SharedVehicle.TYPE_BOAT, "")]
     [InlineData(SharedVehicle.TYPE_AIRPLANE, "")]
     [InlineData(SharedVehicle.TYPE_BALLOON, "VerticalAttractionEfficiency: ended with 1, saved 0|flags: ended with 0x00000000 None, saved 0x00000012 LimitRollOnly, HoverGlobalHeight")]
     public void The_simulators_saved_presets_differ_from_the_documented_ones_only_here(SharedVehicle type, string differences)

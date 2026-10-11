@@ -118,10 +118,10 @@ public class VehicleRestoreHarnessTests
     // whose script also set the simulator's preset values where they differ from the documented ones, since that is what
     // their record holds.
     [Theory]
+    // [Confluence: no boat rows. Confluence's core (upstream OpenSim d1d9a17c80) saves the documented boat preset,
+    // HOVER_UP_ONLY included, so a restored boat has nothing in its record that differs from the documented one.]
     [InlineData("sled", 45.0)]
     [InlineData("sled", 0.0)]
-    [InlineData("boat", 45.0)]
-    [InlineData("boat", 0.0)]
     [InlineData("balloon", 45.0)]
     [InlineData("balloon", 0.0)]
     public void A_sled_boat_or_balloon_handed_back_drives_as_its_saved_record(string scenario, double physicsRate)

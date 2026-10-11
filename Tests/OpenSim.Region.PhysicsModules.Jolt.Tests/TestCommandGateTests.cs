@@ -135,7 +135,7 @@ public class TestCommandGateTests
     [Fact]
     public void RegionLoaded_drops_only_behind_the_gate()
     {
-        string dir = Path.Combine(Path.GetDirectoryName(Here())!, "..", "..", "Source", "OpenSim.Region.PhysicsModules.Jolt");
+        string dir = Path.Combine(Path.GetDirectoryName(Here())!, "..", "..", "OpenSim", "Region", "PhysicsModules", "Jolt" /* [Confluence path] */);
         string scene = File.ReadAllText(Path.Combine(dir, "JoltScene.cs"));
         string tests = File.ReadAllText(Path.Combine(dir, "JoltTestCommands.cs"));
 

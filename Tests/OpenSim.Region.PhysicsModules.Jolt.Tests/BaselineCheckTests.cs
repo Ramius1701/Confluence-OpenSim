@@ -40,8 +40,14 @@ public class BaselineCheckTests
 
     private static string Summary(params string[] rows) => Header + "\n" + string.Join("\n", rows) + "\n";
 
+    // [Confluence: Confluence records no patched joltc build; the checks of how a patched build picks its baseline use a
+    // synthetic record of one.]
     private static JoltNativeBuild Build(JoltNativeOrigin origin, string folder)
-        => JoltNative.Known.Single(b => b.Origin == origin && b.Folder == folder);
+        => JoltNative.Known.SingleOrDefault(b => b.Origin == origin && b.Folder == folder)
+           ?? (origin == JoltNativeOrigin.PatchedBuild
+               ? new JoltNativeBuild(folder, folder.StartsWith("win") ? "joltc.dll" : "libjoltc.so", (folder.StartsWith("win") ? "A" : "B") + new string('0', 63),
+                                     JoltNativeOrigin.PatchedBuild, null, safeForMultiplePools: true, testedByProject: true)
+               : throw new InvalidOperationException($"no recorded {origin} build for {folder}"));
 
     private static JoltNativeInfo Info(string rid, JoltNativeBuild build, string sha = null)
         => new JoltNativeInfo(rid, "/x/" + rid, sha ?? build?.Sha256 ?? "00", build);
@@ -262,7 +268,7 @@ public class BaselineCheckTests
             .ToArray();
         string[] keys = JoltNative.Known.Select(BaselineCheck.KeyFor).Distinct().ToArray();
         string[] folders = Directory.GetDirectories(CommittedBaselines).Select(Path.GetFileName).ToArray();
-        Assert.Contains("patched", folders);
+        // [Confluence: no patched baseline folder; Confluence records baselines for the stock win-x64 native only.]
         foreach (string folder in folders)
         {
             Assert.Contains(folder, keys);

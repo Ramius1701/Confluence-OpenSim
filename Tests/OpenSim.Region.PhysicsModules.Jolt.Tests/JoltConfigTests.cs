@@ -362,7 +362,7 @@ public class JoltConfigTests
 
     private static string Scene([CallerFilePath] string here = "")
         => File.ReadAllText(Path.Combine(Path.GetDirectoryName(here)!, "..", "..",
-            "Source", "OpenSim.Region.PhysicsModules.Jolt", "JoltScene.cs"));
+            "OpenSim", "Region", "PhysicsModules", "Jolt" /* [Confluence path] */, "JoltScene.cs"));
 
     [Fact]
     public void AddRegion_builds_its_settings_from_JoltConfig()
@@ -388,5 +388,5 @@ public class JoltConfigTests
 
     private static string ScenePath([CallerFilePath] string here = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(here)!, "..", "..",
-            "Source", "OpenSim.Region.PhysicsModules.Jolt", "JoltScene.cs"));
+            "OpenSim", "Region", "PhysicsModules", "Jolt" /* [Confluence path] */, "JoltScene.cs"));
 }
