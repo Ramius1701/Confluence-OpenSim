@@ -27881,3 +27881,27 @@ So the port's main behaviours are now verified live. Still untested in-world: `b
 receiver in the bot's outfit), move timeout, follow, wander, respawn key. Observed: the bot reports a node reached
 1-2 m from the target point (generous arrival tolerance), noted, not changed. The other 14 regions still run the
 previous build until their next restart; the live root already has this one.
+---
+
+## WebUI restarts now load each region once (countdown, then process exit) (2026-10-11)
+
+The operator noticed GFC registering twice per restart. Cause: `RealRestartRegion` sent `region restart 120`, whose
+countdown ends in RestartModule's **in-place scene reload** (the first deregister/register). It then waited for
+that reload, stopped the process, and relaunched it: a second full scene load. So every WebUI restart loaded each
+region twice, which is a large part of Restart All taking about 12 minutes for 15 regions.
+
+**Fix:**
+- **RestartModule:** new `region restart <seconds> exit`. Same countdown and alerts, but at zero it runs a clean
+  `shutdown` of the process instead of reloading. It first waits out a running AutoBackup cycle (up to 10 min,
+  then falls back to the reload rather than ever exiting mid-backup), the same rule `TryStopRegion` enforces with
+  `backup-status`. It prints a parseable `RESTART_MODE: exit` line. Plain `region restart` and in-world/estate
+  restarts are untouched. (The existing global `[Startup] InworldRestartShutsDown` was unsuitable: it would make
+  resident estate-tool restarts exit with nothing to relaunch them.)
+- **`RealRestartRegion`:** sends `... 120 exit`. On seeing the marker it waits (12 min cap) for the process to
+  exit and relaunches: one load. With no marker (a region still on an older build ignores the extra word) or no
+  exit, it falls back to the old reload, stop, relaunch sequence (`StopAfterInPlaceReload`).
+
+**Tested locally:** `exit` counts down, prints "shutting the process down", the process exits, no reload; plain
+restart still reloads in place and keeps running; 0 errors either way. **Rollout note:** the first Restart All
+after deploying still sees old-build regions (they get the new build only *on* that restart), so it runs the
+fallback (double load). Restarts after that use the single-load path.
