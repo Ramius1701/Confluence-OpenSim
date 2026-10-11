@@ -1232,7 +1232,7 @@ namespace OpenSim.Region.ScriptEngine.Yengine
 
             TraceCalls("[YEngine]: YEngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
 
-            return PostScriptEvent(itemID, new EventParams(name, p, zeroDetectParams));
+            return PostScriptEvent(itemID, new EventParams(name, ListArgsToLsl(p), zeroDetectParams));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1244,8 +1244,52 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             TraceCalls("[YEngine]: YEngine.PostObjectEvent({0},{1})", itemID.ToString(), name);
 
             if(m_Scene.TryGetSceneObjectPart(itemID, out SceneObjectPart part))
-                return PostObjectEvent(part.LocalId, new EventParams(name, p, zeroDetectParams));
+                return PostObjectEvent(part.LocalId, new EventParams(name, ListArgsToLsl(p), zeroDetectParams));
             return false;
+        }
+
+        // Modules outside the script engine (BotManager's bot_update/path_update, for one) pass an
+        // event's `list` parameter as a plain object[], as Phlox accepts. No YEngine handler can take
+        // an object[] (a list parameter must be an LSL_List, so it threw InvalidCastException in the
+        // script), so turn each object[] argument into an LSL list. Its elements become the LSL types
+        // llList2* expect. Every other argument is passed through unchanged.
+        private static object[] ListArgsToLsl(object[] p)
+        {
+            if (p is null)
+                return p;
+            object[] converted = null;
+            for (int i = 0; i < p.Length; i++)
+            {
+                if (p[i] is object[] items)
+                {
+                    converted ??= (object[])p.Clone();
+                    object[] lslItems = new object[items.Length];
+                    for (int j = 0; j < items.Length; j++)
+                        lslItems[j] = ToLslListItem(items[j]);
+                    converted[i] = new LSL_List(lslItems);
+                }
+            }
+            return converted ?? p;
+        }
+
+        private static object ToLslListItem(object o)
+        {
+            return o switch
+            {
+                null => new LSL_String(string.Empty),
+                int i => new LSL_Integer(i),
+                uint u => new LSL_Integer((int)u),
+                long l => new LSL_Integer((int)l),
+                bool b => new LSL_Integer(b ? 1 : 0),
+                float f => new LSL_Float(f),
+                double d => new LSL_Float(d),
+                string s => new LSL_String(s),
+                UUID u => new LSL_Key(u.ToString()),
+                Vector3 v => new LSL_Vector(v.X, v.Y, v.Z),
+                Quaternion q => new LSL_Rotation(q.X, q.Y, q.Z, q.W),
+                object[] nested => new LSL_String(string.Join(",", nested)),   // LSL lists cannot nest
+                _ => o
+            };
         }
 
         // about the 3523rd entrypoint for a script to put itself to sleep
