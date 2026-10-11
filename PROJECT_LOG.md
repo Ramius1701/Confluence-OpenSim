@@ -28002,3 +28002,31 @@ though that commit's `bin/prebuild.dll` is built from it; now committed (its `ob
 documents rebuilding the generator; ROADMAP.md's SSB/AIS entries no longer cite a net10-to-net8 adaptation. Rechecked:
 all runtimeconfigs in `bin/` and all 112 on live are net10.0; runprebuild, CI and docs say 10. The remaining `net8`
 mentions are JoltPhysicsSharp 2.19.1 comments/paths in the Jolt csprojs, which the Jolt upgrade replaces.
+
+## Jolt engine upgrade: JoltPhysicsSharp 2.19.1 -> 2.23.0, Jolt v5.4.0 -> v5.6.0 (2026-10-12)
+
+First step of the Jolt work, now possible on net10. JoltPhysicsSharp 2.23.0 pulls JoltPhysics.Native 1.1.0, which is
+built from the official Jolt Physics **v5.6.0** release, the same as the jrouwe/JoltPhysics clone. Three API changes,
+all in `JoltPhysicsBackend.cs`:
+- The CharacterVirtual contact callbacks (body and character, Added and Persisted) now pass one `CharacterContact`
+  (`BodyB`, `SubShapeIDB`, `RPosition`, `ContactNormal`, `CharacterB`) instead of separate arguments.
+- `CollisionEstimationResult.Impulses` became `ContactImpulses`, a span over a native array that joltc allocates on
+  every `EstimateCollisionResponse` call, with `Free()` to release it. `PushContact` calls it per contact per step,
+  so it now frees in a `finally`.
+
+Legion's `lane/jolt` deliberately stays on 2.19.1: they build a patched joltc (a TempAllocator per physics system
+and a lock on the global system map) so several regions can step at once in one process. Casperia runs one region
+per process (all 15 `Regions.ini` hold one region), so the stock native's shared allocator is never shared.
+
+**Verified** with a headless harness against `JoltPhysics.Core`, the same scenarios on the old (2.19.1, the files
+on live) and new bindings: boxes dropped on a heightfield rest at exactly 20.500 m on both, with the same contact
+counts and impact impulses (16146.70 vs 16146.43 N*s); a welded compound starting in contact with the heightfield
+(the M7 frame-0 hang case) settles with a worst step of 0.2 ms; avatars stand (supported, z 20.750), walk, and
+report avatar-box and avatar-avatar contacts on both. **A leak found and fixed:** 400 sleepless boxes with contact
+events for 4000 steps (1.59 million contact reports) grew private memory **75.8 MB on 2.19.1** (its binding has no
+way to free the impulse array) and **1.5 MB on 2.23.0**; a control build of 2.23.0 without the `Free()` grew
+40.9 MB, so the `Free()` is the fix. The local standalone (repo `bin`, Jolt) reaches "Startup complete" with
+YEngine on. Note for later boots: start it as `dotnet OpenSim.dll -background=true -console=rest` with output
+redirected; a plain hidden-window `OpenSim.exe` stalls on the local console before "Startup complete", on either
+binding. Jolt is still not live; the deploy carries the new `joltc.dll`, `JoltPhysicsSharp.dll` and Jolt module
+DLLs, which no region loads while none selects `physics = Jolt`.

@@ -7,11 +7,12 @@
 // a NotImplementedException stub, exactly as scoped. The design sketch lives at
 // docs/physics/JoltPhysicsBackend.cs and stays there as the mapping reference.
 //
-// Jolt binding: JoltPhysicsSharp 2.18.6 (newest still shipping lib/net8.0/),
+// Jolt binding: JoltPhysicsSharp 2.23.0 (native JoltPhysics.Native 1.1.0, Jolt
+// Physics v5.6.0; was 2.18.6, then 2.19.1, while Confluence was on net8),
 // single precision (Foundation.Init(false) -> joltc.dll). The Jolt calls below
-// are the REAL 2.18.6 surface, verified by reflection against the shipped
-// assembly - not the sketch's "shapes to verify". See the MILESTONE1 notes for
-// the reference-vs-real API deltas.
+// were written against the real 2.18.6 surface, verified by reflection - not
+// the sketch's "shapes to verify" - and moved to 2.23.0 on 2026-10-12. See the
+// MILESTONE1 notes for the reference-vs-real API deltas.
 //
 // The parts worth reading carefully are the ones that are easy to get wrong and
 // expensive to discover later:
@@ -630,9 +631,18 @@ namespace JoltPhysics.Core.Jolt
                 body1, body2, manifold, out CollisionEstimationResult response,
                 settings.CombinedFriction, settings.CombinedRestitution,
                 MinVelocityForRestitution, Math.Max(1, _settings.VelocityIterations));
-            ReadOnlySpan<CollisionEstimationResult.Impulse> impulses = response.Impulses;
-            for (int i = 0; i < impulses.Length; i++)
-                impulse += impulses[i].ContactImpulse;
+            // Since 2.22 the per-point impulses live in a native array joltc allocates on every call; Free()
+            // releases it. This runs per contact per step, so a missed Free is an unbounded native leak.
+            try
+            {
+                ReadOnlySpan<float> impulses = response.ContactImpulses;
+                for (int i = 0; i < impulses.Length; i++)
+                    impulse += impulses[i];
+            }
+            finally
+            {
+                response.Free();
+            }
 
             // Name the struck part on each side from the contact sub-shape (child of a linkset, or the body
             // itself) - the per-child collision identity behind llDetectedLinkNumber.
@@ -1564,10 +1574,12 @@ namespace JoltPhysics.Core.Jolt
                 // during ExtendedUpdate, cover terrain/static/dynamic/sensor, and - crucially - a
                 // standing avatar re-reports its floor contact every step, which is the real thing the
                 // #4 gate exists to suppress. Movement is untouched (these are observational). See notes.
-                character.OnContactAdded += (CharacterVirtual cv, in BodyID b2, SubShapeID ss, in RVector3 pos, in Vector3 normal, ref CharacterContactSettings s)
-                    => PushCharacterBodyContact(rec, b2.ID, ss.Value, ToVec(pos), normal, ContactPhase.Begin);
-                character.OnContactPersisted += (CharacterVirtual cv, in BodyID b2, SubShapeID ss, in RVector3 pos, in Vector3 normal, ref CharacterContactSettings s)
-                    => PushCharacterBodyContact(rec, b2.ID, ss.Value, ToVec(pos), normal, ContactPhase.Persist);
+                // 2.22 passes the contact as one CharacterContact (BodyB, SubShapeIDB, RPosition, ContactNormal)
+                // instead of separate arguments.
+                character.OnContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                    => PushCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Begin);
+                character.OnContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                    => PushCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Persist);
                 character.OnContactRemoved += (CharacterVirtual cv, in BodyID b2, SubShapeID ss)
                     => PushCharacterBodyContact(rec, b2.ID, ss.Value, default, default, ContactPhase.End);
 
@@ -1580,10 +1592,10 @@ namespace JoltPhysics.Core.Jolt
                     _charVsChar.Add(character);
                     character.SetCharacterVsCharacterCollision(_charVsChar);
                 }
-                character.OnCharacterContactAdded += (CharacterVirtual cv, CharacterVirtual other, SubShapeID ss, in RVector3 pos, in Vector3 normal, ref CharacterContactSettings s)
-                    => PushCharacterCharacterContact(rec, other, ToVec(pos), normal, ContactPhase.Begin);
-                character.OnCharacterContactPersisted += (CharacterVirtual cv, CharacterVirtual other, SubShapeID ss, in RVector3 pos, in Vector3 normal, ref CharacterContactSettings s)
-                    => PushCharacterCharacterContact(rec, other, ToVec(pos), normal, ContactPhase.Persist);
+                character.OnCharacterContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Begin);
+                character.OnCharacterContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Persist);
 
                 _characterList.Add(rec);
                 return new CharacterId(handle);
@@ -1618,7 +1630,7 @@ namespace JoltPhysics.Core.Jolt
         }
 
         // Push an avatar-vs-AVATAR contact. Both sides are avatars (no BodyId); UserData on each.
-        private void PushCharacterCharacterContact(JoltCharacterRecord ch, CharacterVirtual other, Vector3 point, Vector3 normal, ContactPhase phase)
+        private void PushCharacterCharacterContact(JoltCharacterRecord ch, CharacterVirtual? other, Vector3 point, Vector3 normal, ContactPhase phase)
         {
             uint otherUserData = other != null ? (uint)other.UserData : 0u;
             if (phase == ContactPhase.Persist && !ch.WantsContactEvents)

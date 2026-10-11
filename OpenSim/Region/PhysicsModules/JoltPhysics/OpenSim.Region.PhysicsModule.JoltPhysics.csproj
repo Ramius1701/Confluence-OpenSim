@@ -4,7 +4,7 @@
     Jolt physics region module (M6.1 skeleton), renamed from "LegionJolt" 2026-09-10 - the wrapper/
     adapter code here is Confluence's own; the vendored JoltPhysics.Core/JoltPhysics.Vehicles backend
     libraries it depends on (ported from Legion-Grid-Code, renamed 2026-09-10) live under
-    OpenSim/Addons/JoltPhysics/. Mirrors the BulletSim module: SDK-style, net8.0, EnableDefaultItems
+    OpenSim/Addons/JoltPhysics/. Mirrors the BulletSim module: SDK-style, net10.0, EnableDefaultItems
     OFF (explicit Compile includes), outputs to the shared ..\..\..\..\bin\ so Mono.Addins can
     discover it. Self-selects on [Startup] physics = Jolt. Do NOT run runprebuild against this tree -
     the csproj is hand-maintained.
@@ -85,13 +85,13 @@
        never auto-copied without a RID, so we resolve both package paths and copy EXACTLY those two
        files (nothing else) to the output root, where the OpenSim.exe process resolver finds them. -->
   <ItemGroup>
-    <!-- Kept in lockstep with JoltPhysics.Core (2.18.6->2.19.1 for the M7 boot-hang native fix). 2.19.1 is
-         the newest net8.0-compatible JoltPhysicsSharp; it pulls native JoltPhysics.Native 1.0.4. -->
-    <PackageReference Include="JoltPhysicsSharp" Version="2.19.1" GeneratePathProperty="true" PrivateAssets="all" />
-    <PackageReference Include="JoltPhysics.Native" Version="1.0.4" GeneratePathProperty="true" PrivateAssets="all" />
+    <!-- Kept in lockstep with JoltPhysics.Core. JoltPhysicsSharp 2.23.0 pulls native JoltPhysics.Native
+         1.1.0 (Jolt Physics v5.6.0); before 2026-10-12 it was 2.19.1 / 1.0.4 (Jolt v5.4.0). -->
+    <PackageReference Include="JoltPhysicsSharp" Version="2.23.0" GeneratePathProperty="true" PrivateAssets="all" />
+    <PackageReference Include="JoltPhysics.Native" Version="1.1.0" GeneratePathProperty="true" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="$(PkgJoltPhysicsSharp)\lib\net8.0\JoltPhysicsSharp.dll" Link="JoltPhysicsSharp.dll">
+    <None Include="$(PkgJoltPhysicsSharp)\lib\net10.0\JoltPhysicsSharp.dll" Link="JoltPhysicsSharp.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Single precision only (Foundation.Init(false) -> joltc.dll), per decision #2. win-x64 for the

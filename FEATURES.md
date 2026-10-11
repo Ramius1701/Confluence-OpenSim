@@ -679,7 +679,8 @@ hardcoded default:
   — a third option built on the real
   [Jolt Physics](https://github.com/jrouwe/JoltPhysics) engine (MIT,
   used in shipped commercial titles) via the `JoltPhysicsSharp` .NET
-  binding, adapted from Legion-Grid-Code's own port. Requires
+  binding (Jolt Physics v5.6.0 since 2026-10-12), adapted from
+  Legion-Grid-Code's own port. Requires
   `meshing = Meshmerizer` (same requirement as BulletSim). **Not
   currently live** — pulled off Starbase Andromeda 2026-09-11 back to
   BulletSim after real avatar-movement issues (run speed, unsit
