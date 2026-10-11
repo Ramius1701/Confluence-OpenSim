@@ -27871,3 +27871,13 @@ list parameter as a raw `object[]`. Phlox accepts that; YEngine's event prologue
 int/string from either form but casts a list parameter straight to `LSL_List`. Fixed in YEngine's module-facing
 `PostScriptEvent`/`PostObjectEvent(UUID, string, object[])`: `object[]` arguments become `LSL_List`, with elements
 mapped to LSL types so `llList2Vector` etc. work. That also covers `path_update`. Local standalone boot clean.
+**Third in-world bot test (GFC, 22:18): PASS.** No exceptions in the region log. Local chat showed:
+- `bot_update` delivered to YEngine with real LSL lists (`BOT_MOVE_UPDATE [node, <pos>]`, then `BOT_MOVE_COMPLETE [<pos>]`).
+- Delivered to the never-registered creator script **and** to a second registered script.
+- The `BOT_TRAVELMODE_WAIT` point held the bot **2.99 s** (asked for 3 s).
+- The path completed.
+
+So the port's main behaviours are now verified live. Still untested in-world: `botMessageLinked` (needs a worn
+receiver in the bot's outfit), move timeout, follow, wander, respawn key. Observed: the bot reports a node reached
+1-2 m from the target point (generous arrival tolerance), noted, not changed. The other 14 regions still run the
+previous build until their next restart; the live root already has this one.
