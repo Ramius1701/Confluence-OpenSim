@@ -4068,7 +4068,15 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             List<TravelMode> modes = new List<TravelMode>();
             foreach (object o in movementTypes.Data)
             {
-                int m = Convert.ToInt32(o);
+                // List items arrive as LSL_Integer (not IConvertible), so Convert.ToInt32
+                // threw InvalidCastException on every call: no bot path ever started.
+                int m = o switch
+                {
+                    LSL_Integer li => li.value,
+                    int i => i,
+                    LSL_Float lf => (int)lf.value,
+                    _ => int.TryParse(o.ToString(), out int parsed) ? parsed : (int)TravelMode.Walk
+                };
                 modes.Add(Enum.IsDefined(typeof(TravelMode), m) ? (TravelMode)m : TravelMode.Walk);
             }
 
