@@ -2944,6 +2944,17 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
             if (!m_host.ParentGroup.IsDeleted)
             {
+                // From an attachment, physical or not, this sets a constant force on the wearer ("Used on an attachment,
+                // it will apply the force to the avatar", SL wiki llSetForce; Halcyon SceneObjectGroup.SetForce;
+                // Tranquillity #270). A local force is handed on in the avatar's own axes for the physics engine to turn
+                // with the avatar every step; a new call replaces it and a zero force ends it. Only an engine that
+                // implements PhysicsActor.SetConstantForce (Jolt) applies it.
+                if (m_host.ParentGroup.IsAttachment)
+                {
+                    World.GetScenePresence(m_host.ParentGroup.AttachedAvatar)?.SetConstantForce(force, local != 0);
+                    return;
+                }
+
                 if (local != 0)
                     force *= llGetRot();
 

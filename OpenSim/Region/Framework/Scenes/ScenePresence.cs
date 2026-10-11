@@ -582,6 +582,8 @@ namespace OpenSim.Region.Framework.Scenes
             private set
             {
                 m_physActor = value;
+                if (value != null)
+                    HandConstantForceTo(value);
             }
         }
 
@@ -1773,6 +1775,7 @@ namespace OpenSim.Region.Framework.Scenes
             IsChildAgent = true;
             m_scene.SwapRootAgentCount(true, IsNPC);
             RemoveFromPhysicalScene();
+            ClearConstantForce();
             ParentID = 0; // Child agents can't be sitting
 
 // we dont have land information for child
@@ -5168,6 +5171,12 @@ namespace OpenSim.Region.Framework.Scenes
 
             cAgent.MotionState = (byte)Animator.currentControlState;
 
+            lock (m_constantForceLock)
+            {
+                cAgent.ConstantForce = ConstantForce;
+                cAgent.ConstantForceIsLocal = ConstantForceIsLocal;
+            }
+
             Scene.AttachmentsModule?.CopyAttachments(this, cAgent);
 
             if(isCrossUpdate)
@@ -5331,6 +5340,10 @@ namespace OpenSim.Region.Framework.Scenes
 
             if (cAgent.MotionState != 0)
                 Animator.currentControlState = (ScenePresenceAnimator.motionControlStates) cAgent.MotionState;
+
+            // The force came with the avatar; agent data without it means none. The actor made when the avatar
+            // becomes a root agent here is handed it.
+            SetConstantForce(cAgent.ConstantForce, cAgent.ConstantForceIsLocal);
 
             m_crossingFlags = cAgent.CrossingFlags;
             m_gotCrossUpdate = (m_crossingFlags != 0);
@@ -6020,6 +6033,55 @@ namespace OpenSim.Region.Framework.Scenes
         internal void PushForce(Vector3 impulse)
         {
             PhysicsActor?.AddForce(impulse, true);
+        }
+
+        /// <summary>
+        /// The constant force a script in one of this avatar's attachments set with llSetForce (see
+        /// PhysicsActor.SetConstantForce for what an engine does with it). Zero when none is set. (Tranquillity #270.)
+        /// </summary>
+        public Vector3 ConstantForce { get; private set; }
+
+        /// <summary>True when <see cref="ConstantForce"/> is in the avatar's own axes, false for region axes.</summary>
+        public bool ConstantForceIsLocal { get; private set; }
+
+        /// <summary>
+        /// Set the avatar's constant force; a zero force ends it, and a force that is not finite is ignored. The
+        /// presence keeps it, so a new physics actor (after sitting and standing, for example) gets it too. When the
+        /// avatar leaves the region it ends here and goes with the avatar in its agent data (CopyTo, CopyFrom).
+        /// </summary>
+        public void SetConstantForce(Vector3 force, bool local)
+        {
+            if (!force.IsFinite())
+                return;
+
+            lock (m_constantForceLock)
+            {
+                ConstantForce = force;
+                ConstantForceIsLocal = local;
+                m_physActor?.SetConstantForce(force, local);
+            }
+        }
+
+        private readonly object m_constantForceLock = new();
+
+        /// <summary>Hand the held constant force to a new physics actor.</summary>
+        private void HandConstantForceTo(PhysicsActor pa)
+        {
+            lock (m_constantForceLock)
+            {
+                if (!ConstantForce.IsZero())
+                    pa.SetConstantForce(ConstantForce, ConstantForceIsLocal);
+            }
+        }
+
+        /// <summary>The avatar left the region, so its constant force ends here.</summary>
+        private void ClearConstantForce()
+        {
+            lock (m_constantForceLock)
+            {
+                ConstantForce = Vector3.Zero;
+                ConstantForceIsLocal = false;
+            }
         }
 
         private CameraData CameraDataCache;
