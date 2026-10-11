@@ -28067,3 +28067,40 @@ on attachments in YEngine's LSL API). Then reproduce the mesh-walk symptom on th
 **Correction (same day):** the 2.19.1 leak *was* fixable. The native 1.0.4 already exported
 `JPH_CollisionEstimationResult_FreeMembers`; only the managed binding left it out. Legion P/Invoked it directly on 2.19.1
 (`5bc03c337e`, 2026-10-07). 2.23.0 simply exposes it as `CollisionEstimationResult.Free()`.
+
+## Jolt: Legion's lane/jolt adopted; a teardown heap corruption fixed; their tests run (2026-10-12)
+
+**Ported** (`0b7c1b8970`, `045a3a669f`, `0ee4b8a87d`; local, not pushed or deployed). Legion's Tranquillity `lane/jolt`
+module, backend and vehicles at `fbd824abeb` replace our 09-10 vendoring, at `OpenSim/Region/PhysicsModules/Jolt`,
+`Jolt.Backend` and `Jolt.Vehicles` (assemblies `OpenSim.Region.PhysicsModules.Jolt*.dll`). Their files are unchanged
+apart from edits marked `[Confluence: ...]`; `Jolt/CONFLUENCE.md` lists every difference and the sync procedure.
+- Confluence-only: Mono.Addins registration (`ConfluenceRegistration.cs`), an ILogger-to-log4net adapter
+  (`ConfluenceLogging.cs`), and our mesh-asset retry (`JoltScene/JoltPrim.MeshAssetRetry.cs`, two one-line hooks in
+  their `JoltScene.cs`).
+- Tranquillity #270 core ported: `PhysicsActor.SetConstantForce`, ScenePresence/AgentData constant force, and
+  `llSetForce` from an attachment (`LSL_Api.cs`). This changes core DLLs.
+- `[Jolt]` section in `OpenSimDefaults.ini`, `doc/JoltPhysics.md`, licence notices; the WebUI platform overview, README,
+  SETUP and the fresh-clone matrix use the new names.
+- Their module built against our core with **one** error (the #270 hook). It boots on the local standalone (stock
+  1.1.0 native recognised, 45 Hz, YEngine on, no errors).
+
+**Heap corruption found and fixed** (`0ee4b8a87d`). Their `ContactValidateMemoryTests` crashed the test host with
+`0xC0000374`. A standalone loop pinned it to the first layer-filter `Dispose` after the physics system's native
+destroy. Destroying the system deletes its three filters, and from JoltPhysicsSharp 2.22 the filter wrappers own
+their handles, so they freed them again. The backend now clears their `OwnsHandle` first. Our 09-10 backend never
+crashed only because it never destroyed the system; it leaked it on every region teardown.
+
+**Their suite** (`Tests/OpenSim.Region.PhysicsModules.Jolt.Tests`, 2,109 tests, plus `Tests/JoltPhysicsHarness`):
+- On 2.23.0 / Jolt v5.6: 2,006 passed, 97 failed, 6 skipped (patched-native only).
+- The same port on Legion's own 2.19.1 / v5.4: 2,067 passed, 36 failed. All 36 also fail on v5.6 and are
+  environmental: tests reading source at Tranquillity paths (22), the patched-native record, `OpenSimDefaults.ini`
+  at their path, and vehicle presets that differ from Tranquillity's core (3, to check).
+- **The other 61 fail only on v5.6:** 53 avatar-and-object behaviours (an avatar pushing boxes, fast linksets meeting
+  avatars, reported speeds, the ground contact point, standing up), 5 harness baselines and 3 native-record checks.
+  The module's tuning and baselines were made on v5.4, and Jolt 5.5/5.6 changed CharacterVirtual contacts. **The
+  port itself is faithful; the v5.6 engine upgrade is what changes behaviour.** Open decision: run Legion's tested
+  v5.4 stack, or keep v5.6 and retune.
+
+**Deploy caveat:** live still has the old module's DLLs (`OpenSim.Region.PhysicsModule.JoltPhysics.dll`,
+`JoltPhysics.Core.dll`, `JoltPhysics.Vehicles.dll`) in the root and all 15 region bins. The pattern deploy never
+deletes, and both modules register as the Jolt engine, so remove them before any region selects `physics = Jolt`.
