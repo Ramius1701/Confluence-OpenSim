@@ -3,7 +3,7 @@
     path="addon-modules/HoloPhysicsGuard"
     version="0.5.0-$Rev$"
     type="Library"
-    frameworkVersion="net8_0">
+    frameworkVersion="net10_0">
 
   <Configuration name="Debug">
     <Options>

@@ -12,7 +12,7 @@
     <Compile Include>. Do NOT run runprebuild against this tree.
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
     <AssemblyName>JoltPhysics.Core</AssemblyName>
     <RootNamespace>JoltPhysics.Core</RootNamespace>

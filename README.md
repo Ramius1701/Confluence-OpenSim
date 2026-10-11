@@ -94,7 +94,7 @@ limitations, see [`ROADMAP.md`](ROADMAP.md).
 
 ### Requirements
 
-- .NET 8 SDK or a newer SDK capable of targeting .NET 8
+- .NET 10 SDK (Confluence targets .NET 10; .NET 8 support ends 2026-11-10)
 - Visual Studio 2022 or later is optional on Windows
 
 ### Windows

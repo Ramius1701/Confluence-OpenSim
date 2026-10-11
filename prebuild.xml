@@ -31,7 +31,7 @@
        pursue real test-running support as its own effort. See
        TESTING.txt and PROJECT_LOG.md for the fuller writeup. -->
   <!-- <Solution activeConfig="Debug" name="OpenSim" path="./" version="0.5.0-$Rev$" forceFrameworkVersion="v4_6"> -->
-  <Solution activeConfig="Release" name="OpenSim" path="./" version="0.5.0-$Rev$" frameworkVersion="net8_0">
+  <Solution activeConfig="Release" name="OpenSim" path="./" version="0.5.0-$Rev$" frameworkVersion="net10_0">
   <Configuration name="Debug" >
       <Options>
         <CompilerDefines>TRACE</CompilerDefines>

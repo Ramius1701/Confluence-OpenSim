@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 
 <!-- MySQL Money Data Wrapper -->
-<Project name="OpenSim.Data.MySQL.MySQLMoneyDataWrapper" path="addon-modules/OpenSim-Data-MySQL-MySQLMoneyDataWrapper" type="Library" frameworkVersion="net8_0">
+<Project name="OpenSim.Data.MySQL.MySQLMoneyDataWrapper" path="addon-modules/OpenSim-Data-MySQL-MySQLMoneyDataWrapper" type="Library" frameworkVersion="net10_0">
   <Configuration name="Debug">
 	<Options>
 	  <OutputPath>../../bin/</OutputPath>

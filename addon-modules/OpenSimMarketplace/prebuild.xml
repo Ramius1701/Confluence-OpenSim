@@ -5,7 +5,7 @@
     path="addon-modules/OpenSimMarketplace/Module"
     type="Library"
     version="2.1.0-$Rev$"
-    frameworkVersion="net8_0">
+    frameworkVersion="net10_0">
 
   <Configuration name="Debug">
     <Options>

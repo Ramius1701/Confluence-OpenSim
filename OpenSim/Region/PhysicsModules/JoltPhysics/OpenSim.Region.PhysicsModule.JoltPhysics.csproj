@@ -10,7 +10,7 @@
     the csproj is hand-maintained.
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <PreserveCompilationContext>false</PreserveCompilationContext>
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -107,10 +107,10 @@
          bin\ this module's own AssemblyName-hint-path Reference pattern (and Mono.Addins'
          module scan, and the CLR's own probing) all expect. Copy them explicitly, the same
          workaround already used for JoltPhysicsSharp.dll/joltc.dll above. -->
-    <None Include="..\..\..\Addons\JoltPhysics\JoltPhysics.Core\bin\$(Configuration)\net8.0\JoltPhysics.Core.dll" Link="JoltPhysics.Core.dll">
+    <None Include="..\..\..\Addons\JoltPhysics\JoltPhysics.Core\bin\$(Configuration)\net10.0\JoltPhysics.Core.dll" Link="JoltPhysics.Core.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\..\Addons\JoltPhysics\JoltPhysics.Vehicles\bin\$(Configuration)\net8.0\JoltPhysics.Vehicles.dll" Link="JoltPhysics.Vehicles.dll">
+    <None Include="..\..\..\Addons\JoltPhysics\JoltPhysics.Vehicles\bin\$(Configuration)\net10.0\JoltPhysics.Vehicles.dll" Link="JoltPhysics.Vehicles.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

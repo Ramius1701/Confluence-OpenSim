@@ -11,7 +11,7 @@ get or update source from git
 ## Requirements
   To building under Windows, the following is required:
 
-  * [dotnet 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+  * [dotnet 10.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 
 optionally also
 
@@ -36,7 +36,7 @@ Now just run `OpenSim.exe` from the `bin` folder, and set up the region.
 
 ## Requirements
 
- * [dotnet 8.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+ * [dotnet 10.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
  * libgdiplus 
  
  if you have mono 6.x complete, you already have libgdiplus, otherwise you need to install it

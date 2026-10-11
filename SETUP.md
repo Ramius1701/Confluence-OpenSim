@@ -11,7 +11,7 @@ in this guide - please report it.
 
 ## 1. Requirements
 
-- The [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) and `git`.
+- The [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and `git`.
 - For MySQL / MariaDB or PostgreSQL: a running database server and an account allowed to create a
   database. SQLite needs nothing extra.
 - Grid mode: a machine name or address your regions and viewers can reach (`127.0.0.1` for a test).
