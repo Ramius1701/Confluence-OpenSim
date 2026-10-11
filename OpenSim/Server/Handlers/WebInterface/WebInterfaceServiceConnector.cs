@@ -9059,10 +9059,15 @@ namespace OpenSim.Server.Handlers.WebInterface
             // "region restart <seconds>" call now always runs the full
             // staged countdown, so this function's own fixed-duration
             // assumptions below are reliable again.
+            // "exit": the region runs the same 120s countdown its residents know, then shuts its own
+            // process down (after any running backup) instead of reloading the scene in place, so the
+            // relaunch below is the region's only load. A region on an older build ignores the word,
+            // reloads in place as before and doesn't print the RESTART_MODE marker; for that region
+            // this falls back to the old wait-reload-then-stop sequence.
             string warnResult = string.Empty;
             for (int attempt = 0; attempt < 3; attempt++)
             {
-                warnResult = RunRegionConsoleCommand(region, "region restart 120");
+                warnResult = RunRegionConsoleCommand(region, "region restart 120 exit");
                 if (warnResult != null && !warnResult.StartsWith("Region responded with HTTP") && !warnResult.StartsWith("Could not reach "))
                     break;
 
@@ -9075,8 +9080,68 @@ namespace OpenSim.Server.Handlers.WebInterface
                 return;
             }
 
+            bool exitMode = warnResult != null && warnResult.Contains("RESTART_MODE: exit");
+
             System.Threading.Thread.Sleep(125000);
 
+            bool exited = false;
+            if (exitMode)
+            {
+                // The region shuts itself down once its countdown ends. Its shutdown saves objects and
+                // closes scripts, and it first waits out any AutoBackup cycle (up to 10 minutes), so
+                // allow for that before deciding it didn't exit.
+                DateTime exitDeadline = DateTime.UtcNow.AddMinutes(12);
+                while (DateTime.UtcNow < exitDeadline
+                        && Util.IsHostAlive("http://127.0.0.1:" + region.InternalEndPoint.Port + "/", 1000))
+                {
+                    System.Threading.Thread.Sleep(2000);
+                }
+                exited = !Util.IsHostAlive("http://127.0.0.1:" + region.InternalEndPoint.Port + "/", 1000);
+                if (!exited)
+                    m_log.WarnFormat("[WEB INTERFACE]: {0} was asked to exit after its restart countdown but is still running - stopping it the old way", regionName);
+            }
+
+            if (!exited)
+            {
+                if (!StopAfterInPlaceReload(region, regionId, regionName))
+                    return;
+            }
+
+            TryStartRegionProcess(simulatorFolder, out _, out _);
+
+            // TryStartRegionProcess only confirms the process didn't crash
+            // in its first 3 seconds - the port being open just means
+            // RegionReadyModule has started, not that it's finished loading
+            // this region's own prims/objects/mesh. Observed live,
+            // 2026-09-14: heavier regions take noticeably longer to
+            // actually finish loading than lighter ones, so a caller
+            // relying on RealRestartRegion having returned as "this region
+            // is a genuinely usable refuge now" (the whole point of the
+            // priority-region-first ordering in Restart All) needs the
+            // real per-region load time, not a fixed guess. Poll the same
+            // "ready-status" console command/LOGINS_ENABLED signal the
+            // Simulators page already uses for its own status pill, capped
+            // so one region that never finishes loading (or crashes after
+            // the initial 3s check) can't hang the whole rolling sequence
+            // forever.
+            DateTime readyDeadline = DateTime.UtcNow.AddMinutes(5);
+            while (DateTime.UtcNow < readyDeadline)
+            {
+                string result = RunRegionConsoleCommand(region, "ready-status " + regionId);
+                if (result != null && result.Contains("LOGINS_ENABLED: True"))
+                    break;
+
+                System.Threading.Thread.Sleep(5000);
+            }
+        }
+
+        // The pre-2026-10-11 restart sequence, now only a fallback: for a region whose countdown
+        // reloaded the scene in place (an older build without 'exit' support, or one that fell back
+        // to a reload because a backup outlasted its wait), wait for that reload to finish, stop
+        // the process (TryStopRegion refuses mid-backup) and wait for its port to go quiet.
+        // Returns false if the region couldn't be stopped, so the caller leaves it running.
+        private bool StopAfterInPlaceReload(GridRegion region, UUID regionId, string regionName)
+        {
             // "region restart <seconds>" isn't a passive warning broadcast -
             // RestartModule's own console command performs a full in-place
             // scene reload itself once its countdown reaches zero (same
@@ -9114,7 +9179,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 // now-eliminated registration race above) is at least
                 // diagnosable instead of silently no-op'ing.
                 m_log.WarnFormat("[WEB INTERFACE]: Could not restart {0}: {1}", regionName, stopMessage);
-                return;
+                return false;
             }
 
             // TryStopRegion returning true only means the "shutdown"
@@ -9143,32 +9208,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 System.Threading.Thread.Sleep(2000);
             }
 
-            TryStartRegionProcess(simulatorFolder, out _, out _);
-
-            // TryStartRegionProcess only confirms the process didn't crash
-            // in its first 3 seconds - the port being open just means
-            // RegionReadyModule has started, not that it's finished loading
-            // this region's own prims/objects/mesh. Observed live,
-            // 2026-09-14: heavier regions take noticeably longer to
-            // actually finish loading than lighter ones, so a caller
-            // relying on RealRestartRegion having returned as "this region
-            // is a genuinely usable refuge now" (the whole point of the
-            // priority-region-first ordering in Restart All) needs the
-            // real per-region load time, not a fixed guess. Poll the same
-            // "ready-status" console command/LOGINS_ENABLED signal the
-            // Simulators page already uses for its own status pill, capped
-            // so one region that never finishes loading (or crashes after
-            // the initial 3s check) can't hang the whole rolling sequence
-            // forever.
-            DateTime readyDeadline = DateTime.UtcNow.AddMinutes(5);
-            while (DateTime.UtcNow < readyDeadline)
-            {
-                string result = RunRegionConsoleCommand(region, "ready-status " + regionId);
-                if (result != null && result.Contains("LOGINS_ENABLED: True"))
-                    break;
-
-                System.Threading.Thread.Sleep(5000);
-            }
+            return true;
         }
 
         // Same RunRegionConsoleCommand/shared-secret mechanism as Restart

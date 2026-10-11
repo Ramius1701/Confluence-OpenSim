@@ -63,6 +63,13 @@ namespace OpenSim.Region.CoreModules.World.Region
         protected bool m_shortCircuitDelays = false;
         protected bool m_rebootAll = false;
 
+        // Set by "region restart <seconds> exit" (the WebUI's Restart / Restart All): when the
+        // countdown reaches zero, shut this simulator process down cleanly instead of reloading
+        // the scene in place. The WebUI then starts a fresh process on the deployed build, so the
+        // region loads once instead of twice. In-world and estate-tool restarts never set it, so
+        // they keep reloading as before (a region with nothing to relaunch it must not just exit).
+        protected bool m_exitAtZero = false;
+
         public void Initialise(IConfigSource config)
         {
             IConfig restartConfig = config.Configs["RestartModule"];
@@ -87,9 +94,11 @@ namespace OpenSim.Region.CoreModules.World.Region
 
             MainConsole.Instance.Commands.AddCommand("Regions",
                     false, "region restart",
-                    "region restart <delta seconds>",
+                    "region restart <delta seconds> [exit]",
                     "Schedule a region restart",
-                    "Schedule a region restart after a given number of seconds.  The region is restarted in delta seconds time.",
+                    "Schedule a region restart after a given number of seconds.  The region is restarted in delta seconds time.\n"
+                    + "With 'exit', the same countdown ends in a clean shutdown of this simulator process instead of an\n"
+                    + "in-place reload, for a supervisor (the WebUI) that starts a fresh process on the deployed build.",
                     HandleRegionRestart);
 
             MainConsole.Instance.Commands.AddCommand("Regions",
@@ -128,16 +137,23 @@ namespace OpenSim.Region.CoreModules.World.Region
 
         public void ScheduleRestart(UUID initiator, int seconds)
         {
+            ScheduleRestart(initiator, seconds, false);
+        }
+
+        public void ScheduleRestart(UUID initiator, int seconds, bool exitAtZero)
+        {
             if (m_CountdownTimer != null)
             {
                 m_CountdownTimer.Stop();
                 m_CountdownTimer = null;
             }
 
+            m_exitAtZero = exitAtZero;
+
             if (seconds == 0)
             {
                 CreateMarkerFile();
-                m_Scene.RestartNow();
+                RestartOrExit();
                 return;
             }
 
@@ -181,7 +197,7 @@ namespace OpenSim.Region.CoreModules.World.Region
             if (m_Alerts[0] == 0)
             {
                 CreateMarkerFile();
-                m_Scene.RestartNow();
+                RestartOrExit();
                 return;
             }
 
@@ -190,12 +206,42 @@ namespace OpenSim.Region.CoreModules.World.Region
             SetTimer(nextInterval);
         }
 
+        // The end of a countdown: reload the scene in place (in-world/estate restarts, and the
+        // vanilla behaviour), or for an 'exit' restart shut the process down so the WebUI can
+        // start a fresh one. Shutdown waits for a running AutoBackup cycle first: the shutdown's
+        // own final backup silently skips if one is in flight, which could close the scene under a
+        // write (the same rule the WebUI's TryStopRegion enforces with backup-status).
+        protected void RestartOrExit()
+        {
+            if (!m_exitAtZero)
+            {
+                m_Scene.RestartNow();
+                return;
+            }
+
+            DateTime backupDeadline = DateTime.UtcNow.AddMinutes(10);
+            while (m_Scene.IsBackingUp && DateTime.UtcNow < backupDeadline)
+                System.Threading.Thread.Sleep(2000);
+
+            if (m_Scene.IsBackingUp)
+            {
+                // Never shut down mid-backup. Fall back to the in-place reload so the region still
+                // restarts; the WebUI sees the process still running and finishes the job itself.
+                m_log.WarnFormat("[RESTART MODULE]: {0} still backing up after 10 minutes - reloading in place instead of exiting", m_Scene.Name);
+                m_Scene.RestartNow();
+                return;
+            }
+
+            m_log.InfoFormat("[RESTART MODULE]: {0} restart countdown finished - shutting the process down for a fresh start", m_Scene.Name);
+            MainConsole.Instance.RunCommand("shutdown");
+        }
+
         public int DoOneNotice(bool sendOut)
         {
             if (m_Alerts.Count == 0 || m_Alerts[0] == 0)
             {
                 CreateMarkerFile();
-                m_Scene.RestartNow();
+                RestartOrExit();
                 return 0;
             }
 
@@ -267,7 +313,7 @@ namespace OpenSim.Region.CoreModules.World.Region
             {
                 if (CountAgents() == 0)
                 {
-                    m_Scene.RestartNow();
+                    RestartOrExit();
                     return;
                 }
             }
@@ -300,6 +346,7 @@ namespace OpenSim.Region.CoreModules.World.Region
 
         public void AbortRestart(string message)
         {
+            m_exitAtZero = false;
             if (m_CountdownTimer != null)
             {
                 m_CountdownTimer.Stop();
@@ -343,10 +390,17 @@ namespace OpenSim.Region.CoreModules.World.Region
 				}
             }
 
+            bool exitAtZero = args.Length >= 4 && args[3].Equals("exit", StringComparison.OrdinalIgnoreCase);
+
             MainConsole.Instance.Output(
                 "Region {0} scheduled for restart in {1} seconds", m_Scene.Name, seconds);
+            // Parseable marker for the WebUI: a region on a build without 'exit' support ignores the
+            // word and reloads in place, so the WebUI only waits for this process to exit when it
+            // sees this line, and otherwise stops and relaunches it the old way.
+            if (exitAtZero)
+                MainConsole.Instance.Output("RESTART_MODE: exit");
 
-            ScheduleRestart(UUID.Zero, seconds);
+            ScheduleRestart(UUID.Zero, seconds, exitAtZero);
         }
 
         protected void CreateMarkerFile()
