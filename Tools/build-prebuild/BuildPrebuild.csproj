@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Builds bin/prebuild.dll (the project generator runprebuild.bat runs) from Prebuild/src for .NET 10.
+    Prebuild/src/Prebuild.csproj is an old .NET Framework project whose compile list predates
+    VS2017Target.cs and VS2022Target.cs, so it cannot produce a working vs2022 generator.
+
+      dotnet build Tools\build-prebuild -c Release -o Tools\build-prebuild\out
+      copy Tools\build-prebuild\out\prebuild.dll and prebuild.runtimeconfig.json over bin\
+
+    Project GUIDs in the generated OpenSim.sln come from string.GetHashCode(), which .NET randomises
+    per process, so they change on every prebuild run with any build of the tool.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>prebuild</AssemblyName>
+    <RootNamespace>Prebuild</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <DefineConstants>TRACE</DefineConstants>
+    <NoWarn>CS0618;CS0612;SYSLIB0011;SYSLIB0014</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\Prebuild\src\**\*.cs" Exclude="..\..\Prebuild\src\obj\**;..\..\Prebuild\src\bin\**" />
+    <EmbeddedResource Include="..\..\Prebuild\src\data\prebuild-1.10.xsd" LogicalName="Prebuild.data.prebuild-1.10.xsd" />
+    <EmbeddedResource Include="..\..\Prebuild\src\data\autotools.xml" LogicalName="Prebuild.data.autotools.xml" />
+  </ItemGroup>
+</Project>

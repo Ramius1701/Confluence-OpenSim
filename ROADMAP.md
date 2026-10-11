@@ -444,8 +444,8 @@ Web & Admin UI section rather than here.)*
   connector (serves `texture/<agent>/<channel>/<uuid>`), a login-response
   advertisement, and AvatarService/ScenePresence changes. No AIS
   dependency (their ADR-006: `cof_version` is the COF folder's `Version`).
-  Costs and risks: their tree is net10 + SkiaSharp + CoreJ2K.Skia,
-  Confluence is net8 (retarget or backport the library); the golden
+  Costs and risks: their tree uses SkiaSharp + CoreJ2K.Skia (new
+  dependencies; both trees are net10 since 2026-10-11); the golden
   fidelity fixtures are not committed upstream, so fidelity vs. the real
   viewer bake is unproven here (can be rebuilt from Casperia's own
   residents' viewer bakes, which are ordinary assets); it touches the
@@ -464,7 +464,7 @@ Web & Admin UI section rather than here.)*
   HG inventory services and the XInventory in-connector. Benefit: faster,
   more atomic outfit/COF and folder operations for Firestorm-family
   viewers (the viewer already speaks it). Cost: real surface area across
-  the inventory stack, and the same net10-to-net8 adaptation. Not needed
+  the inventory stack (no framework adaptation since the net10 move). Not needed
   by SSB. Lower priority than SSB; no user-facing problem here currently
   asks for it.
 - **Trusted Hypergrid - from Tranquillity #200; scoped 2026-09-26, decided

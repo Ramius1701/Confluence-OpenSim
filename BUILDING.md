@@ -59,6 +59,12 @@ Configure. See below
 
 run `./opensim.sh` from the `bin` folder, and set up the region
 
+## Rebuilding the project generator
+`bin/prebuild.dll` (the tool `runprebuild` runs) is checked in. Only if you change `Prebuild/src`, rebuild it with
+
+ `dotnet build Tools/build-prebuild -c Release -o Tools/build-prebuild/out`
+
+and copy `prebuild.dll` and `prebuild.runtimeconfig.json` from `Tools/build-prebuild/out` over the ones in `bin/`.
 
 
 # Configure #

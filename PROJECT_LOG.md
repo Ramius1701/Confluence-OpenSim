@@ -27997,4 +27997,8 @@ only the seven `*.runtimeconfig.json` files differed among non-binaries, net8.0 
 15 regions on runtime **10.0.12**, all "Startup complete", YEngine on, 0 FATAL, Robust 0 errors, no new error
 types vs the previous boot. The PrivURL loopback change is now in effect: region-to-Robust private traffic goes over
 127.0.0.1:8003, with 0 DNS resolution failures since. **Next:** the Jolt work (newer JoltPhysicsSharp on net10, and
-adopting Legion's `lane/jolt` module).
+adopting Legion's `lane/jolt` module).**Docs sweep and a missed file (2026-10-12).** `Tools/build-prebuild/BuildPrebuild.csproj` was left out of `7f56536af2`,
+though that commit's `bin/prebuild.dll` is built from it; now committed (its `obj`/`out` stay untracked). BUILDING.md
+documents rebuilding the generator; ROADMAP.md's SSB/AIS entries no longer cite a net10-to-net8 adaptation. Rechecked:
+all runtimeconfigs in `bin/` and all 112 on live are net10.0; runprebuild, CI and docs say 10. The remaining `net8`
+mentions are JoltPhysicsSharp 2.19.1 comments/paths in the Jolt csprojs, which the Jolt upgrade replaces.
