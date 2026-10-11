@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Offline physics harness for the Jolt module, from Legion's Tranquillity lane/jolt (Tests/JoltPhysicsHarness):
+       builds a Jolt scene with no region, steps it through the module's own Simulate at a chosen heartbeat rate, and
+       writes a CSV trace and a summary per scenario. Console tool; the Jolt test project drives the same scenarios as
+       regression tests. Confluence project file: references the Confluence module paths and the shared bin\ DLLs.
+       Hand-maintained and outside OpenSim.sln. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>JoltPhysicsHarness</AssemblyName>
+    <RootNamespace>OpenSim.Region.PhysicsModules.Jolt.Harness</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt.Backend\OpenSim.Region.PhysicsModules.Jolt.Backend.csproj" />
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt\OpenSim.Region.PhysicsModules.Jolt.csproj" />
+  </ItemGroup>
+
+  <!-- The module takes these from bin\ without copying them; an executable needs them beside it. -->
+  <ItemGroup>
+    <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
+    <Reference Include="Mono.Addins"><HintPath>..\..\bin\Mono.Addins.dll</HintPath></Reference>
+    <Reference Include="Nini"><HintPath>..\..\bin\Nini.dll</HintPath></Reference>
+    <Reference Include="OpenMetaverse"><HintPath>..\..\bin\OpenMetaverse.dll</HintPath></Reference>
+    <Reference Include="OpenMetaverseTypes"><HintPath>..\..\bin\OpenMetaverseTypes.dll</HintPath></Reference>
+    <Reference Include="OpenMetaverse.StructuredData"><HintPath>..\..\bin\OpenMetaverse.StructuredData.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="ci\**\*" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+  <!-- Keeps the native package's unused files (joltc_double, Android) out of the output. -->
+  <Import Project="..\..\OpenSim\Region\PhysicsModules\Jolt.Backend\JoltNative.targets" />
+
+</Project>

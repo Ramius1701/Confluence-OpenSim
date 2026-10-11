@@ -1,0 +1,6 @@
+# Jolt tests and harness from Legion's lane/jolt: hand-maintained projects.
+!*.csproj
+!.gitignore
+bin/
+obj/
+TestResults/

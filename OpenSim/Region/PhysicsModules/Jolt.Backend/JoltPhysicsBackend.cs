@@ -988,6 +988,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         [System.Runtime.InteropServices.DllImport("joltc", CallingConvention = System.Runtime.InteropServices.CallingConvention.Cdecl)]
         private static extern void JPH_ShapeSettings_Destroy(IntPtr settings);
 
+        // [Confluence: a wrapper whose native object something else has already freed: clear OwnsHandle so its Dispose
+        // and finalizer free nothing native (see DisposeNative's filter teardown).]
+        private static void Disown(NativeObject? wrapper)
+        {
+            if (wrapper != null && !wrapper.IsDisposed)
+                s_ownsHandle?.SetValue(wrapper, false);
+        }
+
         internal static void FreeShapeSettings(ShapeSettings settings)
         {
             bool bindingDestroys = s_ownsHandle?.GetValue(settings) is true;
@@ -1191,6 +1199,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // The PhysicsSystem holds the filter interfaces and steps on the job system,
             // so it must go down first. Destroying it also frees the three layer-filter objects natively; the filter
             // wrappers below free nothing native.
+            bool systemDestroyed = _system != null;
             if (_system != null)
                 DestroyPhysicsSystem(_system);
             _system = null;
@@ -1198,6 +1207,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // Shared job pool is process-wide: disposed by the LAST region out in
             // Dispose()'s s_foundationGate block, NOT per-region here.
 
+            // [Confluence: from JoltPhysicsSharp 2.22 the three filter wrappers own their handles and free them in
+            // Dispose (and in their finalizers), but destroying the system above already deleted them natively: freeing
+            // them again corrupted the heap on every region teardown (0xC0000374; ContactValidateMemoryTests). Once the
+            // system is gone, drop the wrappers' ownership so they free nothing a second time.]
+            if (systemDestroyed)
+            {
+                Disown(_objectVsBroadPhaseFilter);
+                Disown(_broadPhaseInterface);
+                Disown(_objectLayerPairFilter);
+            }
             _objectVsBroadPhaseFilter?.Dispose();
             _objectVsBroadPhaseFilter = null;
             _broadPhaseInterface?.Dispose();
