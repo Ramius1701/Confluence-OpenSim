@@ -28023,8 +28023,8 @@ on live) and new bindings: boxes dropped on a heightfield rest at exactly 20.500
 counts and impact impulses (16146.70 vs 16146.43 N*s); a welded compound starting in contact with the heightfield
 (the M7 frame-0 hang case) settles with a worst step of 0.2 ms; avatars stand (supported, z 20.750), walk, and
 report avatar-box and avatar-avatar contacts on both. **A leak found and fixed:** 400 sleepless boxes with contact
-events for 4000 steps (1.59 million contact reports) grew private memory **75.8 MB on 2.19.1** (its binding has no
-way to free the impulse array) and **1.5 MB on 2.23.0**; a control build of 2.23.0 without the `Free()` grew
+events for 4000 steps (1.59 million contact reports) grew private memory **75.8 MB on 2.19.1** (its binding does not
+expose a free for the impulse array) and **1.5 MB on 2.23.0**; a control build of 2.23.0 without the `Free()` grew
 40.9 MB, so the `Free()` is the fix. The local standalone (repo `bin`, Jolt) reaches "Startup complete" with
 YEngine on. Note for later boots: start it as `dotnet OpenSim.dll -background=true -console=rest` with output
 redirected; a plain hidden-window `OpenSim.exe` stalls on the local console before "Startup complete", on either
@@ -28063,3 +28063,7 @@ content cooks, and needs a reproduction against real content.
 retry and `sweepstatics`, mapping their `ILogger` back to log4net, and porting #270's core half (with an `llSetForce`
 on attachments in YEngine's LSL API). Then reproduce the mesh-walk symptom on the local standalone with real content
 (an OAR of Starbase Andromeda) before Jolt goes near a live region again.
+
+**Correction (same day):** the 2.19.1 leak *was* fixable. The native 1.0.4 already exported
+`JPH_CollisionEstimationResult_FreeMembers`; only the managed binding left it out. Legion P/Invoked it directly on 2.19.1
+(`5bc03c337e`, 2026-10-07). 2.23.0 simply exposes it as `CollisionEstimationResult.Free()`.
