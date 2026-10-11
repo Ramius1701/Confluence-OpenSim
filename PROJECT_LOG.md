@@ -27740,3 +27740,59 @@ then real certificates were issued, Apache was reloaded, and all 8 names were ve
 exposed a script bug: `httpd -t` prints "Syntax OK" on stderr, which `ErrorActionPreference=Stop` turned into a
 failure. Fixed, plus an issuance-wrapper check, since wacs exits 0 even when the installation step fails. Like the
 DB backup, the scheduled task lives on C: and must be re-registered after any future reinstall.
+---
+
+## Donor fetch 2026-10-11: upstream merged (live picks bug), Tranquillity #259-#281 reviewed, 14 core fixes ported
+
+Fetched all 26 donor remotes. 12 branches moved, 23 new, 2 deleted. Only upstream and Tranquillity had core work.
+Sasquatch is byte-identical to Tranquillity again.
+
+**Upstream merge (`91f0a1ab64`), 5 UbitUmarov commits, 10/07-10/10.** Two of them fix a **live bug on Casperia**:
+since the 2026-09-28 upstream merge brought in `f0084efb12`, `UserProfilesHandlers.AvatarPicksRequest` and
+`PicksDelete` read `CreatorId`/`PickId`, while every region call sends `creatorId`/`pickId`. So viewing a
+profile's picks list and deleting a pick both failed with a parse error. The 2026-09-25 donor-sync entry had
+flagged exactly this mismatch and skipped that commit, and the next upstream merge carried it in anyway.
+`PickInfoRequest`'s PascalCase is correct (the region sends a whole serialized `UserProfilePick` there) and
+upstream rightly left it alone. The other three commits add `LSLInteger.One/Zero` and upstream's own
+`llGetObjectDetails` OBJECT_PERMS/LOCKED/VOLUME_DETECT. Conflicts:
+- `LSL_Constants.cs`: kept our `OBJECT_DAMAGE_TYPE = 52`. Upstream has `51`, a typo duplicating `OBJECT_DAMAGE`.
+- `llGetLinkSitFlags`: kept ours (`part.GetLslSitFlags()`).
+- **`llGetObjectDetails` merged without a conflict marker, but wrong:** both sides had added OBJECT_LOCKED and
+  OBJECT_VOLUME_DETECT (ours `9d8cc61d18`, 9/23), so the result had duplicate case labels, a compile error.
+  Dropped ours in favour of upstream's (EffectiveOwnerPerms with deleted-object guards, plus OBJECT_PERMS), so
+  these lines stop diverging. Lesson: after a merge where both sides touched the same feature, also read the
+  hunks that auto-merged cleanly.
+
+**Tranquillity #259-#281, triaged by diff scope.** Ported (`e7ae28d5c2`, 14 fixes):
+- #266, SQLite: region extra settings were silently dropped (new `regionextra` table, **our** RegionStore
+  migration 47, their 46); estate `GetRegions` was always empty.
+- #273, PostgreSQL: auth `SetDataItem` threw (missing `:UUID`, unquoted column); inventory `MoveItem` used
+  unquoted mixed-case columns. **Plus `MoveFolder`, the same bug, which Tranquillity missed.**
+- #269 (only the `llDetectedType` part, shared script code): seated avatars are typed by their seat (3 or 5),
+  and a moving avatar in a collision is ACTIVE.
+- #279: `llMoveToTarget` tau <= 0 no longer cancels the target; a copied object gets its own vehicle record;
+  base `PhysicsActor.SetVehicle` clears flags with `VehicleFlags(-1, true)`. Tranquillity says no in-tree engine
+  is affected, but **on Confluence JoltPhysics uses the base method and its vendored (Legion)
+  `JoltVehicleController` adds and removes bits, so every reapplied vehicle got every flag set.**
+- #280: out-of-bounds turns off physics for the whole object (`ScriptSetPhysicsStatus(false)`), not just the
+  root; `AddCollider` no longer copies a penetration depth into the collision speed that drives sounds.
+
+Verified with `Tools/data-backend-check`, extended with checks for all five store fixes, against real SQLite
+and PostgreSQL (Laragon): **the pre-fix DLLs fail 15 checks with the real errors** (`column "inventoryid" does
+not exist`, `column "folderid" does not exist`, `syntax error at or near ":"`, a null `GetExtra`, an empty
+estate list), and **the fixed DLLs pass 409/409**. Gotcha while running that negative control: copying the
+fixed sources back keeps their older timestamps, so MSBuild skipped the rebuild and the first "fixed" run
+silently used the old DLLs. Touch the files or build `--no-incremental`.
+
+**Deferred, Phlox backlog.** Phlox is a planned *selectable* scripting engine alongside YEngine, as Jolt is a
+physics option, so these are deferred, not "not applicable": #260, 261, 263, 264, 265, 267, 271, 278, 281; #269's
+`OnScriptPermissionsRemoved` event and `MoveTaskInventoryItemsAllOrNone`; #270 (attachment constant force,
+which Tranquillity says no physics engine applies yet); #272 (`OnGroupBegin/EndInTransit` crossing events).
+
+**Pending a separate pass:** Bots #268/#277 (about 650 lines of Halcyon parity on a BotManager that has diverged
+from Tranquillity's since our 8/08 import). Ours already reads stored profiles in `botGetProfileParams`; wait
+points (skipped, line 533), multi-script `bot_update`, persistent bot keys (new random key on respawn), follow
+and wander still differ. **Skipped:** warning cleanups #259/262/274/275, and #276 (server-side baking isn't ported).
+
+Not yet deployed. It touches Robust (`OpenSim.Server.Handlers` for picks; `OpenSim.Data.*`) and the regions
+(script engine, scene, physics base). The SQLite migration and PostgreSQL fixes are inert on Casperia's MySQL.
