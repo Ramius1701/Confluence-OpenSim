@@ -27992,3 +27992,9 @@ upstream OpenSim is still net8 (only the build target differs, so merges are una
   `NSLCertificateTools`). CA2022 is a real bug class: `Read` may return fewer bytes than asked.
 - Stale leftover: `addon-modules/OpenSimMutelist/Modules/OpenSimMutelist.Modules.csproj` (untracked, 08-16, net8,
   not in the solution).
+**.NET 10 deployed to live (Robust 23:37, Restart All 23:40-23:51, 2026-10-11).** Full tree copied (290 files, 0 mismatches;
+only the seven `*.runtimeconfig.json` files differed among non-binaries, net8.0 to net10.0). Verified: Robust and all
+15 regions on runtime **10.0.12**, all "Startup complete", YEngine on, 0 FATAL, Robust 0 errors, no new error
+types vs the previous boot. The PrivURL loopback change is now in effect: region-to-Robust private traffic goes over
+127.0.0.1:8003, with 0 DNS resolution failures since. **Next:** the Jolt work (newer JoltPhysicsSharp on net10, and
+adopting Legion's `lane/jolt` module).
