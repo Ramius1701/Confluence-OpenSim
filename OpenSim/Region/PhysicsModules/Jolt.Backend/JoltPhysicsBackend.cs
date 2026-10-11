@@ -2826,11 +2826,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 // Persist gate exists to suppress. Movement is untouched (these are observational).
                 // A touching contact is noted and reported after the move (FinishCharacterContacts), when its relative speed
                 // is known and a loose object the avatar touches has been dealt with.
-                // [Confluence: JoltPhysicsSharp 2.22+ passes the contact as one CharacterContact.]
+                // [Confluence: JoltPhysicsSharp 2.22+ (Jolt 5.5+) passes the contact as one CharacterContact. Its ContactNormal points
+                // towards the character; Jolt 5.4 passed -mContactNormal (away from it, into the surface), which is what this
+                // code and its tests expect, hence the minus.]
                 character.OnContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Begin, ref s);
+                    => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Begin, ref s);
                 character.OnContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Persist, ref s);
+                    => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Persist, ref s);
                 character.OnContactRemoved += (CharacterVirtual cv, in BodyID b2, SubShapeID ss)
                     => PushCharacterBodyContact(rec, b2.ID, ss.Value, default, default, ContactPhase.End);
 
@@ -2842,9 +2844,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     character.SetCharacterVsCharacterCollision(_charVsChar);
                 }
                 character.OnCharacterContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Begin);
+                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Begin);
                 character.OnCharacterContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), c.ContactNormal, ContactPhase.Persist);
+                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Persist);
 
                 _characterList.Add(rec);
                 return new CharacterId(handle);
