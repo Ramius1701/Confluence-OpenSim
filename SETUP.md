@@ -26,7 +26,7 @@ dotnet build OpenSim.sln --configuration Release
 ```
 
 (`./runprebuild.sh` on Linux and macOS.) Only if you want the Jolt physics engine, also run
-`dotnet build OpenSim/Region/PhysicsModules/JoltPhysics/OpenSim.Region.PhysicsModule.JoltPhysics.csproj --configuration Release`
+`dotnet build OpenSim/Region/PhysicsModules/Jolt/OpenSim.Region.PhysicsModules.Jolt.csproj --configuration Release`
 (it is not part of the solution). The finished build is the `bin` folder. Copy it to a deployment
 folder (for example `C:\confluence`) and work there; never edit files in the build output you intend to
 rebuild over.

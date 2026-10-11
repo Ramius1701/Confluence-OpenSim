@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Jolt physics region module, from Legion's Tranquillity lane/jolt (Source/OpenSim.Region.PhysicsModules.Jolt;
+    see doc/JoltPhysics.md). Confluence-only files: ConfluenceRegistration.cs (Mono.Addins registration in place of
+    lane/jolt's PluginRegistration.cs) and ConfluenceLogging.cs (its ILogger calls to log4net).
+    Hand-maintained and outside OpenSim.sln: do not run runprebuild against this tree. Self-selects on
+    [Startup] physics = Jolt.
+
+    Output goes to the shared bin\ so Mono.Addins finds it. A library does not copy package or project-reference
+    outputs there under UseCommonOutputDirectory, so the backend, the vehicles, the binding and the win-x64 native are
+    copied explicitly; JoltNative finds joltc.dll beside the backend assembly.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>OpenSim.Region.PhysicsModules.Jolt</AssemblyName>
+    <RootNamespace>OpenSim.Region.PhysicsModules.Jolt</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <PreserveCompilationContext>false</PreserveCompilationContext>
+    <Deterministic>true</Deterministic>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
+    <UseCommonOutputDirectory>True</UseCommonOutputDirectory>
+    <OutputPath>..\..\..\..\bin\</OutputPath>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <NoWarn>CA1416,SYSLIB0011,SYSLIB0014,SYSLIB0039</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="log4net"><HintPath>..\..\..\..\bin\log4net.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="Mono.Addins"><HintPath>..\..\..\..\bin\Mono.Addins.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="Nini"><HintPath>..\..\..\..\bin\Nini.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="OpenMetaverse"><HintPath>..\..\..\..\bin\OpenMetaverse.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="OpenMetaverseTypes"><HintPath>..\..\..\..\bin\OpenMetaverseTypes.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath><Private>False</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Framework\OpenSim.Framework.csproj" />
+    <ProjectReference Include="..\..\Framework\OpenSim.Region.Framework.csproj" />
+    <ProjectReference Include="..\SharedBase\OpenSim.Region.PhysicsModules.SharedBase.csproj" />
+    <ProjectReference Include="..\Jolt.Backend\OpenSim.Region.PhysicsModules.Jolt.Backend.csproj" />
+    <ProjectReference Include="..\Jolt.Vehicles\OpenSim.Region.PhysicsModules.Jolt.Vehicles.csproj" />
+  </ItemGroup>
+
+  <!-- Kept in lockstep with the backend: JoltPhysicsSharp 2.23.0, native JoltPhysics.Native 1.1.0 (Jolt v5.6.0). -->
+  <ItemGroup>
+    <PackageReference Include="JoltPhysicsSharp" Version="2.23.0" GeneratePathProperty="true" PrivateAssets="all" />
+    <PackageReference Include="JoltPhysics.Native" Version="1.1.0" GeneratePathProperty="true" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(PkgJoltPhysicsSharp)\lib\net10.0\JoltPhysicsSharp.dll" Link="JoltPhysicsSharp.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Single precision (Foundation.Init(false) -> joltc.dll). win-x64 only; a Linux deploy adds libjoltc.so. -->
+    <None Include="$(PkgJoltPhysics_Native)\runtimes\win-x64\native\joltc.dll" Link="joltc.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Jolt.Backend\bin\$(Configuration)\net10.0\OpenSim.Region.PhysicsModules.Jolt.Backend.dll" Link="OpenSim.Region.PhysicsModules.Jolt.Backend.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Jolt.Vehicles\bin\$(Configuration)\net10.0\OpenSim.Region.PhysicsModules.Jolt.Vehicles.dll" Link="OpenSim.Region.PhysicsModules.Jolt.Vehicles.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="PluginRegistration.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The physics backend, from Legion's Tranquillity lane/jolt (Source/OpenSim.Region.PhysicsModules.Jolt.Backend): the
+    engine-agnostic IPhysicsBackend and its Jolt implementation. It references no OpenSim assembly.
+    Hand-maintained and outside OpenSim.sln: do not run runprebuild against this tree.
+
+    Confluence runs JoltPhysicsSharp 2.23.0 (JoltPhysics.Native 1.1.0, Jolt Physics v5.6.0); lane/jolt pins 2.19.1 /
+    1.0.4 for its patched joltc, which Confluence does not use (one region per process). Keep the version in lockstep
+    with the module's csproj and with JoltNative.PackageVersion / JoltNative.Known.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>OpenSim.Region.PhysicsModules.Jolt.Backend</AssemblyName>
+    <RootNamespace>OpenSim.Region.PhysicsModules.Jolt.Backend</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Deterministic>true</Deterministic>
+    <NoWarn>$(NoWarn);CS0168</NoWarn>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Company>http://opensimulator.org</Company>
+    <Product>OpenSim</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JoltPhysicsSharp" Version="2.23.0" />
+  </ItemGroup>
+
+</Project>
