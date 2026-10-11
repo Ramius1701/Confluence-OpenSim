@@ -27796,3 +27796,11 @@ and wander still differ. **Skipped:** warning cleanups #259/262/274/275, and #27
 
 Not yet deployed. It touches Robust (`OpenSim.Server.Handlers` for picks; `OpenSim.Data.*`) and the regions
 (script engine, scene, physics base). The SQLite migration and PostgreSQL fixes are inert on Casperia's MySQL.
+**Deployed to live, same day (19:37-19:52).** The operator stopped Robust; the full build (290 files) was copied to
+the master root (0 failures, 0 md5 mismatches); the operator started Robust and ran Restart All. Verified: all
+15 regions on fresh processes started after Robust, every region `bin` md5-identical to the root, all
+"Startup complete", Robust 0 errors and no picks parse errors since restart. Error counts per region match the
+pre-deploy boot (pre-existing content issues). The only new type is WebRTC voice reconnect noise on Sandbox.
+Restart All took about 12 minutes end to end: default regions first, each waiting until it's back, then the
+rest 30 s apart. Only 2 of 15 had cycled when it looked finished from the WebUI, so verify process start times
+before calling a deploy done.
