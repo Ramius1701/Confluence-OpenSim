@@ -27728,3 +27728,15 @@ region restart.
 status SUCCESS. Laragon's Cronical was deliberately not reused (the script exists because Cronical had silently
 stopped and produced a 0-byte dump). The task itself lives on C:, so it has to be re-registered after any future
 reinstall.
+**Follow-up, same day: SSL renewal replaced (Certify The Web -> win-acme on S:).** Certify The Web, which renewed the
+two public Let's Encrypt certificates, lived on C: and was lost. Both certificates (one 5-name `*.ddns.net` group
+kept together to stay under Certify's 5-certificate free limit, and ufpgc.org/.com/.net) would have expired
+2026-11-21/22. Replaced with win-acme 2.2.9 in `S:\win-acme` (config and logs on S:). Each public site's
+`.well-known\acme-challenge` is now a junction to one shared webroot, so HTTP-01 validation needs no Apache config
+change. `scripts\Deploy-ApacheCerts.ps1` copies the PEMs to the existing file names, runs `httpd -t`, and does a
+graceful reload via the console-mode Apache's `ap<PID>_restart` event. A staging dry run passed for all 8 names,
+then real certificates were issued, Apache was reloaded, and all 8 names were verified over TLS (valid to
+2027-01-09, trusted chain). Daily scheduled task "win-acme renew"; next renewal after 2026-12-05. First run
+exposed a script bug: `httpd -t` prints "Syntax OK" on stderr, which `ErrorActionPreference=Stop` turned into a
+failure. Fixed, plus an issuance-wrapper check, since wacs exits 0 even when the installation step fails. Like the
+DB backup, the scheduled task lives on C: and must be re-registered after any future reinstall.
