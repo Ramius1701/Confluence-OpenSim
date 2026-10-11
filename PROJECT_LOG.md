@@ -27863,3 +27863,11 @@ explicitly, as `ParseBotOptionsList` and the profile readers already did. Those 
 and are fine. Separately, the first in-world compile failure was a partial paste (the asset held only the last 65
 of 140 lines, fetched from the asset service to confirm). The script itself passes YEngine's own
 tokenizer/reducer, now usable as a local LSL syntax check (scratchpad `lslcheck`, reports 0-based line,col).
+**Second in-world bot test (GFC, ~21:52): creator auto-registration and multi-script delivery confirmed, then a
+crash inside `bot_update`.** The bot was created; box 1 (which never registered) and box 2 (registered) both
+received `bot_update`, which confirms #268's creator registration and multi-script fan-out. Both then threw
+`InvalidCastException: Unable to cast object of type 'System.Object[]' to type 'list'`, because BotManager passes the
+list parameter as a raw `object[]`. Phlox accepts that; YEngine's event prologue (`MMRScriptCodeGen` ~1277) unwraps
+int/string from either form but casts a list parameter straight to `LSL_List`. Fixed in YEngine's module-facing
+`PostScriptEvent`/`PostObjectEvent(UUID, string, object[])`: `object[]` arguments become `LSL_List`, with elements
+mapped to LSL types so `llList2Vector` etc. work. That also covers `path_update`. Local standalone boot clean.
