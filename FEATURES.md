@@ -544,6 +544,23 @@ IM/interaction/animation, tagging, persistence, profile/outfits, and
 bot-hosted sensors/comms. Avatar-follow and tag-group management are
 also available via `osNpc`.
 
+Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 2026-10-11):
+
+- **`bot_update(string botID, integer flag, list params)` is a real YEngine event**: a script can
+  declare it and receive it. It reaches every script registered with
+  `botRegisterForNavigationEvents` (and the script that created the bot), not just the last one:
+  `BOT_MOVE_COMPLETE`, `BOT_MOVE_UPDATE` each time the bot moves on to a node, `BOT_MOVE_FAILED`
+  on a timed-out move, and `BOT_MOVE_AVATAR_LOST` when a followed avatar leaves or goes past
+  `BOT_LOST_AVATAR_DISTANCE`. SL-style scripts get the matching `path_update` too.
+- **Navigation**: `BOT_TRAVELMODE_WAIT` points hold the bot for their seconds; a point not reached
+  within `BOT_MOVEMENT_TELEPORT_AFTER` (60 s) is teleported to and the path goes on;
+  `BOT_MOVEMENT_FLAG_FOLLOW_INDEFINITELY` loops the path.
+- **`botFollowAvatar`** keeps following, with Halcyon's stop/start distances, running, flying,
+  jumping and line-of-sight options. **`botWanderWithin`** raises `bot_update` and honours
+  `BOT_WANDER_TIME_BETWEEN_NODES` / `BOT_WANDER_MOVEMENT_TYPE`.
+- **`botMessageLinked`** delivers a `link_message` to the scripts in the bot's attachments.
+- **Persistent bots** come back after a region restart under the key they had.
+
 ### Sit targets and avatar animation
 
 - Enforcement of scripted-only sit targets.

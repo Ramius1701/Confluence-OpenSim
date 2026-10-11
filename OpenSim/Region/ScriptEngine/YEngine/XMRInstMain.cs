@@ -245,6 +245,7 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             {"linkset_data", ScriptEventCode.linkset_data},
             {"experience_permissions", ScriptEventCode.experience_permissions},
             {"experience_permissions_denied", ScriptEventCode.experience_permissions_denied},
+            {"bot_update", ScriptEventCode.bot_update},
         };
     }
 }

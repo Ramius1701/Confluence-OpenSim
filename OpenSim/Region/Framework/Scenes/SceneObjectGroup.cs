@@ -92,9 +92,12 @@ namespace OpenSim.Region.Framework.Scenes
         linkset_data = 41,
         experience_permissions = 42,
         experience_permissions_denied = 43,
+        // InWorldz/Halcyon bot event, raised by BotManager. YEngine checks at startup
+        // that its ScriptEventCode names match these, so keep the three enums in step.
+        bot_update = 44,
 
         // marks highest numbered event
-        Size = 44
+        Size = 45
     }
 
     // this is not the right place for this
@@ -148,6 +151,7 @@ namespace OpenSim.Region.Framework.Scenes
         linkset_data = 1UL << 41,
         experience_permissions = 1UL << 42,
         experience_permissions_denied = 1UL << 43,
+        bot_update = 1UL << 44,
 
         anytouch = touch | touch_end | touch_start,
         anyTarget = at_target | not_at_target | at_rot_target | not_at_rot_target,

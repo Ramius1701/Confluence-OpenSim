@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Legion Grid Contributors
+ * Copyright (c) Legion Builds
  * IBotManager.cs — Bot/NPC management interface for Phlox script engine
  * Bridges InWorldz-style bot* LSL functions to OpenSim's INPCModule infrastructure.
  */
@@ -49,6 +49,22 @@ namespace OpenSim.Region.Framework.Interfaces
         /// <returns>The bot's UUID, or UUID.Zero on failure.</returns>
         UUID CreateBot(string firstName, string lastName, Vector3 startPos,
             string outfitName, UUID scriptItemID, UUID ownerID, out string reason);
+
+        /// <summary>
+        /// The osNpcCreate door onto the same bots: <paramref name="ownerID"/> supplies the scene
+        /// and the appearance as before, but the NPC (and its BotData) is owned by nobody when
+        /// <paramref name="owned"/> is false (OS_NPC_NOT_OWNED), and <paramref name="senseAsAgent"/> is
+        /// OS_NPC_SENSE_AS_AGENT rather than the always-true the bot* door passes.
+        /// </summary>
+        UUID CreateBot(string firstName, string lastName, Vector3 startPos,
+            string outfitName, UUID scriptItemID, UUID ownerID, bool owned, bool senseAsAgent, out string reason);
+
+        /// <summary>
+        /// osNpcSaveAppearance's door: capture the BOT's current appearance into the caller's
+        /// outfit store under <paramref name="outfitName"/> (SaveOutfitToDatabase captures the owner's).
+        /// Returns the outfit's key, UUID.Zero with a reason on failure.
+        /// </summary>
+        UUID SaveBotOutfit(UUID botID, string outfitName, UUID ownerID, out string reason);
 
         /// <summary>Remove a bot from the region.</summary>
         void RemoveBot(UUID botID, UUID ownerID);
@@ -145,7 +161,10 @@ namespace OpenSim.Region.Framework.Interfaces
         void SetBotProfile(UUID botID, string aboutText, string email,
             UUID? imageID, string profileURL, UUID ownerID);
 
-        /// <summary>Get bot profile fields as previously set via SetBotProfile.</summary>
+        /// <summary>
+        /// Read a bot's profile fields, wherever the bot is. Returns false if <paramref name="botID"/>
+        /// is not a bot. Unset fields read as "" and UUID.Zero.
+        /// </summary>
         bool GetBotProfile(UUID botID, out string aboutText, out string email,
             out UUID imageID, out string profileURL);
 
@@ -222,6 +241,6 @@ namespace OpenSim.Region.Framework.Interfaces
         /// botMessageLinked. Returns false if the bot doesn't exist, the caller lacks permission, or
         /// no script is currently registered.
         /// </summary>
-        bool BotMessageLinked(UUID botID, UUID ownerID, int num, string msg, UUID id);
+        bool BotMessageLinked(UUID botID, UUID ownerID, int senderLinkNum, int num, string msg, string id);
     }
 }

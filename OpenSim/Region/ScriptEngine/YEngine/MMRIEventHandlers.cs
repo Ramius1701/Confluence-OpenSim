@@ -77,5 +77,6 @@ namespace OpenSim.Region.ScriptEngine.Yengine
         void linkset_data(LSL_Integer action, string name, string value);
         void experience_permissions(LSL_Key agent_id);
         void experience_permissions_denied(LSL_Key agent_id, LSL_Integer reason);
+        void bot_update(string botID, int flag, LSL_List data);
     }
 }

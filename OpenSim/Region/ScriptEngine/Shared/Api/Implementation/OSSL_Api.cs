@@ -4623,8 +4623,9 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             if (module is null || !UUID.TryParse(botID.m_string, out UUID botId))
                 return;
 
-            UUID.TryParse(id.m_string, out UUID targetId);
-            module.BotMessageLinked(botId, m_host.OwnerID, num, msg, targetId);
+            // The sender's link number, 0 in a single-prim object, as llMessageLinked reports it.
+            int senderLinkNum = m_host.ParentGroup.PrimCount == 1 ? 0 : m_host.LinkNum;
+            module.BotMessageLinked(botId, m_host.OwnerID, senderLinkNum, num, msg, id.m_string);
         }
 
         /// <summary>

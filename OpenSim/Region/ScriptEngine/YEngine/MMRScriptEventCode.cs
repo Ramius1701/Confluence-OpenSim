@@ -87,8 +87,10 @@ namespace OpenSim.Region.ScriptEngine.Yengine
 
         experience_permissions = 42,
         experience_permissions_denied = 43,
+        // InWorldz/Halcyon bot_update(string botID, integer flag, list params), from BotManager
+        bot_update = 44,
 
         // marks highest numbered event
-        Size = 44
+        Size = 45
     }
 }
