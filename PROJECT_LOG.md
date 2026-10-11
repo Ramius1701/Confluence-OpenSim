@@ -27905,3 +27905,18 @@ region twice, which is a large part of Restart All taking about 12 minutes for 1
 restart still reloads in place and keeps running; 0 errors either way. **Rollout note:** the first Restart All
 after deploying still sees old-build regions (they get the new build only *on* that restart), so it runs the
 fallback (double load). Restarts after that use the single-load path.
+**Single-load restart verified live (Restart All ~22:59-23:08 plus Start All).** For regions already on the new build
+(GFC, Section 31, Welcome Center), each old process logged "restart countdown finished - shutting the process
+down", with **no in-place reload**. The fresh process started about 7 s later and registered once (countdown end
+to re-registered about 15 s; GFC 23:01:50 to 23:02:05). No WebUI fallback warnings. An extra
+"registered" line seen about 30 s before some deregisters is the running region re-registering after publishing
+a new map tile (`MaptileGeneration`, then `AddMapTile` x4, then register), normal and unrelated to restarts.
+
+**Separately, same evening:** an internet outage made `casperia.ddns.net` fail to resolve. Sandbox's relaunch at
+22:48 died with `[ACCOUNT CONNECTOR]: Could not resolve UserAccountServerURI`, because every region reaches Robust's
+*private* services via `PrivURL = http://casperia.ddns.net` and `OSHHTPHost(..., resolve: true)` does a DNS lookup
+at startup. Eight other regions (Farm, Ranchero, Sector_001-004, Sol_Sector, Tangle) were down from 21:17-21:24
+(clean shutdowns); the operator attributed it to the same outage. Restart All doesn't start stopped regions;
+**Start All** brought them back. All 15 running the new build by 23:08, all "Startup complete", YEngine on,
+0 FATAL. **Suggested, not applied (operator's call):** `PrivURL = http://127.0.0.1` for intra-host private
+traffic, to remove the DNS dependency.
