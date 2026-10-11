@@ -27804,3 +27804,46 @@ pre-deploy boot (pre-existing content issues). The only new type is WebRTC voice
 Restart All took about 12 minutes end to end: default regions first, each waiting until it's back, then the
 rest 30 s apart. Only 2 of 15 had cycled when it looked finished from the WebUI, so verify process start times
 before calling a deploy done.
+---
+
+## Bots port: Tranquillity #212 (bot parts), #268, #277 merged, and bot_update made a real YEngine event (2026-10-11)
+
+**Method: a true three-way merge, not hand-applied diffs.** Our BotManager came from Tranquillity `148055f464`
+(2026-08-06, imported 08-08) and had diverged on both sides, so `git merge-file` ran on each of `BotManager.cs`,
+`BotPersistenceManager.cs` and `IBotManager.cs`:
+- **Base:** that 08-06 version.
+- **Ours:** HEAD.
+- **Theirs:** `tranquillity/develop`, with Tranquillity's ILogger calls (their #198) mapped back to log4net
+  first, so the logging migration didn't swamp the merge.
+
+That left 4 conflicts, all trivial: two `using` blocks, one doc comment, and `GetBotProfile`, which both sides
+had added independently (took theirs, which also reads the live NPC). Two follow-ups: re-adding `using log4net;`
+and the `System.Timers` usings, which the merge took as deletions from their side.
+
+**Kept from ours:** the 2026-08-31 deferral of `LoadPersistentBots` to `OnRegionReadyStatusChange`. **Tranquillity
+still loads persisted bots in `RegionLoaded`, before land and prims are loaded, which deactivates every saved bot
+on a restart.** Worth reporting upstream.
+
+**Real bugs found beyond Tranquillity:**
+1. **YEngine had no `bot_update` event at all.** `XMRInstRun` drops an event whose name isn't in `m_eventCodeMap`,
+   so every `bot_update` BotManager has posted since the 2026-08-17 wiring was silently discarded, and a YEngine
+   script declaring a `bot_update` handler couldn't compile, since the compiler takes valid events from
+   `IEventHandlers` by reflection. Added `bot_update = 44` to:
+   - `ScriptEventCode` (Size 45),
+   - `IEventHandlers` (`bot_update(string botID, int flag, LSL_List data)`),
+   - `XMRInstMain`'s name map,
+   - **and** the scene's numbered event enum and `scriptEvents` flags in `SceneObjectGroup.cs`.
+
+   **Trap:** at startup YEngine checks that `ScriptEventCode` names equal `scriptEvents` bit names and **disables
+   itself entirely** on any mismatch (`XMREngine.cs` ~229), so all five places must change together. Old
+   compiled scripts are safe without a `COMPILED_VERSION_VALUE` bump: `ScriptObjCode` sizes the handler table at
+   load time, the same as when upstream added the experience and `linkset_data` events.
+2. **`botMessageLinked` went to the wrong scripts.** It sent `link_message` to the bot's navigation-event script
+   and parsed `id` as a UUID. Halcyon (and Tranquillity's Phlox) send it to every script in the bot's
+   attachments; ours now does too, with the sender's link number and `id` passed unchanged.
+
+**Verified:** full build 0/0. YEngine's startup name check was replicated from source (0 mismatches). A **real
+local standalone boot** (repo `bin`, SQLite, port 9000, Jolt physics) reached "Startup complete" with "YEngine
+Enabled for region", BotManager loaded and zero ERROR/FATAL lines. **Not yet tested in-world:** wait points,
+multi-script `bot_update`, timeouts, follow, wander, `botMessageLinked`, respawn key. Nothing on the live grid
+used `bot_update` (it couldn't have), so no existing content changes behaviour, but test before relying on it.
