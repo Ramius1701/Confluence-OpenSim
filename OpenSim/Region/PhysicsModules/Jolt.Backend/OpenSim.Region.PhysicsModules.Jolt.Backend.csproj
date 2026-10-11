@@ -6,7 +6,8 @@
     Hand-maintained and outside OpenSim.sln: do not run runprebuild against this tree.
 
     Confluence runs JoltPhysicsSharp 2.23.0 (JoltPhysics.Native 1.1.0, Jolt Physics v5.6.0); lane/jolt pins 2.19.1 /
-    1.0.4 for its patched joltc, which Confluence does not use (one region per process). Keep the version in lockstep
+    1.0.4 for its patched joltc, which lets several regions in one process step in parallel; Confluence ships the
+    stock native, on which they take turns on one job pool. Keep the version in lockstep
     with the module's csproj and with JoltNative.PackageVersion / JoltNative.Known.
   -->
   <PropertyGroup>

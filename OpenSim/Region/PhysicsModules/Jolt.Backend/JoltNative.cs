@@ -153,10 +153,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// JoltPhysics.Native package of <see cref="PackageVersion"/>; the patched entries are the files the
         /// joltc-native workflow builds (its joltc-&lt;rid&gt; artifacts), listed in native/joltc/README.md.
         /// </summary>
-        // [Confluence: the JoltPhysics.Native 1.1.0 files, read from the package on 2026-10-12. win-x64 is the one
-        // Confluence runs and tests (one region per process, so one job pool is all it needs). lane/jolt's patched
-        // builds are compiled from the joltc behind 1.0.4, whose structures 2.23.0 no longer matches, so they are not
-        // listed; Confluence has no patched build for 1.1.0.]
+        // [Confluence: the JoltPhysics.Native 1.1.0 files, read from the package on 2026-10-12; win-x64 is the one
+        // Confluence's tests run on. lane/jolt's patched builds are compiled from the joltc behind 1.0.4, whose
+        // structures 2.23.0 no longer matches, so they are not listed, and Confluence has no patched build for 1.1.0.
+        // On the stock native every region in a process steps on one job pool, taking turns: safe with any number of
+        // regions per process, but not in parallel.]
         public static readonly IReadOnlyList<JoltNativeBuild> Known = new[]
         {
             Stock("win-x64", "joltc.dll", "79125AB6882A1AEEECD5509BFE9EDF383E8E48A34D9A8B642A6B9A197D44DF74", tested: true),

@@ -73,7 +73,7 @@ public class JoltNativeTests
     }
 
     // The stock record entry for the platform the suite runs on.
-    // [Confluence: Confluence records no patched joltc build (one region per process, stock native). Tests of the pool and
+    // [Confluence: Confluence records no patched joltc build (it ships the stock native). Tests of the pool and
     // start-line logic for a patched build use a synthetic record of one.]
     private static JoltNativeBuild PatchedOrSynthetic(string folder, string file)
         => JoltNative.Known.SingleOrDefault(b => b.Folder == folder && b.Origin == JoltNativeOrigin.PatchedBuild)

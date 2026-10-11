@@ -36,8 +36,9 @@ Edits inside their files, each marked `[Confluence: ...]`:
 - `Jolt/JoltScene.cs`: two one-line hooks for the mesh-asset retry.
 
 Confluence runs JoltPhysicsSharp **2.23.0** with JoltPhysics.Native **1.1.0** (Jolt Physics v5.6.0). lane/jolt pins
-2.19.1 / 1.0.4 for its patched joltc, which only matters when several regions step in one process; Confluence runs one
-region per process.
+2.19.1 / 1.0.4 for its patched joltc, which lets several regions in one process step in parallel. On Confluence's stock
+native a process with several regions runs them on one job pool, taking turns: safe, just not parallel. A grid owner who
+needs parallel stepping would need a patched joltc rebuilt for 1.1.0 (lane/jolt's `native/joltc` recipe, not carried here).
 
 Core support from Tranquillity #270 (`1162fc6dda`) is ported separately: `PhysicsActor.SetConstantForce`,
 `ScenePresence.SetConstantForce`, the `AgentData` constant-force fields, and `llSetForce` from an attachment in

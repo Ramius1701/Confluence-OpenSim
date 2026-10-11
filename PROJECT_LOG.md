@@ -28134,3 +28134,10 @@ one region's mesh-asset header errors (20, was about 28 per boot), and one degen
 passing: one region runs ubODE with `meshing = Meshmerizer`, and ubODE logs that it wants ubODEMeshmerizer (a
 pre-existing config mismatch, left as is). The old Jolt module's DLLs are still in the live root and all 15 region bins;
 both modules load, and neither enables unless a region selects Jolt.
+
+**Correction (2026-10-12): Confluence is for any grid owner; the grid it is tested on is only the testbed.** Where the
+Jolt entries above say "Confluence runs one region per process" (or "this grid runs one region per process"), that is
+the testbed's layout, not a Confluence property. What holds for every grid owner: Confluence ships the stock joltc, on
+which all regions in a process step on one job pool, taking turns. That is safe with any number of regions per process,
+but not parallel. Parallel stepping would need a patched joltc rebuilt for 1.1.0 (lane/jolt's `native/joltc` recipe,
+not carried). The code comments and `Jolt/CONFLUENCE.md` now say this.
