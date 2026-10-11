@@ -27854,3 +27854,12 @@ the full routine: Robust stopped, full tree copied (290 files, 0 failures, 0 md5
 Restart All. Verified: all 15 regions on fresh processes with `bin` md5-identical to the root, all "Startup
 complete", **YEngine "Enabled for region" on every one** (the enum change passed its startup check live), Robust 0
 errors, no new error types. Bot behaviour itself is still to be tested in-world.
+**First in-world bot test (GFC, ~21:19): `botSetNavigationPoints` threw on every call.** The YEngine stack trace
+reported `InvalidCastException: Unable to cast object of type 'LSLInteger' to type 'System.IConvertible'` at
+`OSSL_Api.botSetNavigationPoints`: `Convert.ToInt32(o)` on a list item, which arrives as `LSL_Integer`. So no
+bot path has ever started from YEngine since the 2026-08-17 wiring. (Before tonight that was hidden behind the
+missing `bot_update` event, since a script couldn't even compile.) Fixed by reading `LSL_Integer`/int/`LSL_Float`
+explicitly, as `ParseBotOptionsList` and the profile readers already did. Those use `int.TryParse(o.ToString())`
+and are fine. Separately, the first in-world compile failure was a partial paste (the asset held only the last 65
+of 140 lines, fetched from the asset service to confirm). The script itself passes YEngine's own
+tokenizer/reducer, now usable as a local LSL syntax check (scratchpad `lslcheck`, reports 0-based line,col).
