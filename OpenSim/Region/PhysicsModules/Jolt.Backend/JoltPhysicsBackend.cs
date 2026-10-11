@@ -3646,7 +3646,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             bool stepUp = !rec.LooseAtSide && !LooseObjectInStep(rec, ch, newVel, dt);
             // Nothing pulls a floating or hovering avatar down to the floor: buoyancy 1 holds it level as it walks off an
             // edge, where sticking would draw it down round the corner, and hover holds its own height.
-            bool stick = !hovering && (rec.Flying || gz < 0f);
+            // [Confluence: and nothing pulls a flying avatar down either. lane/jolt kept stick-to-floor for flying (before
+            // 08dcfcf0ec every avatar stuck); on Jolt 5.5+ a flying avatar pushing a light post it toppled was stuck down
+            // 0.6 m to the ground (FlyingSeatedAndFastLinksetAvatarTests, 45 Hz, 1 kg). Was: !hovering && (rec.Flying || gz < 0f).]
+            bool stick = !hovering && !rec.Flying && gz < 0f;
             var ext = new ExtendedUpdateSettings
             {
                 WalkStairsStepUp = new Vector3(0f, 0f, stepUp ? MathF.Max(0f, rec.StepHeight) : 0f),
