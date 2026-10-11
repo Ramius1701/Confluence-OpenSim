@@ -28122,3 +28122,15 @@ v5.6-only failures came down to two Confluence-side causes, not to Jolt:
 skipped). The local standalone boots on it with no errors and no crash events. Still to do before any live use: remove
 the old Jolt DLLs from live; reproduce the 09-11 mesh-walk symptom with real content (an OAR of Starbase Andromeda on
 the local standalone); then pick one region to try it on.
+
+**Jolt port and #270 deployed to live (Robust 09:57, Restart All 10:00-10:11, 2026-10-12).** Full tree copied (290 files: 4
+new, 204 changed, 0 failures, 0 md5 mismatches), after confirming locally that the old and new Jolt addins load side by
+side without conflict when neither is selected. Restart All paused about two minutes after Welcome Center, then went on
+at one region every 30 s. Verified: all 15 region bins match the root on the key DLLs; each region chose its own engine
+(ubODE by default, BulletSim on Ranchero, Tangle and UFPGC) and Jolt stayed off everywhere; every region reached
+"Startup complete"; Robust 0 errors, 15 regions online. Region errors are all pre-existing, at the same rate per boot as
+in the 10-11 logs: missing script assets (Tangle 1,879, UFPGC 21, Welcome Center 1, "asset ID could not be found"),
+GFC's mesh-asset header errors (20, was about 28 per boot), and one degenerate mesh on Welcome Center. Found in
+passing: Sector_001 runs ubODE with `meshing = Meshmerizer`, and ubODE logs that it wants ubODEMeshmerizer (a
+pre-existing config mismatch, left as is). The old Jolt module's DLLs are still in the live root and all 15 region bins;
+both modules load, and neither enables unless a region selects Jolt.
