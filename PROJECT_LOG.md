@@ -28104,3 +28104,21 @@ crashed only because it never destroyed the system; it leaked it on every region
 **Deploy caveat:** live still has the old module's DLLs (`OpenSim.Region.PhysicsModule.JoltPhysics.dll`,
 `JoltPhysics.Core.dll`, `JoltPhysics.Vehicles.dll`) in the root and all 15 region bins. The pattern deploy never
 deletes, and both modules register as the Jolt engine, so remove them before any region selects `physics = Jolt`.
+
+**Retuned for Jolt v5.6, same day (operator's choice: keep v5.6 rather than return to Legion's v5.4 stack).** The 61
+v5.6-only failures came down to two Confluence-side causes, not to Jolt:
+- **Avatar contact normals were reversed** (`73813cae28`). Jolt 5.4 called the character contact listener with
+  `-mContactNormal` (away from the character); Jolt 5.5 (jrouwe `94bfc55c`) passes the `CharacterContact`, whose
+  `mContactNormal` points towards the character. The 2.23.0 migration passed it through unchanged, so the floor's
+  collision plane, push directions and contact speeds were all inverted. This fixed 52 of the 61.
+- **A flying avatar stuck to the floor** (`937960f91d`). lane/jolt kept Jolt's stick-to-floor step-down for flying
+  avatars, a holdover from before it exempted hover and buoyancy. On v5.6 a flying avatar pushing a light post it
+  toppled was pulled 0.6 m to the ground. Flying is now exempt, as in SL.
+- The rest were test fixtures (`502724fb8c`): source paths, the stock-only native record, the flat `bin` layout, and
+  Confluence's core saving the documented boat preset (`HOVER_UP_ONLY`; Tranquillity's core leaves it out). Harness
+  baselines were recorded for `stock-1.1.0-win-x64`, and a second recording matches all 9 runs.
+
+**Result: Legion's suite passes on our port with Jolt v5.6, 2,099 of 2,099 run, 0 failed** (8 patched-native tests
+skipped). The local standalone boots on it with no errors and no crash events. Still to do before any live use: remove
+the old Jolt DLLs from live; reproduce the 09-11 mesh-walk symptom with real content (an OAR of Starbase Andromeda on
+the local standalone); then pick one region to try it on.

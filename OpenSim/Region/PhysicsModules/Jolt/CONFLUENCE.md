@@ -24,8 +24,13 @@ Confluence-only files:
   `Directory.Build.props`).
 
 Edits inside their files, each marked `[Confluence: ...]`:
-- `Jolt.Backend/JoltPhysicsBackend.cs`: JoltPhysicsSharp 2.23.0 API (impulses as a float span; character contacts as
-  one `CharacterContact`); `PushCharacterCharacterContact` takes a nullable character.
+- `Jolt.Backend/JoltPhysicsBackend.cs`:
+  - JoltPhysicsSharp 2.23.0 API: impulses as a float span; character contacts as one `CharacterContact`, whose
+    `ContactNormal` is **negated** (Jolt 5.5+ passes it pointing towards the character; 5.4 passed it away);
+    `PushCharacterCharacterContact` takes a nullable character.
+  - Teardown: after the system's native destroy, the three layer-filter wrappers are disowned (`Disown`) before
+    `Dispose`. On 2.22+ they own their handles and the system destroy already deleted them (heap corruption otherwise).
+  - No stick-to-floor for a flying avatar (`stick = !hovering && !rec.Flying && gz < 0f`).
 - `Jolt.Backend/JoltNative.cs`: `PackageVersion` 1.1.0 and the 1.1.0 stock hashes; their patched builds (made from
   1.0.4's joltc) are not listed.
 - `Jolt/JoltScene.cs`: two one-line hooks for the mesh-asset retry.
@@ -37,6 +42,17 @@ region per process.
 Core support from Tranquillity #270 (`1162fc6dda`) is ported separately: `PhysicsActor.SetConstantForce`,
 `ScenePresence.SetConstantForce`, the `AgentData` constant-force fields, and `llSetForce` from an attachment in
 `LSL_Api.cs`.
+
+## Tests
+
+`Tests/OpenSim.Region.PhysicsModules.Jolt.Tests` (xUnit) and `Tests/JoltPhysicsHarness` are lane/jolt's, with
+Confluence project files. Run: `dotnet test Tests/OpenSim.Region.PhysicsModules.Jolt.Tests -c Release`. On 2026-10-12
+all 2,099 run pass; 8 patched-native tests are skipped. Test edits are marked `[Confluence]`: Confluence source paths,
+the stock-only native record (patched cases use a synthetic record), the flat `bin` layout, and the boat preset
+(Confluence's core saves the documented boat flags). `NotSelectedTests.cs` is not compiled (Tranquillity plugin
+discovery). Harness baselines are `ci/baselines/stock-1.1.0-win-x64`, recorded from `ci/runs.txt`; check with
+`dotnet Tests/JoltPhysicsHarness/bin/Release/net10.0/JoltPhysicsHarness.dll --check-baseline <outroot> --baselines Tests/JoltPhysicsHarness/ci/baselines`
+after one `--out <outroot>/<run>` per run.
 
 ## Syncing a newer lane/jolt
 
