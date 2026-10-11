@@ -27929,3 +27929,38 @@ Everything public (viewers, Hypergrid, map tile fetch, website) uses `BaseURL`/`
 Removes the startup DNS dependency that crashed Sandbox during tonight's outage, and keeps that traffic off the
 router's NAT hairpin. Loopback is always trusted by ControlPlaneAccess. Takes effect per region on its next restart.
 Sandbox is the RegionOrderTemplateIniPath, so new regions inherit it.
+---
+
+## Jolt review: what we run, jrouwe upstream, and Legion's `lane/jolt` (2026-10-11)
+
+**Cloned** jrouwe/JoltPhysics to `S:\Github\JoltPhysics` (the primary Jolt source, per the operator).
+
+**What we actually run:** `JoltPhysicsSharp` 2.19.1 (amerkoleci, commit `ba2f306`, 2025-10-10) with
+`JoltPhysics.Native` 1.0.4, whose `joltc` comes from amerkoleci/joltc `1715c5a` over **Jolt v5.4.0** (`036ea7b`).
+That's pinned in Legion's `native/joltc/README.md`; amerkoleci/joltc itself now returns 404 publicly. Upstream Jolt
+is at **v5.6.0** (2026-07-11) plus 280 commits. OpenSim-relevant fixes since v5.4:
+- Unreleased: `HeightFieldShape::SetHeights` corrupted the BVH, so terrain edits could break collisions; and a
+  warm-start clamp for varying delta times.
+- v5.6: CharacterVirtual stuck, wall-slide speed-up and padding fixes; `MoveKinematic` small-rotation accuracy;
+  kinematic island sizing; `AddForce`-gravity energy gain; 16-bit heightfield samples; new friction model;
+  up to 40% faster and 70% less memory.
+
+**Upgrade blocker is .NET, not Jolt:** every JoltPhysicsSharp after 2.19.1 targets only net9.0/net10.0, and
+Confluence targets net8.0. **.NET 8 support ends 2026-11-10.**
+
+**Legion's active Jolt work is JohnLegionH's `tranquillity-johnlegionh/lane/jolt`** (156 commits, 2026-10-04 to
+10-10, plus PR series `pr/` and `pr2/jolt-1..7`). `legion/main` (Legion-Grid-Code) hasn't moved since June. Same
+lineage as our 2026-09-10 vendoring, now far apart: 517 of about 2,100 vehicle-controller lines are shared; their
+backend is 6,739 lines to our 3,373, their module 8,859 to our 5,531, plus 21k lines of tests and a 4.7k-line
+headless physics harness with per-native baselines. Highlights:
+- **Vehicles:** step-rate-independent exact motor/friction/hover/attractor/banking model; SL-documented presets
+  (Halcyon values kept as legacy); CCD; mouselook steering; parked vehicles sleep.
+- **Avatars:** SL walk/run/fly speeds; stand-up set-out; constant force from attachments (uses the core hook from
+  Tranquillity #270, which we deferred as "no engine applies it", but Jolt does).
+- **Prims:** phantom/volume-detect pass-through; materials; move-to-target/hover; selection hold; buoyancy; axis
+  locks; linksets kept as one body.
+- **Stability:** native leak fixes (contact-validate face arrays, impulse arrays, shape settings); ray-cast budgets;
+  teardown safety; fixed 45 Hz default rate with a 60 Hz solver floor.
+
+Their patched joltc (per-system TempAllocator plus a systems-map lock) only matters when several regions step in one
+process. Confluence runs one region per process, so the stock native is fine for us.
