@@ -493,8 +493,11 @@ Treated as core, not an optional add-on:
   num_detected)`, `final_damage(integer num_detected)`, `on_death()`
   (before that YEngine had no event codes for them, so a script
   declaring one could not compile and the posted events were dropped).
-  Phlox scripts get them from the core damage path (collisions, and
-  Phlox's own `llDamage`); the two paths are not yet joined.
+  Damage to an avatar - collisions, `llDamage` from either script
+  engine - goes through one core path, so the scripts in the avatar's
+  attachments get these events whichever engine runs them, and
+  `llAdjustDamage` in `on_damage` changes what lands. Damage to objects
+  (object health) stays YEngine's own.
 
 ### EEP environment scripting
 

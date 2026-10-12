@@ -109,6 +109,7 @@ namespace OpenSim.Region.ScriptEngine.Yengine
          */
         private void RunScriptThread()
         {
+            t_IsScriptThread = true;   // the damage door never waits for scripts on a script thread
             int tid = System.Threading.Thread.CurrentThread.ManagedThreadId;
             ThreadStart thunk;
             XMRInstance inst;

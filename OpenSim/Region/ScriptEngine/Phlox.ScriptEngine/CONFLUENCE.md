@@ -61,12 +61,12 @@ they change nothing a script or user can see, except the DEBUG_CHANNEL filter in
 #221 (script responses offered to every engine of the region) and #279 were already in Confluence. The #212
 VectorRender changes do not apply (Confluence's renderer differs).
 
-**Two damage paths.** Confluence's YEngine has its own damage events (`LSL_Api` "Combat2": llDamage posts on_damage,
-waits for llAdjustDamage, then final_damage/on_death). Phlox uses the core's `ApplyDamage`. Collision damage now goes
-through `ApplyDamage`, so Phlox scripts see it; YEngine's llDamage does not, so Phlox scripts do not see YEngine's
-scripted damage, nor YEngine scripts Phlox's. Unifying them is open work. (YEngine's own event codes for
-on_damage/final_damage/on_death were missing until 2026-10-13; they are now 45-47, the same numbers as the scene's
-`scriptEvents` bits.)
+**One damage path (2026-10-13).** Avatar damage from collisions and from either engine's llDamage goes through
+`ScenePresence.ApplyDamage`. YEngine subscribes to its events too (`XMREvents.avatar_damage`), so a YEngine
+attachment sees Phlox's damage and the reverse. YEngine has no "handler finished" signal, so it waits for adjustments
+with the windows its Combat2 used (80 ms, then 50 ms quiet, at most 750 ms) where Phlox waits for its handlers (at most
+500 ms); both wait only when a script has an on_damage handler. Object health stays YEngine's (`LSL_Api` Combat2).
+YEngine's event codes for on_damage/final_damage/on_death are 45-47, the same numbers as the scene's `scriptEvents` bits.
 
 ## Tests
 

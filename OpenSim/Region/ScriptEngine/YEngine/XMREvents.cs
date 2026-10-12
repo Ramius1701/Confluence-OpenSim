@@ -26,6 +26,8 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Scenes;
@@ -73,6 +75,9 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             eManager.OnScriptLandColliding += land_collision;
             eManager.OnScriptLandColliderEnd += land_collision_end;
             eManager.OnScriptListenEvent += script_listen;
+            eManager.OnAvatarDamage += avatar_damage;
+            eManager.OnAvatarDamageApplied += avatar_damage_applied;
+            eManager.OnAvatarKilled += avatar_killed;
 
             IMoneyModule money = this.World.RequestModuleInterface<IMoneyModule>();
             if(money != null)
@@ -390,5 +395,110 @@ namespace OpenSim.Region.ScriptEngine.Yengine
         // object_rez: not handled here
         // remote_data: not handled here
         // http_response: not handled here
+
+        // SL combat events from the region's one damage door, ScenePresence.ApplyDamage (collision damage,
+        // llDamage from YEngine's LSL_Api and from Phlox), to the scripts in every prim of the avatar's
+        // attachments. Phlox handles the same events for its own scripts.
+
+        /// <summary>True on YEngine's script threads: a damage door reached from a script must not wait for scripts.</summary>
+        [ThreadStatic]
+        internal static bool t_IsScriptThread;
+
+        // How long on_damage gets to adjust before the damage lands: the windows LSL_Api's Combat2 used.
+        // YEngine has no "handler finished" signal, so wait at least the initial window, then until no
+        // llAdjustDamage has come for the quiet window, at most the max window. Only when some script
+        // has an on_damage handler, and never on a script thread.
+        private const int DamageInitialWindowMs = 80;
+        private const int DamageQuietWindowMs = 50;
+        private const int DamageMaxWindowMs = 750;
+
+        private void avatar_damage(ScenePresence presence, List<DamageEntry> batch)
+        {
+            if (presence is null || batch is null || batch.Count == 0 || m_Exiting)
+                return;
+
+            object sync = new();
+            long lastAdjust = 0;
+            bool closed = false;
+            DetectParams[] det = DamageDetectParams(batch, (entry, value) =>
+            {
+                lock (sync)
+                {
+                    if (closed)
+                        return false;   // the damage has landed: too late to adjust
+                    entry.Amount = value;
+                    lastAdjust = Environment.TickCount64;
+                    return true;
+                }
+            });
+
+            bool posted = PostToAttachments(presence, new EventParams("on_damage", new object[] { batch.Count }, det));
+            if (posted && !t_IsScriptThread)
+            {
+                long start = Environment.TickCount64;
+                while (true)
+                {
+                    long now = Environment.TickCount64;
+                    long quietUntil;
+                    lock (sync)
+                        quietUntil = lastAdjust + DamageQuietWindowMs;
+                    long waitUntil = Math.Max(start + DamageInitialWindowMs, quietUntil);
+                    if (now >= waitUntil || now >= start + DamageMaxWindowMs)
+                        break;
+                    Thread.Sleep((int)Math.Clamp(waitUntil - now, 5, 50));
+                }
+            }
+            lock (sync)
+                closed = true;
+        }
+
+        private void avatar_damage_applied(ScenePresence presence, List<DamageEntry> batch)
+        {
+            if (presence is null || batch is null || batch.Count == 0 || m_Exiting)
+                return;
+            PostToAttachments(presence, new EventParams("final_damage", new object[] { batch.Count }, DamageDetectParams(batch, null)));
+        }
+
+        private void avatar_killed(uint killerLocalID, ScenePresence dead)
+        {
+            if (dead is null || m_Exiting)
+                return;
+            PostToAttachments(dead, new EventParams("on_death", zeroObjectArray, zeroDetectParams));
+        }
+
+        private DetectParams[] DamageDetectParams(List<DamageEntry> batch, Func<DamageEntry, float, bool> adjust)
+        {
+            DetectParams[] det = new DetectParams[batch.Count];
+            for (int i = 0; i < batch.Count; i++)
+            {
+                DamageEntry entry = batch[i];
+                DetectParams d = new()
+                {
+                    Key = entry.SourceObject
+                };
+                d.Populate(World);   // nothing for the ground, or a damage prim already deleted on contact
+                d.Owner = entry.SourceOwner;
+                d.Damage = entry.Amount;
+                d.OriginalDamage = entry.OriginalDamage;
+                d.DamageType = entry.DamageType;
+                if (adjust is not null)
+                    d.AdjustDamage = v => { if (adjust(entry, v)) d.Damage = v; };
+                det[i] = d;
+            }
+            return det;
+        }
+
+        private bool PostToAttachments(ScenePresence presence, EventParams parms)
+        {
+            bool posted = false;
+            foreach (SceneObjectGroup attachment in presence.GetAttachments())
+            {
+                if (attachment is null || attachment.IsDeleted)
+                    continue;
+                foreach (SceneObjectPart part in attachment.Parts)
+                    posted |= PostPrimEvent(part, parms);
+            }
+            return posted;
+        }
     }
 }

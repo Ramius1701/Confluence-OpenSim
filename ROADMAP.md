@@ -705,12 +705,12 @@ Web & Admin UI section rather than here.)*
   - Add the 32 Confluence `os*` functions Phlox lacks.
   - 185 of its 225 test files need a test-scene harness
     (`OpenSim.Tests.Common` is out of the build here, as upstream).
-  - Two damage paths: YEngine's llDamage (LSL_Api "Combat2") and the
-    core `ScenePresence.ApplyDamage` Phlox uses do not see each other;
-    unify them (YEngine scripts get no on_damage for collision damage,
-    Phlox scripts none for YEngine's llDamage). The YEngine event codes
-    for on_damage/final_damage/on_death were missing and are fixed
-    (2026-10-13).
+  - Damage paths joined (2026-10-13): avatar damage from collisions and
+    from either engine's llDamage goes through `ScenePresence.ApplyDamage`,
+    and both engines deliver on_damage/final_damage/on_death from it.
+    Not yet tested in-world. Left as upstream has them: YEngine's
+    `osCauseDamage`/`osSetHealth` set Health directly (no events);
+    object health is YEngine-only.
   - Run Linden's SLua conformance suite (`secondlife/slua`) against
     Phlox's SLua.
 - **`osPlaySoundURL`** (play audio from an arbitrary external URL,

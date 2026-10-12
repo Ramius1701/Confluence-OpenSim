@@ -5789,74 +5789,30 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 detects ?? Array.Empty<DetectParams>()));
         }
 
-        private void PostCombatEventToPresence(ScenePresence presence, string eventName, DetectParams[] detects)
-        {
-            if (presence is null || !presence.HasAttachments())
-                return;
-
-            foreach (SceneObjectGroup attachment in presence.GetAttachments())
-            {
-                SceneObjectPart root = attachment?.RootPart;
-                if (root != null)
-                    PostCombatEventToObject(root.LocalId, eventName, detects);
-            }
-        }
-
+        // An avatar takes damage through the region's one damage door, ScenePresence.ApplyDamage, as collision
+        // damage and Phlox's llDamage do: on_damage / final_damage / on_death reach every engine's attachment
+        // scripts (YEngine: XMREvents.avatar_damage), and death is the CombatModule's (NPC removed, alert,
+        // health reset, sent home). Off the script thread, as the door waits for on_damage adjustments.
         private void ApplyDamageToPresence(ScenePresence presence, float damage, int damageType)
         {
-            DetectParams[] detects = CreateDamageDetectParams(damage, damageType);
-            CombatDamageTransaction transaction = BeginCombatDamageTransaction(detects);
-            PostCombatEventToPresence(presence, "on_damage", detects);
-
             UUID presenceID = presence.UUID;
-            ThreadPool.QueueUserWorkItem(_ => CompleteDamageToPresence(presenceID, transaction));
-        }
-
-        private void CompleteDamageToPresence(UUID presenceID, CombatDamageTransaction transaction)
-        {
-            try
+            UUID sourceObject = m_host.UUID;
+            UUID sourceOwner = m_host.OwnerID;
+            uint sourceLocalId = m_host.LocalId;
+            ThreadPool.QueueUserWorkItem(_ =>
             {
-                DetectParams[] detects = transaction?.Detects ?? Array.Empty<DetectParams>();
-                float finalDamage = WaitForFinalCombatDamage(transaction);
-                EndCombatDamageTransaction(transaction);
-
-                ScenePresence presence = World.GetScenePresence(presenceID);
-                if (presence is null || presence.IsDeleted || presence.IsChildAgent || presence.IsInTransit)
-                    return;
-
-                float health = presence.Health - finalDamage;
-                if (health > 100f)
-                    health = 100f;
-                else if (health < 0f)
-                    health = 0f;
-
-                presence.setHealthWithUpdate(health);
-
-                if (detects != null && detects.Length > 0)
-                    detects[0].Damage = finalDamage;
-                PostCombatEventToPresence(presence, "final_damage", detects);
-
-                if (health > 0)
-                    return;
-
-                PostCombatEventToPresence(presence, "on_death", Array.Empty<DetectParams>());
-
-                if (presence.IsNPC)
+                try
                 {
-                    INPCModule npcModule = World.RequestModuleInterface<INPCModule>();
-                    npcModule?.DeleteNPC(presence.UUID, World);
-                    return;
+                    ScenePresence sp = World.GetScenePresence(presenceID);
+                    if (sp is null || sp.IsDeleted || sp.IsChildAgent || sp.IsInTransit)
+                        return;
+                    sp.ApplyDamage(sourceObject, sourceOwner, sourceLocalId, damage, damageType, true);
                 }
-
-                presence.ControllingClient.SendAgentAlertMessage("You died!", true);
-                presence.setHealthWithUpdate(100f);
-                presence.Scene.TeleportClientHome(presence.UUID, presence.ControllingClient);
-            }
-            catch (Exception e)
-            {
-                EndCombatDamageTransaction(transaction);
-                m_log.WarnFormat("[LSL]: Combat2 damage completion failed for avatar {0}: {1}", presenceID, e.Message);
-            }
+                catch (Exception e)
+                {
+                    m_log.WarnFormat("[LSL]: llDamage to avatar {0} failed: {1}", presenceID, e.Message);
+                }
+            });
         }
 
         private void ApplyDamageToObject(SceneObjectPart target, float damage, int damageType)
@@ -5930,7 +5886,12 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
         public void llAdjustDamage(LSL_Integer number, LSL_Float damage)
         {
             DetectParams detectedParams = m_ScriptEngine.GetDetectParams(m_item.ItemID, number);
-            if (detectedParams != null && !TryAdjustCombatDamage(detectedParams, damage))
+            if (detectedParams is null)
+                return;
+            // on_damage from the damage door (avatar damage): the hook rewrites the pending entry
+            if (detectedParams.AdjustDamage is not null)
+                detectedParams.AdjustDamage((float)damage);
+            else if (!TryAdjustCombatDamage(detectedParams, damage))
                 detectedParams.Damage = damage;
         }
 

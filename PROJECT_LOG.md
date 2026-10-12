@@ -28266,3 +28266,24 @@ compile, and `on_damage(string)` is still rejected. A local standalone boot pass
 
 Still open: YEngine's llDamage path and the core `ScenePresence.ApplyDamage` path (collision damage, Phlox) are
 separate, so YEngine scripts get no on_damage for collision damage (ROADMAP.md).
+
+## Damage paths joined: one core door for avatar damage, both engines get the events (2026-10-13)
+
+Until now YEngine's llDamage (LSL_Api "Combat2") ran its own pipeline, and collision damage plus Phlox's llDamage ran
+through the core `ScenePresence.ApplyDamage` (Tranquillity #212). Neither engine's scripts saw the other's damage, and
+YEngine scripts got nothing for collision damage.
+
+- **YEngine** (`XMREvents.cs`) subscribes to `OnAvatarDamage`, `OnAvatarDamageApplied` and `OnAvatarKilled`, and posts
+  on_damage / final_damage / on_death to every script in every prim of the avatar's attachments. on_damage carries an
+  adjust hook per entry (`DetectParams.AdjustDamage`); `llAdjustDamage` uses it. With no "handler finished" signal,
+  YEngine waits with Combat2's windows (80 ms, 50 ms quiet after the last adjustment, at most 750 ms), only when some
+  script has an on_damage handler and never on a YEngine script thread (new thread-static flag). Late adjustments are
+  ignored.
+- **Combat2's llDamage on an avatar** now calls `ApplyDamage` on a thread-pool thread (as it ran its completion before).
+  Death goes to the core `CombatModule`, which already did what Combat2 did by hand (NPC removed, alert, health 100,
+  sent home). Object damage (object health) is unchanged. `CompleteDamageToPresence` and `PostCombatEventToPresence`
+  removed.
+- Left as upstream: `osCauseDamage` / `osCauseHealing` / `osSetHealth` set Health directly, with no events.
+
+Verified: solution and Phlox builds 0/0; local standalone boot with YEngine enabled and its events hooked, no errors.
+Not tested in-world (needs an avatar with a scripted attachment on a damage-enabled parcel). Not deployed.
