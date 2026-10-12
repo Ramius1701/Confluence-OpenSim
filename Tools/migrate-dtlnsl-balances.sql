@@ -6,12 +6,12 @@
 -- that already exist in the target table) and safe to run against a
 -- database that already has some native currency activity of its own
 -- (Casperia-Dev has real balances from this session's own testing -
--- Jeffery Biedermann, Ramius Easterwood, ClaudeSecond Verify3 - this
+-- two residents and a test account - this
 -- script will never touch or overwrite those, it only inserts rows
 -- for PrincipalIDs/TransactionIDs that don't already exist natively).
 --
--- Run against Casperia-Dev's `casperia_dev` first to verify the
--- preview numbers look right, THEN against the live `casperia`
+-- Run against the dev grid's database first to verify the
+-- preview numbers look right, THEN against the live grid's database
 -- database as part of the actual production cutover - not before.
 --
 -- Usage:

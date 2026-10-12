@@ -1955,7 +1955,7 @@ namespace OpenSim.Region.Framework.Scenes
                                 // confirms whether it fired at all) never previously had any log signature
                                 // distinguishing it from the normal OnEmptyScriptCompileQueue event path, which
                                 // made a real region that took this exact path indistinguishable in the log from
-                                // one that was genuinely stuck - see the "Sector 004 root cause" investigation.
+                                // one that was genuinely stuck - see "Region_K4 startup anomaly" (PROJECT_LOG.md, 2026-09-06).
                                 m_log.InfoFormat(
                                     "[SCENE]: {0} has 0 active scripts at frame {1} - triggering RegionReady directly via the zero-script backstop, not waiting on the compile-queue-empty event",
                                     Name, Frame);

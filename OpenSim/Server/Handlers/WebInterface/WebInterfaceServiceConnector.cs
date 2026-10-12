@@ -9036,7 +9036,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             // exit/relaunch could change it, and TryStartRegionProcess
             // below launches the same configured port again regardless) -
             // so there's no need to ever re-derive it. Confirmed live,
-            // 2026-09-14, via Starbase Andromeda.
+            // 2026-09-14, via Region A.
             GridRegion region = m_GridService?.GetRegionByUUID(UUID.Zero, regionId);
             if (region == null || string.IsNullOrEmpty(region.ServerURI))
                 return;
@@ -9145,8 +9145,8 @@ namespace OpenSim.Server.Handlers.WebInterface
             // "region restart <seconds>" isn't a passive warning broadcast -
             // RestartModule's own console command performs a full in-place
             // scene reload itself once its countdown reaches zero (same
-            // process, no exit - confirmed live, 2026-09-14, via Starbase
-            // Andromeda's own log: a complete close-scene/reopen-scene
+            // process, no exit - confirmed live, 2026-09-14, via Region
+            // A's own log: a complete close-scene/reopen-scene
             // sequence starting right after "will restart in 15 seconds").
             // The fixed 125s sleep above assumed that reload would always
             // be done well within it, but a heavier region's own reload
@@ -9188,7 +9188,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             // the HTTP response is sent, so the old process may still be
             // mid-teardown (saving objects, closing scripts) here. A fixed
             // short sleep isn't reliable for every region size - confirmed
-            // live, 2026-09-14: Welcome Center (757 objects/442 scripts)
+            // live, 2026-09-14: Region B (757 objects/442 scripts)
             // was still shutting down when the old fixed 5s delay fired
             // the replacement process anyway, which crashed immediately on
             // a "port already in use" bind error - leaving the STALE
@@ -15823,7 +15823,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             // separate catalog listing (own price/size/prims already work
             // this way), not a buyer-facing selector. "Mainland" is NOT
             // offered here on purpose - it's reserved for grid-owned
-            // infrastructure regions (Welcome Center, Sandbox already carry
+            // infrastructure regions (a welcome region, a sandbox region already carry
             // it), set directly via the region .ini editor, never
             // purchasable.
             sb.Append("<p>Region type (RegionOrder only - written into the new region's own .ini) <select name=\"region_type\">");
@@ -16534,7 +16534,7 @@ namespace OpenSim.Server.Handlers.WebInterface
         // Motivated directly by a real, observed data-loss bug: automated
         // writes via RegionInfo.SaveRegionToFile (Nini-based) silently drop
         // any key considered "at its default" and every comment on that
-        // file - confirmed live against Sandbox's own Regions.ini after one
+        // file - confirmed live against a live region's own Regions.ini after one
         // add-prim-limit call (see PROJECT_LOG.md). This page exists so an
         // admin can actually see - and, if needed, hand-fix - what's really
         // in a region's config without filesystem/RDP access, without this
@@ -16869,7 +16869,7 @@ namespace OpenSim.Server.Handlers.WebInterface
         }
 
         // Currency module selection - a real gap found live, 2026-09-13:
-        // GFC was found running Gloebit instead of the grid's own
+        // A region was found running Gloebit instead of the grid's own
         // ConfluenceCurrencyModule default, fixed by hand, and the operator
         // asked for sim owners to be able to choose this themselves rather
         // than needing a manual .ini edit every time. `[Economy]
@@ -16944,7 +16944,7 @@ namespace OpenSim.Server.Handlers.WebInterface
 
         // Gloebit's own [GLOEBITMONEYMODULE] GLBEnabledOnlyInRegions is a
         // grid-wide, space-delimited region-UUID allowlist in this deploy's
-        // shared Gloebit.ini (confirmed live, 2026-09-13 - GFC's log showed
+        // shared Gloebit.ini (confirmed live, 2026-09-13 - that region's log showed
         // "SKIPPING region add ... is not in enabled region list" even
         // after economymodule=Gloebit was set on that region alone).
         // Setting economymodule=Gloebit on a region's own .ini is
@@ -17212,7 +17212,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                     // gap to avoid the pile-up. User's own math: 30s x 15
                     // regions already meant 7.5 minutes of pure stagger
                     // before the last one even started, and that only gets
-                    // worse as more regions are added - CasperiaControl.bat
+                    // worse as more regions are added - the old grid control script
                     // launches with no stagger at all and worked fine at a
                     // human's own clicking pace, so 5s comfortably covers
                     // the actual contention risk without exaggerating it.
@@ -17295,8 +17295,8 @@ namespace OpenSim.Server.Handlers.WebInterface
                     // Priority regions merely going FIRST in the stagger
                     // order isn't enough on its own - confirmed live,
                     // 2026-09-14: the operator fled a region mid-warning to
-                    // Welcome Center expecting a safe harbor, and got
-                    // disconnected anyway because Welcome Center's own
+                    // the welcome region expecting a safe harbor, and got
+                    // disconnected anyway because the welcome region's own
                     // restart hadn't actually finished yet. A first fix
                     // attempt (fire both priority regions on background
                     // threads staggered 30s apart, then poll
@@ -17307,8 +17307,8 @@ namespace OpenSim.Server.Handlers.WebInterface
                     // happens, so the poll saw the OLD pre-restart process
                     // as "already up" and let the rolling sequence for
                     // every other region start within seconds - three
-                    // regular regions (Farm, GFC, Ranchero) restarted
-                    // before Sandbox's own restart had even completed.
+                    // regular regions (three of them) restarted
+                    // before the sandbox region's own restart had even completed.
                     // Fixed properly by not polling for "up" at all -
                     // RealRestartRegion is called directly (not on its own
                     // background thread) for each priority region here, so
@@ -17429,7 +17429,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             // before it finishes writing the HTTP response - the client sees
             // this as a connection failure ("Could not reach ..."), even
             // though the command was received and obeyed. Confirmed live,
-            // 2026-09-13: GFC's own log showed a clean "World has come to an
+            // 2026-09-13: a region's own log showed a clean "World has come to an
             // end" -> SHUTDOWN -> deregistered sequence for a stop the admin
             // page reported as "failed to send shutdown." Don't trust the
             // HTTP-level failure alone here - give the process a moment to

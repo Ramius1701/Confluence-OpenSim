@@ -1004,7 +1004,7 @@ individual-project builds could have caught:
    produced a clean startup with no such error on both regions.
 
 Verified end-to-end with real requests, not just a clean startup log:
-`curl`'d `getCurrencyQuote` directly against Welcome Center's region
+`curl`'d `getCurrencyQuote` directly against Region B's region
 port (9004) - got back a correctly-computed quote
 (`currencyBuy=500` → `estimatedCost=5000` at the configured
 `CurrencyRate=10`). Then `buyCurrency`'d a synthetic test UUID for 1000
@@ -1610,15 +1610,15 @@ correctly, since a bare "raise this account's permission level" write
 is exactly the kind of action worth a human doing directly rather than
 an agent quietly executing). Screenshot confirmed via
 `the test deployment's public hostname:9002/web/admin`: both real regions listed
-(Var Test Region at 1001,1000; Welcome Center at 1000,1000), both
+(Var Test Region at 1001,1000; Region B at 1000,1000), both
 correctly showing "Open", each with a working "Close to HG" button.
 **Confirmed live: clicking the toggle actually works, verified at the
 database level, not just the page re-rendering.** User closed Var Test
 Region to HG; page correctly flipped its row to "Closed"/"Open to HG"
-while Welcome Center stayed "Open"/"Close to HG" - a real per-region
+while Region B stayed "Open"/"Close to HG" - a real per-region
 write, not a global one. Cross-checked directly against
 `region_hg_settings`: exactly one row, Var Test Region's UUID,
-`IsOpen=0`; Welcome Center has no row at all, matching the "absent row
+`IsOpen=0`; Region B has no row at all, matching the "absent row
 = open" default design. (Minor, non-functional: `region_hg_settings`
 and `regions` have mismatched collations, which broke an ad-hoc `JOIN`
 used only for this verification query - the application itself never
@@ -1661,11 +1661,11 @@ currency balance-push fix, applied to a different problem. Redirects
 back to `/web/admin` with a status message either way (success,
 non-200 from the region, or unreachable).
 
-Verified directly (not just "it builds"): computed Welcome Center's
+Verified directly (not just "it builds"): computed Region B's
 region handle from its stored `locX`/`locY` and POSTed straight to
 `http://localhost:9004/MAP/Regenerate/<handle>` - got back `200
 queued`, and the region's own log immediately showed "Queuing
-background map image generation for Welcome Center (requested via
+background map image generation for Region B (requested via
 admin web UI)" at the matching timestamp. Full solution build clean,
 all previously-verified pages (login/dashboard/home/admin) re-checked
 for regressions after redeploy - none. **Confirmed live: clicked the actual button.** User clicked
@@ -1709,14 +1709,14 @@ history of snapshots, not one always-overwritten file. `/web/admin`
 gained a third button per region ("Save OAR backup"), same
 Robust-calls-the-region shape as the maptile button.
 
-Verified directly: POSTed to Welcome Center's endpoint, got back
-`200 queued:Backups\Welcome Center_<timestamp>.oar`, waited, and
+Verified directly: POSTed to Region B's endpoint, got back
+`200 queued:Backups\Region B_<timestamp>.oar`, waited, and
 confirmed via the region's own log a complete write ("Finished writing
-out OAR for Welcome Center", 13 scene objects referenced, 9 assets
+out OAR for Region B", 13 scene objects referenced, 9 assets
 saved) - then confirmed the actual file on disk, 299KB, real content.
 **Worth knowing, not a bug:** the file landed in
 the local test deployment's `Backups\` folder, not inside
-`Simulators\Welcome_Center\`- a relative path resolves against the
+`Simulators\Region_B\`- a relative path resolves against the
 region process's actual working directory, which (per the Batch 12
 region-launch finding) is the install root, not the region's own
 subfolder. Every region's backups land in this same shared `Backups/`
@@ -1740,7 +1740,7 @@ account), not `UserLevel>=200`.
 Ownership resolution uses `IEstateDataService.GetEstatesByOwner(principalID)`
 -> `GetRegions(estateID)` -> `IGridService.GetRegionByUUID`, confirmed
 against `estate_settings.EstateOwner`/`estate_map` directly in the DB
-(Test User owns Estate 101, containing both Welcome Center and Var Test
+(Test User owns Estate 101, containing both Region B and Var Test
 Region). Every handler re-derives this ownership list server-side from
 the session's `PrincipalID` before acting - the `region_id` in a posted
 form is never trusted on its own, for either save or load.
@@ -1809,10 +1809,10 @@ unstarted.
 
 ## Test deployment notes
 
-- the local test deployment's `Simulators\Welcome_Center\` — main test region.
+- the local test deployment's `Simulators\Region_B\` — main test region.
 - the local test deployment's `Simulators\Var_Test_Region\` — second 1024×1024
   var region added this round (port 8005, location 1010,1000) specifically
-  to confirm weather/day-night bugs weren't Welcome_Center-specific.
+  to confirm weather/day-night bugs weren't Region_B-specific.
 - Both regions log to separate files (`logfile`/`StatsLogFile` under
   `[Startup]`) so they don't clobber a shared `OpenSim.log`.
 
@@ -2075,7 +2075,7 @@ account, rather than silently keeping the old owner or, worse, writing
 a garbage UUID.
 
 Verified live end-to-end via curl against the real Estate 101 (owns
-both Welcome Center and Var Test Region): list page showed the correct
+both Region B and Var Test Region): list page showed the correct
 owner/region count; detail page rendered both region names and correct
 checkbox states; a real settings change (flipping `DenyMinors` off ->
 on) was confirmed via direct DB query, then reverted; and the
@@ -2139,7 +2139,7 @@ Verified live end-to-end: registered a real account
 ("Newbie Tester") through the actual public URL, got redirected
 straight to the dashboard (balance correctly showing 0 for a brand-new
 account), confirmed via direct DB queries that the account row,
-**home region** (set to Welcome Center), and a **full 22-folder
+**home region** (set to Region B), and a **full 22-folder
 inventory tree** were all created - genuine parity with the console
 command's own side effects, not just a bare account row. Then verified
 all four validation guards actually block: duplicate name, mismatched
@@ -2636,7 +2636,7 @@ checksums confirmed the deployed copies match the build output).
 Enabled on Var Test Region only (`[Search] Module =
 "ConfluenceSearchModule"` + a `[SearchService]` section pointing at the
 same shared test-deployment MySQL DB Currency already uses), left
-untouched (still `"OpenSimSearch"`) on Welcome Center, specifically to
+untouched (still `"OpenSimSearch"`) on Region B, specifically to
 verify the two coexist correctly in separate processes without
 cross-contamination.
 
@@ -2648,7 +2648,7 @@ loaded N modules` count went from 125 to 126 on Var Test Region, the
 diagnostic line printed, and real functional logs followed immediately
 after (`[SEARCH SERVICE]: Starting search service` /
 `[CONFLUENCE SEARCH]: Native search module is active`), with no errors in
-between. On Welcome Center, the diagnostic line *also* printed (Mono.
+between. On Region B, the diagnostic line *also* printed (Mono.
 Addins instantiates every shared-module class in every process
 regardless of whether it goes on to activate), but the real activation
 log never appeared there, since its `[Search] Module` config was left
@@ -2708,7 +2708,7 @@ mute-list stack already existed in Confluence before this task began.**
   wires `IClientAPI.OnMuteListRequest`/`OnUpdateMuteListEntry`/
   `OnRemoveMuteListEntry` and is **already the active module in every
   current test deployment config** - both `Var_Test_Region\OpenSim.ini`
-  and `Welcome_Center\OpenSim.ini` set `[Messaging] MuteListModule =
+  and `Region_B\OpenSim.ini` set `[Messaging] MuteListModule =
   MuteListModule`, `config-include/GridHypergrid.ini` sets `[Modules]
   MuteListService = "RemoteMuteListServicesConnector"`, and Robust.ini
   already registers the connector and `LocalServiceModule`. The Robust
@@ -3195,7 +3195,7 @@ in question.
 Critically, this turned out to be **region-specific, not module-specific
 or universally broken**: the exact same diagnostic added to
 `WebConsoleModule` and `ConfluenceSearchModule` printed *normally* on
-Welcome Center - `AddRegion()` was reached on both, correctly showing
+Region B - `AddRegion()` was reached on both, correctly showing
 `enabled=false` there (matching that region's own config, which never
 enabled either feature). So this is not "Mono.Addins can't discover new
 extension classes" (the existing documented theory) - discovery and
@@ -3214,15 +3214,15 @@ now with the added insight that it's tied to a specific region's
 process state, not the module code.
 
 Given this, task #26 was **retested and confirmed working correctly on
-Welcome Center instead** (see the live-verification section above) -
+Region B instead** (see the live-verification section above) -
 Var Test Region's `[WebConsole]` config was replaced with a comment
-explaining why, and the real test config moved to Welcome Center's own
+explaining why, and the real test config moved to Region B's own
 `OpenSim.ini`. Task #18's documentation and the table entry in this
 file are being corrected in the same edit as this entry - see the
 `OpenSimSearch` row update above, now noting the confirmed working data
 layer separately from the not-actually-verified client-facing wiring on
 Var Test Region specifically. A maintainer wanting genuinely-verified
-native search today should enable it on Welcome Center (or any region
+native search today should enable it on Region B (or any region
 that doesn't exhibit this issue) rather than Var Test Region, or
 investigate why Var Test Region's `AddRegionToModules` pass is silently
 incomplete.
@@ -3315,12 +3315,12 @@ corrupted file. Not independently re-confirmed for Search/WebConsole
 specifically in this pass (the user asked specifically about OnDemand/
 SimProtection), but a maintainer re-enabling native search on Var Test
 Region today should expect it to work correctly, now that the actual
-cause is fixed rather than worked around by moving to Welcome Center.
+cause is fixed rather than worked around by moving to Region B.
 
 **Follow-up: Search and WebConsole re-tested on Var Test Region too, at
 the user's request - both confirmed fixed.** Re-added `[WebConsole]
 Enabled = true` to `Var_Test_Region\OpenSim.ini` (it had been moved to
-Welcome Center as a workaround) - `[Search]`/`[SearchService]` were
+Region B as a workaround) - `[Search]`/`[SearchService]` were
 already there and untouched. No code changes needed; only config. On
 restart, `[WEB CONSOLE]: Enabled at /consoleweb` printed for real (the
 line that lives inside `AddRegion`, not `Initialise` - direct proof
@@ -3334,7 +3334,7 @@ regions` against it through the real HTTP round-trip
 (WebInterface → region's `/consoleweb` endpoint) - got back the correct
 live region info (`Var Test Region`, correct RegionID, port 9005,
 "Ready? Yes"). This is the same feature already fully verified on
-Welcome Center in the task #26 entry above, now shown working
+Region B in the task #26 entry above, now shown working
 identically on the region it originally failed on.
 
 Search's specific client-facing wiring (`scene.RegisterModuleInterface
@@ -3620,7 +3620,7 @@ Handlers.dll` is shared, had to stop all three test deployment processes
 busy") with only Robust stopped, then found the region processes also
 had it locked. Redeployed to all three, restarted.
 
-**Real (unrelated) outage caught during this restart**: Welcome_Center
+**Real (unrelated) outage caught during this restart**: Region_B
 crashed on startup with `System.DllNotFoundException: Unable to load
 DLL 'ubode'` inside `ubOdeModule.Initialise` - the native ubOde physics
 engine failed to load, logged as FATAL, and the process actually
@@ -3670,8 +3670,8 @@ to `/web/admin/events/save` with a real title/category/date/duration/
 location/description returns 302 and the event immediately appears
 both in the admin list (with working Edit/Delete links) *and* on the
 public splash's "Upcoming Events" widget with the exact rendering
-(`Grand Opening Concert / Aug 15, 8:00 PM UTC · Live Music · Welcome
-Center / <description>`) the code was written to produce; a POST to
+(`Grand Opening Concert / Aug 15, 8:00 PM UTC · Live Music · Region
+B / <description>`) the code was written to produce; a POST to
 `/web/admin/events/delete` removes it cleanly, confirmed back down to
 "No upcoming events." Test event deleted after verification so it
 doesn't linger as fake data on the dev grid. The "Splash Verifier"
@@ -3816,11 +3816,11 @@ formula had a spurious extra `- minY` term
 like `-22495%` instead of valid 0-100% positions - caught immediately
 by reading the actual computed `style.top` values via the browser
 rather than assuming the math was right, hand-verified the fix against
-Var Test Region (1001,1000, 1024x1024) and Welcome Center (1000,1000,
+Var Test Region (1001,1000, 1024x1024) and Region B (1000,1000,
 256x256)'s real coordinates before redeploying. After the fix: Var Test
-Region renders at `top:5%,left:23%,72%x90%` and Welcome Center at
+Region renders at `top:5%,left:23%,72%x90%` and Region B at
 `top:72.5%,left:5%,18%x22.5%` - both sane, both geometrically correct
-relative to each other (Welcome Center sits south-west of Var Test
+relative to each other (Region B sits south-west of Var Test
 Region, matching their real grid coordinates).
 
 **Live-verified**: build clean, all three test deployment processes
@@ -3910,7 +3910,7 @@ of this batch, since Events needed a real schema change:
   before trusting it.
 
 **Real infrastructure hazard hit twice this batch**: Var_Test_Region
-and (separately, on an earlier restart) Welcome_Center both crashed on
+and (separately, on an earlier restart) Region_B both crashed on
 startup with the same `System.DllNotFoundException: Unable to load DLL
 'ubode'` native-load race documented in the previous entry, even with
 a 3-second stagger between starting the two region processes. Widened
@@ -4195,7 +4195,7 @@ defer.
   surface from the Directory floater) deliberately deferred - real
   substrate exists but the request/reply shape needs its own pass.
 - Also discovered and fixed a real, unrelated gap while wiring this:
-  Welcome_Center's `[Search]` section was still on the legacy
+  Region_B's `[Search]` section was still on the legacy
   `Module = "OpenSimSearch"` default (pointing at a dead
   `helper/query.php` XML-RPC URL) - only Var_Test_Region had ever been
   switched to `ConfluenceSearchModule`. Both regions' `OpenSim.ini` now
@@ -4251,7 +4251,7 @@ browsers) - verified live that a session set at `/login` correctly
 carries over to `/dashboard`, `/search`, and every other segment.
 
 **Known still-open issue, unrelated to any of the above (see next
-entry) - the region test processes (`Var_Test_Region`/`Welcome_Center`)
+entry) - the region test processes (`Var_Test_Region`/`Region_B`)
 have a startup hang that was NOT caused by this work** (reproduced with
 the search code fully reverted, with a fully-cleared Mono.Addins cache,
 alone and together, with and without Robust running - ruled out DLL
@@ -4472,7 +4472,7 @@ adding anything new:
 
 **Live-verified:** Regions-owned confirmed end-to-end against "Test
 User" (real estate owner on the test deployment) - profile correctly lists
-"Var Test Region" and "Welcome Center", matching estate 101's actual
+"Var Test Region" and "Region B", matching estate 101's actual
 region list. Group memberships could not get the same full round-trip
 - no groups exist in the test deployment database (group creation is an
 in-world action, not something reachable via a REST call), so only the
@@ -4950,7 +4950,7 @@ genuine verification needs a real client login.
 `Robust.HG.ini` - this belongs to the old addon-modules `OpenSimSearch`
 module's own config shape (`OpenSearch.cs` reads a `[Search]
 SearchURL` key), not `LLLoginService` or `GridInfoHandlers`. Confirmed
-it's not dead: Welcome Center's own region-side `OpenSim.ini` still has
+it's not dead: Region B's own region-side `OpenSim.ini` still has
 `[Search] Module = "OpenSimSearch"` (the legacy addon, still active
 there) with a matching `SearchURL` pointing at the same
 `/helper/query.php` path already documented as a known, accepted gap
@@ -5169,7 +5169,7 @@ nav icons and the Features rebuild are the first pages to get this
 treatment - the rest of the ~40-page WebUI have not been touched yet
 and are a real follow-up, not assumed done by extension.
 
-### Welcome Center's in-world search was still on the dead legacy path (2026-08-12)
+### Region B's in-world search was still on the dead legacy path (2026-08-12)
 
 The user hit "Unable to search at this time" in-viewer (both the
 Directory floater and, separately, several more failures opening the
@@ -5178,31 +5178,31 @@ regression in today's `SearchPlaces` enrichment first, concretely: ran
 the actual enriched SQL directly against the live database - clean,
 zero rows, no error - matching what `/guide`'s Popular tab already
 exercised successfully earlier today. Asked which region the failure
-happened on rather than guess, since Welcome Center and Var Test
-Region run on genuinely different search backends. Confirmed: Welcome
-Center specifically, which was still on `[Search] Module =
+happened on rather than guess, since Region B and Var Test
+Region run on genuinely different search backends. Confirmed: Region
+B specifically, which was still on `[Search] Module =
 "OpenSimSearch"` - the legacy addon, dependent on `SearchURL` pointing
 at `/helper/query.php`, a dead endpoint flagged multiple times earlier
 this session as an accepted, out-of-scope gap. Var Test Region has run
 the native `ConfluenceSearchModule` since Batch 14 without this
 problem.
 
-**Fix:** switched Welcome Center's `[Search] Module` to
+**Fix:** switched Region B's `[Search] Module` to
 `ConfluenceSearchModule` and added the three service sections it needs
-that Welcome Center never had at all - `[SearchService]`,
+that Region B never had at all - `[SearchService]`,
 `[EventsService]`, `[UserProfilesService]`, `[GroupsSearchService]` -
 copied verbatim from Var Test Region's own already-working config
-(same `casperia_dev` connection string, same providers), not
+(same `<dev database>` connection string, same providers), not
 reinvented. No code change needed, config-only. Restarted only the
-Welcome Center process (Robust, Var Test Region, and the DLLs
+Region B process (Robust, Var Test Region, and the DLLs
 themselves were untouched). Confirmed via `Get-CimInstance` that the
-right process came back up and via Robust's own log that Welcome
-Center re-registered with the grid cleanly immediately after the
+right process came back up and via Robust's own log that Region
+B re-registered with the grid cleanly immediately after the
 restart - the region-side log file itself lagged/buffered past the
 startup banner (a log-flush quirk observed before, not a hang).
 **Not independently verified end-to-end**: confirming the Directory
 floater and World Map actually work now needs a real viewer test from
-inside Welcome Center, the same boundary as the DestinationGuide/
+inside Region B, the same boundary as the DestinationGuide/
 SearchURL fixes earlier - config correctness and clean process
 startup were confirmed, the actual in-world protocol exchange was
 not.
@@ -5330,7 +5330,7 @@ remaining Hypergrid connectors (`GatekeeperServiceInConnector`,
 `HGFriendsServerConnector`, `HGInventoryServiceConnector`,
 `HGAssetServiceConnector`, `HGGroupsServiceConnector`) or something
 after connector loading entirely - not narrowed further given the time
-already spent. The two region simulator processes (Welcome Center, Var
+already spent. The two region simulator processes (Region B, Var
 Test Region) were also stopped to release the file lock on the old DLL
 and have not been successfully restarted either (`OpenSim.exe` exits
 within ~1 second on every attempt, exit code 1, zero stdout/stderr,
@@ -6167,7 +6167,7 @@ entry above: this whole session involved many region starts/restarts
 (the full-rebuild-and-sync cycles, the land-buy investigation, the
 prebuild.xml regeneration testing) across several hours, plus an
 extended real-viewer session - login, teleport between Var Test Region
-and Welcome Center, weather actively rendering, and a full currency/
+and Region B, weather actively rendering, and a full currency/
 land-purchase transaction all completed successfully. Zero recurrence
 of the hang.
 
@@ -6503,7 +6503,7 @@ region-debug-console UI open, gated on
 `EstateSettings.IsEstateManagerOrOwner(agentID)`.
 
 Confirmed the connected account (Test User) is the Estate Owner of
-"My Estate" (which Welcome Center belongs to), so the gate would
+"My Estate" (which Region B belongs to), so the gate would
 pass. Getting to the actual UI took a few tries - Firestorm's
 in-viewer log-output "Debug Console" (Developer menu) is a different
 window entirely from the one that actually talks to
@@ -6515,7 +6515,7 @@ opened via Advanced > Consoles > Region Debug Console or the
 Ctrl+Shift+` shortcut - not the log viewer.
 
 With that open, ran `terrain elevate 0` and `terrain lower 0` (0m,
-deliberately a no-op so nothing on the live Welcome Center terrain
+deliberately a no-op so nothing on the live Region B terrain
 actually changed) directly from the connected viewer. Both returned
 the exact expected replies - "Raising terrain by 0 meters." and
 "Lowering terrain by 0 meters." - proving the full round trip end to
@@ -6535,7 +6535,7 @@ need viewer UI archaeology - it's an OSSL script function - but it's
 currently blocked by threat-level config
 (`osGetAgentViewer` needs `Moderate`, the live deployment's
 `OSFunctionThreatLevel` default is `VeryLow`, and neither
-`Welcome_Center` nor `Var_Test_Region`'s `OpenSim.ini` nor the shared
+`Region_B` nor `Var_Test_Region`'s `OpenSim.ini` nor the shared
 `config-include/osslDefaultEnable.ini` carry an `Allow_osGetAgentViewer`
 override). Fixing that needs an ini edit plus, most likely, a region
 restart to pick it up - deferred rather than done mid-session while
@@ -6548,8 +6548,8 @@ The user chose to take the disconnect and finish this one out rather
 than leave it for later. Added
 `Allow_osGetAgentViewer = ${OSSL|osslParcelO}ESTATE_MANAGER,ESTATE_OWNER`
 to the live `config-include/osslDefaultEnable.ini` (alongside the
-other Moderate-tier entries), had the user rez a cube in Welcome
-Center with a one-line test script
+other Moderate-tier entries), had the user rez a cube in Region
+B with a one-line test script
 (`llOwnerSay("Viewer: " + osGetAgentViewer((string)llDetectedKey(0)))`
 on `touch_start`), then restarted the region to pick up the OSSL
 config change - OSSL function-permission entries are read once at
@@ -6560,7 +6560,7 @@ Found the region's own graceful restart command in the process:
 `/consoleweb` and unlike the bare `restart` OpenSim.cs command (see
 below) actually wired up - warns connected residents and gives them
 time before the region cycles, rather than an instant kill. Used
-`region restart 10` on Welcome Center; the user got the warning,
+`region restart 10` on Region B; the user got the warning,
 logged back in once it was back, touched the cube, and got back
 exactly `Viewer: Firestorm-Nightlyx64 7.2.5.81383` - confirming the
 function correctly reads the real `AgentCircuitData` viewer string
@@ -6615,7 +6615,7 @@ region is temporary at best.
 
 Fixed properly this time: had the user stop just Var Test Region's
 process (confirmed via the `/consoleweb` port going unreachable while
-Welcome Center's stayed up), re-ran the same `UPDATE` while it was
+Region B's stayed up), re-ran the same `UPDATE` while it was
 down, confirmed the row was correct, then had the user start it back
 up and confirmed via a live `land show 1` against the freshly-started
 process - `Owner: Test User`, `Sale Price: 500`, `Flags: ...ForSale...`
@@ -7406,7 +7406,7 @@ that permission wasn't regressed). Grid restarted clean, both regions
 came up with no errors in `Robust.log`/`OpenSim.log`.
 
 Verified in-world with a self-contained smoke-test script (rezzed on
-Welcome Center as an estate-owner account, since `osslNPC`'s default
+Region B as an estate-owner account, since `osslNPC`'s default
 group is `ESTATE_MANAGER,ESTATE_OWNER`) exercising a representative
 sample from all six batches end to end: `botCreateBot` returned a real
 key; `botIsBot`/`botGetOwner`/`botGetName`/`botGetAllBotsInRegion` all
@@ -7541,11 +7541,11 @@ round-trip through it behaves as the Firestorm source predicts.
 Grid restarted after this entry (user was stepping away and asked to
 keep going autonomously) - found the exact launch commands by
 inspecting the desktop shortcut chain rather than guessing:
-`CasperiaControl.bat.lnk` on the desktop pointed at
-`S:\Opensim\CasperiaControl.bat`, which turned out to be the
-production-grid launcher (`BASE=S:\Opensim\Casperia`, the one this
+`<grid control script>` on the desktop pointed at
+`<grid control script>`, which turned out to be the
+production-grid launcher (`BASE=<grid root>`, the one this
 project's own instructions say to leave untouched during Dev testing)
-- but its sibling `CasperiaDevControl.bat` in the same folder is the
+- but its sibling `<dev grid control script>` in the same folder is the
 real Dev-grid launcher, giving the exact `Robust.exe -inifile=Robust.HG.ini`
 / `OpenSim.exe -inifile=Simulators\<Region>\OpenSim.ini` commands and
 working directory the user's own control panel uses. Replicated that
@@ -7556,7 +7556,7 @@ already running before the deploy (Robust + both regions - no
 MoneyServer, which wasn't part of the running state).
 
 Both regions reached `RegionReady`'s "server_startup" ready state
-cleanly (`Welcome Center` and `Var Test Region` both logged "Region ...
+cleanly (`Region B` and `Var Test Region` both logged "Region ...
 is ready", YEngine loaded its LSL/LS/MOD/OSSL apis with no errors, map
 tiles generated, grid registration succeeded). Checked both regions'
 real per-region logs (`Simulators\<Region>\OpenSim.log` - learned this
@@ -7932,7 +7932,7 @@ this). Re-verified byte-for-byte after: zero mismatches. Grid was already
 down at deploy time and the user confirmed it's meant to stay down for
 now ("grid is down for the deployment purposes") - not restarted. Actual
 runtime verification (clean region startup with the new module loaded,
-the MySQL v8 migration applying against `casperia_dev`, and a real
+the MySQL v8 migration applying against `<dev database>`, and a real
 Firestorm session round-tripping an actual thumbnail upload) is still
 pending the user bringing the grid back up.
 
@@ -8292,7 +8292,7 @@ zero errors this time - and re-verified every `.dll`/`.pdb` byte-for-byte
 against the build output: zero mismatches. Deploy sync fully complete.
 Runtime verification (clean region startup with `GroupsModule`'s new
 `GroupAPIv1` cap loaded, the MySQL `os_groups_bans` migration applying
-against `casperia_dev`, and a real Firestorm session round-tripping an
+against `<dev database>`, and a real Firestorm session round-tripping an
 actual group-ban create/list/remove) is still pending the user bringing
 the grid back up and testing with a real group.
 
@@ -8330,7 +8330,7 @@ design:
    (`CrossAgentIntoNewRegionMain`, `EntityTransferModule.cs:1859`).
    Confirmed these are real network calls even between two `OpenSim.exe`
    processes on the same machine, which is exactly this project's own
-   Casperia-Dev topology (`Welcome_Center`/`Var_Test_Region` as separate
+   Casperia-Dev topology (`Region_B`/`Var_Test_Region` as separate
    processes) - not something that collapses to an in-process call here.
    Checked whether `QueryAccess` is actually redundant, given access was
    already validated once when the child agent was first established -
@@ -8880,7 +8880,7 @@ machine is not overload[ed] (ie has sleeping CPU cores), increasing this
 number may reduce events response latency." Checked the actual
 Casperia-Dev host: AMD Ryzen 7 6800H, 8 cores / 16 logical threads
 (`Get-CimInstance Win32_Processor`), running 2 region processes
-(`Welcome_Center`, `Var_Test_Region`), each its own `OpenSim.exe` with
+(`Region_B`, `Var_Test_Region`), each its own `OpenSim.exe` with
 its own YEngine instance and thread pool, both reading the same shared
 `OpenSimDefaults.ini`. This is not an overloaded machine - real,
 unused headroom exists.
@@ -9350,7 +9350,7 @@ user rather than flipping it unilaterally; **the user chose to enable
 
 `Enabled = true` set in both `Var_Test_Region\OpenSim.ini` (already had
 the full config block from Batch 14, just flipped the one flag and
-updated its comment to record why) and `Welcome_Center\OpenSim.ini`
+updated its comment to record why) and `Region_B\OpenSim.ini`
 (had no `[SimProtection]` section at all until now - added the same
 block, same production defaults, for consistency across both regions:
 `BaseRateFramesPerSecond = 45`, `PercentToBeginShutDownOfServices = 50`,
@@ -9553,7 +9553,7 @@ object, or click-to-buy) end to end:
   path quietly doing this instead - grepped every capability handler
   for anything buy/purchase-related and found nothing.
 - Confirmed this has *live, current impact*, not just theoretical risk:
-  both `Var_Test_Region\OpenSim.ini` and `Welcome_Center\OpenSim.ini`
+  both `Var_Test_Region\OpenSim.ini` and `Region_B\OpenSim.ini`
   have `EconomyModule = ConfluenceCurrencyModule` configured as the
   active economy module right now. On the live grid today, right-
   clicking "Buy" on any for-sale object - the single most basic SL/
@@ -9910,7 +9910,7 @@ decision:**
 
 Repo-side changes committed and pushed to `confluence/merge-experiment`
 (134 insertions, doc-only). Live-side changes are direct edits to
-`S:\Opensim\Casperia-Dev\OpenSimDefaults.ini` - since every one was
+`<dev grid root>\OpenSimDefaults.ini` - since every one was
 confirmed to already match the running behavior, they don't need a
 grid restart to "take effect" in the sense of changing anything, but
 will be picked up naturally on the next restart either way.
@@ -9947,7 +9947,7 @@ than a documentation gap - to be raised one at a time:**
    Unlike the doc-only batch above, this is a real behavior change
    (richer map tiles, more time/CPU spent in background map
    generation) - applied directly to
-   `S:\Opensim\Casperia-Dev\OpenSimDefaults.ini`, needs a grid restart
+   `<dev grid root>\OpenSimDefaults.ini`, needs a grid restart
    to take effect. Not yet restarted as of this writing.
 3. `[Experience] Enabled` - confirmed live has run with it `true`
    without issue; flipped the template's shipped default from `false`
@@ -9970,7 +9970,7 @@ grid restart before it's actually in effect.
 Flagged in passing while reading logs during the Map3D in-world test
 above: `[GROUP AUTO INVITE]: Target group not found in <region>.`
 Checked both regions' full log history - this warning goes back to
-2026-08-04 in Welcome Center too, not just Var Test Region. The
+2026-08-04 in Region B too, not just Var Test Region. The
 grid-wide `GroupID` (`ed49a5b7-844f-4d24-bc62-b6ff0605de06`) configured
 in `OpenSimDefaults.ini`'s `[GroupAutoInvite]` section had never
 resolved to a real group in either region - the feature has been
@@ -9981,7 +9981,7 @@ silently doing nothing, in both places, for two weeks.
 to create one headlessly - confirmed `PriceGroupCreate = 0` and
 `LevelGroupCreate = 0` on this grid, so the user created a real test
 group in-world via Firestorm at no cost (`ec7122f2-ad39-4442-a18f-
-1b5334db0e54`, confirmed via its `hop://casperia.ddns.net:9002/app/
+1b5334db0e54`, confirmed via its `hop://<grid address>/app/
 group/.../about` URI).
 
 While wiring the new GroupID in, the user pointed out the actual
@@ -10012,7 +10012,7 @@ inherits from `OpenSimDefaults.ini`. Fixed by:
    per-region override exists without needing to rediscover it from a
    two-week-old silent failure.
 
-Welcome Center intentionally left without its own override for now -
+Region B intentionally left without its own override for now -
 it'll simply have the feature off until the user supplies its own
 group, rather than continuing to share Var Test Region's test group by
 accident. Needs a grid restart to take effect (module only reads
@@ -10119,7 +10119,7 @@ verification: stopped all three grid processes cleanly (confirmed no
 avatars connected first), relaunched Robust + both regions, and hit
 `group-auto-invite status` again - Var Test Region now correctly reports
 its real GroupID straight from boot, no manual console command needed;
-Welcome Center correctly stays disabled (no per-region override there).
+Region B correctly stays disabled (no per-region override there).
 Committed and pushed. Grid is up and this session's full stack of
 changes - currency/permission fixes, account-type work, ini
 reconciliation, GroupAutoInvite per-region rearchitecture, and this
@@ -10366,7 +10366,7 @@ Build-verified clean, committed and pushed.
 
 User's decision on the one item left off by default: `take_copy_
 restricted = true` added to both live regions' own `[Permissions]`
-section (`Var_Test_Region\OpenSim.ini`, `Welcome_Center\OpenSim.ini`) -
+section (`Var_Test_Region\OpenSim.ini`, `Region_B\OpenSim.ini`) -
 config-only, no code change (the feature itself was already built and
 deployed earlier this session). Deployed after warning the connected
 tester via `"region restart 30"` on both regions (they had presence in
@@ -10377,8 +10377,8 @@ config - it does not re-read the file from disk; only a full process
 restart does).
 
 Hit the same transient `ubode.dll` native-load race a second time
-(Var Test Region crashed with `DllNotFoundException` while Welcome
-Center loaded the identical file fine seconds later) - now twice in a
+(Var Test Region crashed with `DllNotFoundException` while Region
+B loaded the identical file fine seconds later) - now twice in a
 row when both region processes are launched back-to-back with no gap,
 recovered both times by just relaunching the crashed one. Worth
 treating as a real, if minor, operational note going forward: stagger
@@ -10494,7 +10494,7 @@ root cause is something other than what's diagnosed here.
 
 Live-tested the OnObjectBuy currency charge added earlier this session
 (`ConfluenceCurrencyModule.ProcessObjectBuy`) by having a real avatar
-(Ramius) rez a for-sale object and buy it. First purchase succeeded.
+(the operator) rez a for-sale object and buy it. First purchase succeeded.
 Repeat-buying the *same* object threw:
 
 ```
@@ -10578,25 +10578,25 @@ assemblies (`OpenSim.Data`, `OpenSim.Data.MySQL`,
 `OpenSim.Data.SQLite`, `OpenSim.Data.PGSQL`,
 `OpenSim.Services.CurrencyService`, `OpenSim.Region.CoreModules`),
 hash-verified all 6 against the fresh build before restarting, then
-relaunched using the exact `CasperiaDevControl.bat` invocation
+relaunched using the exact `<dev grid control script>` invocation
 (`Robust.exe -inifile=Robust.HG.ini`, then `OpenSim.exe
 -inifile=Simulators\<name>\OpenSim.ini`, staggered) rather than
 guessing at launch args. Both regions reached `RegionReady` cleanly;
 the ubode.dll race didn't reproduce this launch (expected - it's
 intermittent, not deterministic).
 
-**Live-verified the actual fix**: Ramius bought the same test object
+**Live-verified the actual fix**: the operator bought the same test object
 three times in a row post-deploy. All three purchases succeeded with
 three distinct `TransactionID`s (`a345c215...`, `536bc673...`,
 `845bad72...`), zero duplicate-key errors, zero exceptions in either
 region's log - confirmed directly via `SELECT ... FROM
-currency_transactions ORDER BY Created DESC` against `casperia_dev`
-(note: currency tables live in `casperia_dev`, not `casperia_grid` -
+currency_transactions ORDER BY Created DESC` against `<dev database>`
+(note: currency tables live in `<dev database>`, not `<grid database>` -
 easy to typo). The original crash (`3b274c2b-...` reused) is gone.
 
 ## Websearch 404, a stale duplicate GridInfoService override, and a dashboard label mismatch (2026-08-19)
 
-Same live-testing pass surfaced three more reports from Ramius: (1) the
+Same live-testing pass surfaced three more reports from the operator: (1) the
 web dashboard's sidebar showed "Member" while the in-world profile
 showed "Resident" for the same account, (2) Firestorm's own Search
 floater's Websearch tab returned a raw "Not Found" for every query,
@@ -10635,7 +10635,7 @@ lines silently overrode both correct values - exact same failure
 shape as the Include-modules merge-order bug found earlier this
 session, just within one file instead of across includes. Commented
 out both stray lines with an explanatory note. This edit is
-live-deployment-only (`S:\Opensim\Casperia-Dev\Robust.HG.ini`) - the
+live-deployment-only (`<dev grid root>\Robust.HG.ini`) - the
 repo's own `bin/Robust.HG.ini.example` template never had this dead
 block, so there was nothing to fix on the repo side. Live-verified via
 `curl .../get_grid_info`: `<search>` and `<message>` now read
@@ -10800,36 +10800,36 @@ many accounts it promoted, matching every other admin action already
 having a console command - useful both for real admin use and for
 testing the sweep without waiting out the hourly timer.
 
-## Firestorm's Websearch tab going to casperia.ddns.net - not a Confluence bug
+## Firestorm's Websearch tab going to <grid address> - not a Confluence bug
 
 User reported the in-world "Search" (Firestorm's own Search floater,
 Websearch tab) still 404ing, and separately raised the concern that
-`casperia.ddns.net` (the real, frozen live grid - see
-[[casperia-dev-live-grid-boundary]]) and `holodeckgrid.ddns.net` (this
+`<grid address>` (the real, frozen live grid - see
+[[casperia-dev-live-grid-boundary]]) and `<grid address>` (this
 Casperia-Dev test grid) might be getting mixed. Traced every possible
 server-side source of a search URL, with real evidence at each step
 rather than assuming any one was the culprit:
 
 - `Robust.HG.ini` / both region `OpenSim.ini`s: grepped the entire
-  live deployment tree for `casperia.ddns.net` - zero hits outside log
+  live deployment tree for `<grid address>` - zero hits outside log
   files. `[Const]` correctly resolves `BaseHostname` to
-  `holodeckgrid.ddns.net` everywhere.
+  `<grid address>` everywhere.
 - `get_grid_info` (curled directly): `<search>` correctly reads
-  `http://holodeckgrid.ddns.net/search`.
+  `http://<grid address>/search`.
 - The *real* login response, not just `get_grid_info` - registered a
   disposable throwaway account and did an actual XML-RPC
   `login_to_simulator` call by hand to see exactly what a viewer
   receives: `search` field is
-  `http://holodeckgrid.ddns.net:9002/search?q=[QUERY]`, correct.
+  `http://<grid address>/search?q=[QUERY]`, correct.
 - "Test User"'s own `ServiceURLs` (Hypergrid identity, the field that
   gets baked in at account-creation time and doesn't auto-update) -
-  already correctly `holodeckgrid.ddns.net` throughout, not stale.
+  already correctly `<grid address>` throughout, not stale.
 - Both live regions' own registration rows in the `regions` table -
-  also correctly `holodeckgrid.ddns.net` (found in `casperia_dev`, not
-  `casperia_grid` - same wrong-database mixup as earlier in this
+  also correctly `<grid address>` (found in `<dev database>`, not
+  `<grid database>` - same wrong-database mixup as earlier in this
   session, caught and corrected).
 - Old `Robust.log` entries from 2026-08-09 *did* show this exact grid
-  self-identifying as `http://casperia.ddns.net:9002/` at the time
+  self-identifying as `http://<grid address>/` at the time
   (`BaseHostname` was apparently changed since) - a real historical
   fact, but everything downstream of that (account ServiceURLs, region
   registrations) has since been corrected, confirmed by direct query
@@ -10847,7 +10847,7 @@ Firestorm's Nightly (and likely Beta) builds with unclear rationale -
 not a regression in anything this session touched, and not fixable
 from the grid/server side at all. The actual fix is a client-side
 debug-setting override
-(`http://holodeckgrid.ddns.net:9002/search?q=[QUERY]`), which is
+(`http://<grid address>/search?q=[QUERY]`), which is
 outside this repo's scope. Worth remembering if this resurfaces:
 **checked and ruled out**, not unexplained - don't re-spend time
 re-deriving this chain if "search still doesn't work" comes up again
@@ -10869,7 +10869,7 @@ without throwing `HttpRequestException`, and the following
 `reply.Read(...)` then NREs - caught by the generic `catch
 (Exception)` and logged as "unknown," which is why the actual cause
 had never surfaced before. The URL in question:
-`[DataSnapshot]`'s `DATA_SRV_CP = "http://holodeckgrid.ddns.net
+`[DataSnapshot]`'s `DATA_SRV_CP = "http://<grid address>
 /helper/register.php"` in both regions' `OpenSim.ini` - confirmed dead
 with a direct curl (real 404, this repo's own OSWebServer default page
 for an unregistered route), same "old PHP site, never replaced
@@ -10928,17 +10928,17 @@ assets in Casperia-Dev, so testing exercises real-world conditions
 instead of the thin hand-built test fixture used all session -
 Confluence is meant to eventually replace live Casperia, and real-data
 testing in the isolated Dev grid first is the whole point of having
-one. Hard constraint honored throughout: `S:\Opensim\Casperia` and its
+one. Hard constraint honored throughout: `<grid root>` and its
 `casperia` database were only ever read from, never written to.
 Planned via EnterPlanMode given the size/risk (see the approved plan,
 `sprightly-noodling-river.md`), backed up Casperia-Dev's own prior
-state first (`S:\Opensim\backups\`) in case anything went wrong on the
+state first (`<backup folder>\`) in case anything went wrong on the
 Dev side.
 
 **What actually happened, in order:**
 
 1. `mysqldump` of live `casperia` (563.5MB), dropped and reimported
-   into `casperia_dev` - clean, 0 errors. Brings in essentially all of
+   into `<dev database>` - clean, 0 errors. Brings in essentially all of
    accounts/prims/land/currency/groups/inventory metadata, since
    OpenSim keeps almost all of that in the DB, not the filesystem.
 2. Confirmed both live and Dev use `FSAssetService` (file-based asset
@@ -10946,10 +10946,10 @@ Dev side.
    robocopied live's `fsassets/` into Dev's (14.1GB, 203,633 files, 0
    failures).
 3. Copied all 13 live region folders Dev didn't already have
-   (Welcome_Center already existed with live's own RegionUUID - a
+   (Region_B already existed with live's own RegionUUID - a
    prior, unrelated clone). Fixed the same classes of drift already
-   found/fixed this session across all 13: `casperia.ddns.net` →
-   `holodeckgrid.ddns.net`, disabled the dead `DATA_SRV_CP` legacy PHP
+   found/fixed this session across all 13: `<grid address>` →
+   `<grid address>`, disabled the dead `DATA_SRV_CP` legacy PHP
    path (same as the earlier DATASNAPSHOT fix, just not yet applied to
    these files).
 4. Full top-level DLL/PDB resync from the repo's `bin/` (build
@@ -10961,27 +10961,27 @@ Dev side.
    user directly reporting the actual red console error text (my own
    log-file forensics had hit a dead end): a flood of `WebException`
    timeouts fetching assets/inventory from
-   `http://holodeckgrid.ddns.net:8003/...`.
+   `http://<grid address>/...`.
 6. **First (wrong) theory**: `AssetServerURI`/`InventoryServerURI` in
    the shared `config-include/GridCommon.ini` use
    `${Const|PrivatePort}`, same pattern as the `GridServerURI` incident
-   above - changed both to `PublicPort`, tested on Farm alone (learned
+   above - changed both to `PublicPort`, tested on Region H alone (learned
    that lesson). Zero asset timeouts on the retest - looked like
    success, but turned out to be a false positive from most needed
    assets already being cache-hit locally from the bulk `fsassets`
    copy, not an actual fix.
 7. **Real root cause**, found by not trusting the false-positive and
-   checking Farm's own resolved port value directly: all 13
+   checking Region H's own resolved port value directly: all 13
    newly-copied regions carry **live's own `[Const]` values -
    `PublicPort=8002, PrivatePort=8003`** - completely different from
-   Welcome_Center/Var_Test_Region's already-correct `9002/9003` (this
+   Region_B/Var_Test_Region's already-correct `9002/9003` (this
    Dev grid's actual scheme, Robust genuinely listens on 9002). Not
    random per-file drift - a clean, consistent split between "already
    adapted for Dev" and "still carrying live's own port scheme."
    Reverted the `GridCommon.ini` experiment back to its original,
    proven state; fixed the actual bug instead - `PublicPort`/
    `PrivatePort` corrected to `9002`/`9003` in each of the 13 regions'
-   own `[Const]` block. Verified on Farm alone again: **zero**
+   own `[Const]` block. Verified on Region H alone again: **zero**
    timeout/connection errors (down from dozens), clean `RegionReady`,
    no registration failure. Rolled out to the remaining 12, relaunched
    all 15 sequentially (each waiting for its own ready confirmation
@@ -10990,7 +10990,7 @@ Dev side.
 8. User pointed out mid-launch that `Var_Test_Region` (a synthetic,
    Dev-only region with no live counterpart) shouldn't be part of a
    real-data grid - stopped it. Final state: **14 real-data regions
-   running** (Welcome_Center + all 13 copied live regions), zero
+   running** (Region_B + all 13 copied live regions), zero
    startup errors, zero registration failures, zero connection
    timeouts.
 
@@ -10999,7 +10999,7 @@ in this pass, flagged for follow-up):
 
 - A genuine YEngine bug: `XMRInstQueue.Remove()` throws "not in a
   list" when a script calls `llResetOtherScript()` on itself during
-  its own `state_entry` (seen on a real object in Section 31,
+  its own `state_entry` (seen on a real object in Region I,
   `[AV]sitB` script). Non-fatal (that one script gets disabled, region
   keeps running) but a real engine bug worth its own investigation.
 - Asset-completeness gap, quantified: of 9,657 distinct assets
@@ -11010,7 +11010,7 @@ in this pass, flagged for follow-up):
   likely a pre-existing gap in live's own data (orphaned/lost assets
   accumulated over time), not something this clone's mysqldump/
   robocopy caused (both completed with 0 errors). Grid-wide the gap is
-  small (~3.4%), but concentrated - regions like Tangle reuse a small
+  small (~3.4%), but concentrated - regions like Region F reuse a small
   set of common utility scripts across hundreds of objects, so a
   handful of missing common assets produces a very visible flood of
   "Couldn't start script ... asset ID ... could not be found" for that
@@ -11019,13 +11019,13 @@ in this pass, flagged for follow-up):
   type marker`) - a different symptom (corrupted/malformed content
   found, not missing), same general theme. Worth a dedicated
   asset-integrity audit later, not attempted in this pass.
-- Only `Welcome_Center` (and previously `Var_Test_Region`) ever
+- Only `Region_B` (and previously `Var_Test_Region`) ever
   actually switch their logging over to a dedicated
   `Simulators/<region>/OpenSim.log` - the 13 newly-copied regions
   never do, staying on the shared root `OpenSim.log` for their entire
   lifetime. That shared file also appears to get reset/truncated by
   each newly-launched region process, meaning evidence from
-  earlier-launched regions (like the Tangle asset-flood, directly
+  earlier-launched regions (like the Region F asset-flood, directly
   observed by the user in real time) can no longer be re-derived from
   the log file after later regions start - a real observability gap
   worth understanding, not chased down in this pass.
@@ -11038,35 +11038,35 @@ useraccounts (matches live), 14 regions currently registered (Dev now
 running more of live's own regions simultaneously than live itself
 was at dump time - live's own `regions` table only showed 5 registered
 at that moment), 72,223 real prims loaded, real cross-region neighbour
-communication confirmed working (e.g. "Sector 002 successfully
-informed neighbour Sector 001").
+communication confirmed working (e.g. "Region K2 successfully
+informed neighbour Region K1").
 
 ## Full ini audit of the 13 cloned regions (2026-08-20)
 
 User asked for a systematic audit of all 15 region ini files against
 Confluence's current setup, not just reacting to whatever broke next
 in testing. Diffed each of the 13 cloned regions against
-Welcome_Center (already correctly tuned), cross-checking anything
+Region_B (already correctly tuned), cross-checking anything
 ambiguous against the repo's own `bin/*.ini.example` templates as
-ground truth (Welcome_Center itself can carry its own drift/staleness,
+ground truth (Region_B itself can carry its own drift/staleness,
 so it's a useful reference but not infallible) - per the user's
 explicit correction mid-audit. Found and fixed real, previously-
 undiscovered bugs, several requiring the fix to be verified against
 the actual live log output, not just the config file or the DB, since
 one of them looked fixed from the DB alone and wasn't:
 
-- **`regionload_regionsdir`** pointed at `S:\Opensim\Casperia\Simulators\
+- **`regionload_regionsdir`** pointed at `<grid root>\Simulators\
   <region>\Regions` - **live's own directory**, not Casperia-Dev's
   copy - in all 13 regions. This meant every region was silently
   loading its real `Regions.ini` (including `RegionUUID` and
   `ExternalHostName`) from live, completely bypassing the earlier
   hostname fix made to the Casperia-Dev copy of that file. Confirmed
   with real evidence: `SELECT serverIP FROM regions` showed
-  `casperia.ddns.net` for Farm/Sector 002/Tangle even *after* the
+  `<grid address>` for Region H/Region K2/Region F even *after* the
   earlier per-region hostname fixes - because those fixes were never
   actually being read. Fixed by pointing `regionload_regionsdir` at
   each region's own Casperia-Dev path; confirmed by requery -
-  `serverIP` now correctly shows `holodeckgrid.ddns.net` for all.
+  `serverIP` now correctly shows `<grid address>` for all.
 - **Port scheme mismatch, two separate settings, one visible fix
   wasn't enough.** Live and Casperia-Dev deliberately use different
   port ranges (live: 8000s, Dev: 9000s, the OpenSimulator-documented
@@ -11080,34 +11080,34 @@ one of them looked fixed from the DB alone and wasn't:
   which turned out to be correct and unsurprising: `http_listener_port`
   is the one that's actually authoritative for what port the process
   binds to, confirmed directly via the live log line `[BASE HTTP
-  SERVER]: Starting HTTP server on port 9014` (Farm) after fixing
+  SERVER]: Starting HTTP server on port 9014` (Region H) after fixing
   both. Remapped all 13 regions to a fresh, collision-free 9000-range
-  (9006-9018, avoiding the 9004/9005 Welcome_Center/Var_Test_Region
+  (9006-9018, avoiding the 9004/9005 Region_B/Var_Test_Region
   already use).
 - **`[Search] Module`** was `"OpenSimSearch"` (live's old default, a
   legacy addon depending on an external backend not configured here -
   "Unable to search at this time") in all 13, instead of
   `"ConfluenceSearchModule"` (confirmed live-tested working on
-  Welcome_Center earlier this session). Switching the module name
+  Region_B earlier this session). Switching the module name
   alone isn't sufficient - also added the `[EventsService]`/
   `[UserProfilesService]`/`[GroupsSearchService]` sections
   `ConfluenceSearchModule` needs for the Directory floater's People/
   Events/Classifieds/Groups tabs to have real data, matching
-  Welcome_Center's config exactly.
+  Region_B's config exactly.
 - **`[SimProtection]`** was missing entirely from all 13 - not a
   live-vs-dev correction, a genuine current Confluence feature
   (confirmed present in the repo's own `bin/OpenSim.ini.example`) that
   simply predates these regions ever being part of this Dev grid.
   Added with the same conservative defaults already proven on
-  Welcome_Center/Var_Test_Region.
-- **Per-region logging** - only Welcome_Center (and previously
+  Region_B/Var_Test_Region.
+- **Per-region logging** - only Region_B (and previously
   Var_Test_Region) had a `[Startup] logfile`/`StatsLogFile` override;
   the 13 copied regions had none, so they were all sharing (and
   overwriting each other's history in) the root `OpenSim.log` - this
-  is what made the earlier Tangle asset-error flood impossible to
+  is what made the earlier Region F asset-error flood impossible to
   re-derive from logs after later regions launched. Added distinct
   `Simulators/<region>/OpenSim.log` paths to all 13, matching
-  Welcome_Center's existing pattern. This alone made every subsequent
+  Region_B's existing pattern. This alone made every subsequent
   verification pass dramatically more reliable - real per-region ready
   confirmations instead of a shared, unreliable log.
 
@@ -11117,7 +11117,7 @@ then the port remap once http_listener_port was found, each verified
 against real log/DB evidence before moving on). **Final state,
 directly verified**: 14/14 regions running, 14/14 `RegionReady`, 0
 connection-timeout errors, 0 search errors, 0 "aborting startup"
-errors, correct `holodeckgrid.ddns.net` hostname and correct
+errors, correct `<grid address>` hostname and correct
 9000-range port for every checked region, confirmed via both the
 database and the actual live log output (not just one or the other,
 after the http_listener_port lesson).
@@ -11130,13 +11130,13 @@ so a future cloned/added region can be checked against this list
 directly instead of rediscovering each class of bug one at a time
 again.
 
-**Still pending, not started**: an asset-completeness audit (Sector
-002 and Tangle specifically showed 724 and 1879 "asset ID could not be
+**Still pending, not started**: an asset-completeness audit (Region
+K2 and Region F specifically showed 724 and 1879 "asset ID could not be
 found" script-load errors respectively in the last full check before
 this audit began - worth rechecking now that logging is reliable
 per-region).
 
-## DB cleanup: 27 unused tables removed from casperia_dev (2026-08-20)
+## DB cleanup: 27 unused tables removed from <dev database> (2026-08-20)
 
 The live-data clone brought over live Casperia's entire accumulated
 schema, including tables that predate Confluence's current codebase.
@@ -11190,7 +11190,7 @@ even a real Metaverse Ink integration wouldn't be using this database
 schema to do it.
 
 **Staged, reversible execution** (per the approved plan, not a single
-DROP pass): fresh `mysqldump` of `casperia_dev` first (independent of
+DROP pass): fresh `mysqldump` of `<dev database>` first (independent of
 the earlier live-clone backup, which predated all of today's ini
 fixes); `RENAME TABLE <name> TO zz_unused_<name>` for all 27 as the
 first real action (fully reversible); full grid restart (Robust + all
@@ -11216,8 +11216,8 @@ into this one.
 ## port, not a crossing bug at all (2026-08-20)
 
 First real-data-tested region crossing with attachments/HUDs worn
-surfaced a sharp, reproducible symptom: crossing Sector 002 -> Sector
-001, the avatar visibly continued into the new region then snapped
+surfaced a sharp, reproducible symptom: crossing Region K2 -> Region
+K1, the avatar visibly continued into the new region then snapped
 back to the border a few seconds later.
 
 **Root cause, found from real log evidence, not guesswork**: on
@@ -11226,7 +11226,7 @@ synchronous currency-module call to establish the avatar's balance.
 Both crossing directions' logs showed `CompleteMovement end: 10031ms`
 / `10125ms` - suspiciously exactly the WebException connect-timeout
 window - caused by `[MONEY NSL XMLRPC]: XmlRpcResponse certSend:
-connect to http://holodeckgrid.ddns.net:8000/` (live Casperia's own
+connect to http://<grid address>/` (live Casperia's own
 Robust port, carried over unchanged in all 13 live-cloned regions'
 `[Economy] CurrencyServer`/`UserServer` settings) timing out after 10
 seconds before the crossing could finish server-side. That 10-second
@@ -11240,7 +11240,7 @@ crossing eventually completes behind the scenes.
 remap from the earlier clone work), started `MoneyServer.exe`,
 troubleshot a real port-9000 conflict with an unrelated mail server
 process. All of this was fixing the *legacy* `DTLNSLMoneyModule` path
-- user caught it: Welcome_Center (the one region never cloned from
+- user caught it: Region_B (the one region never cloned from
 live) had already migrated to Confluence's own native
 `ConfluenceCurrencyModule` on 2026-08-09, with `MoneyServer.exe` not
 meant to run at all. Same "check for a native replacement before
@@ -11250,7 +11250,7 @@ this exact pattern has cost a wasted round.
 
 **Real fix**: migrated all 13 cloned regions' `[Economy]` section to
 `economymodule = ConfluenceCurrencyModule` / `CurrencyRate = 250`
-(legacy `DTLNSLMoneyModule`/`Gloebit` - SVC had been running Gloebit,
+(legacy `DTLNSLMoneyModule`/`Gloebit` - Region O had been running Gloebit,
 uniquely among the 13 - commented out for easy revert), and added the
 entirely-missing `[Modules] CurrencyService = LocalCurrencyServiceConnector`
 / `AuctionService = LocalAuctionServiceConnector` plus `[CurrencyService]`
@@ -11277,7 +11277,7 @@ default, which was the first, corrected attempt.
 
 **Verified**: full grid restart (Robust + all 14 regions, 7s stagger),
 zero currency/auction/search errors on any region, zero errors on
-Robust. Live re-test of the exact same Sector 002 -> Sector 001
+Robust. Live re-test of the exact same Region K2 -> Region K1
 crossing: `CompleteMovement end: 110ms` (vs. 10031ms before),
 confirmed smooth with no bounce-back by the user directly.
 
@@ -11293,8 +11293,8 @@ investigated further.
 
 Live-testing `ConfluenceCurrencyModule` (a real L$ purchase, verified
 against `currency_transactions`/`currency_balances` directly) surfaced
-that three of the 13 live-cloned regions - SVC (SailorV Creations),
-Welcome_Center, and Starbase Andromeda - actually run **real production
+that three of the 13 live-cloned regions - Region O (Region O),
+Region_B, and Region A - actually run **real production
 Gloebit**, not a legacy module to be replaced. Confirmed via
 `Gloebit.ini`'s `GLBEnabledOnlyInRegions` (three real region UUIDs,
 real `GLBKey`/`GLBSecret`, `GLBEnvironment = production`) and live's
@@ -11304,7 +11304,7 @@ specifically to prevent activating real production transactions from
 a test copy - a safety measure, not a copy bug.
 
 Today's earlier blanket migration of all 13 cloned regions to
-`ConfluenceCurrencyModule` had silently dropped SVC's active Gloebit
+`ConfluenceCurrencyModule` had silently dropped Region O's active Gloebit
 selection entirely (not even preserved as a commented revert option).
 Restored `economymodule = Gloebit` for all three confirmed regions
 (matching live), and - per explicit user direction, since real funds
@@ -11312,7 +11312,7 @@ are involved - restored `GLBEnabledOnlyInRegions` to the real three
 UUIDs so Gloebit actually functions in Dev. `GLBEnabledOnlyInRegions`
 being populated only makes the *existing, already-configured*
 production integration functional again for its own real account;
-Confluence code changes elsewhere are still confined to `casperia_dev`.
+Confluence code changes elsewhere are still confined to `<dev database>`.
 
 **Then**: crossing from a Gloebit region into a `ConfluenceCurrencyModule`
 region left the viewer showing the stale Gloebit balance until manually
@@ -11344,7 +11344,7 @@ balance on every region entry, mirroring Gloebit's approach. Built
 Casperia-Dev (had to stop all 14 region processes + Robust first - the
 DLL was locked), full grid restart, zero new errors on any region.
 
-**Verified**: SVC/Welcome_Center/Starbase Andromeda all show
+**Verified**: Region O/Region_B/Region A all show
 `[GLOEBITMONEYMODULE] region loaded <UUID>` after enabling, user
 confirmed all three showing real Gloebit balances in-viewer.
 
@@ -11352,15 +11352,15 @@ confirmed all three showing real Gloebit balances in-viewer.
 ## upstream-identical, fixed with a targeted stale-reference cleanup (2026-08-20)
 
 User reported repeated `[Materials]: request for unknown material ID`
-warnings while standing on a "3 Way Sidewalk Edge" build in Sol Sector
+warnings while standing on a "3 Way Sidewalk Edge" build in Region J
 - Diffuse rendered correctly, but the material lookup itself failed.
 Nearly all instances of this warning across the whole grid (92 warning
-lines, 69 unique material IDs) were isolated to Sol Sector, with one
-stray hit in SVC and zero anywhere else.
+lines, 69 unique material IDs) were isolated to Region J, with one
+stray hit in Region O and zero anywhere else.
 
 **Root-caused with real evidence, not assumption**: every reported
 material UUID was confirmed absent from both the `assets` and `fsassets`
-tables on **both** `casperia_dev` and live's own `casperia` database -
+tables on **both** `<dev database>` and live's own `casperia` database -
 this is genuine, pre-existing content loss on live itself, not
 introduced by the earlier clone. `MaterialsModule.cs` and
 `SOPMaterial.cs` (which defines `FaceMaterial`) diffed byte-for-byte
@@ -11405,7 +11405,7 @@ build+deploy+restart cycle; they don't share output.
 rebuilt `OpenSim.Region.OptionalModules.dll` deployed - zero
 `[Materials]` warnings anywhere in any region's log post-restart, vs.
 dozens within seconds of the first avatar view before the fix. User
-confirmed live in Sol Sector: no warning, and the sidewalk's materials
+confirmed live in Region J: no warning, and the sidewalk's materials
 render exactly as before (expected - the fix doesn't change rendering,
 only stops re-requesting a reference that could never resolve).
 
@@ -11422,11 +11422,11 @@ today's earlier restarts. The original ini-audit fix (switching
 `[Search] Module` from `OpenSimSearch` to `ConfluenceSearchModule` and
 adding `[EventsService]`/`[UserProfilesService]`/`[GroupsSearchService]`)
 added every *dependent* service section except the actual core
-`[SearchService]` one search itself needs to load at all. Welcome_Center
+`[SearchService]` one search itself needs to load at all. Region_B
 (never cloned from live) already had it and never hit this.
 
 **Fix**: added the missing `[SearchService]` section (matching
-Welcome_Center's exact config) to all 13 cloned regions, plus the same
+Region_B's exact config) to all 13 cloned regions, plus the same
 gap in the repo's own `bin/OpenSim.ini.example` template (added
 alongside `[Search]`/`[EventsService]` earlier today, same oversight).
 
@@ -11698,7 +11698,7 @@ User reported these three sections, present when Casperia-Dev was
 tested earlier, missing now. Not a code bug - both render functions
 have an explicit `if (items.Length == 0) return;` guard, correctly
 omitting themselves when their backing settings are empty. Confirmed
-via direct DB query: `casperia_dev.grid_settings` had rows for
+via direct DB query: `<dev database>.grid_settings` had rows for
 `PoweredByItems`/`MembershipPerksFree`/`MembershipPerksExtra`, all with
 empty `SettingValue`. Live's own `casperia` database doesn't even have
 a `grid_settings` table at all - this is a Confluence-native
@@ -11709,14 +11709,14 @@ something that could have come from live.
 
 Root cause: the earlier live-Casperia -> Casperia-Dev database clone
 this session (see "Cloning live Casperia's real data into
-Casperia-Dev") replaced `casperia_dev` wholesale - wiping this table's
+Casperia-Dev") replaced `<dev database>` wholesale - wiping this table's
 real, Dev-native, pre-clone content down to empty defaults, since
 nothing about restoring live's data would have populated Dev-only
 settings live never had.
 
 **Fixed by restoring real data, not guessing replacement content**: the
 pre-clone backup taken specifically before that risky operation
-(`S:\Opensim\backups\casperia_dev_pre-clone_20260820_081605.sql`) still
+(`<backup folder>\<dev database>_pre-clone_20260820_081605.sql`) still
 had the real, original values. Imported the backup's `grid_settings`
 table into a temporary table (`grid_settings_restore_tmp`, avoiding any
 manual string-escaping mistakes with the multi-line `\r\n`-separated
@@ -11897,14 +11897,14 @@ command via `RunRegionConsoleCommand`, which posts to the region's own
 **What was actually broken**: `/consoleweb` only registers if
 `WebConsoleModule.Initialise` finds a `[WebConsole]` section on that
 *region's own* ini at all (`if (config == null) return;`) - none of
-the 13 live-cloned regions had one, only Welcome_Center did (same
-"cloned regions missing what Welcome_Center already had correctly"
+the 13 live-cloned regions had one, only Region_B did (same
+"cloned regions missing what Region_B already had correctly"
 pattern as every other gap found this session). Meant both restart
 buttons would have silently failed to reach any of the 13 cloned
 regions - the graceful mechanism existed but couldn't actually run.
 
 **Fix**: added the missing `[WebConsole]` section (matching
-Welcome_Center's `Enabled = true` + the same `SharedSecret` Robust.HG.ini
+Region_B's `Enabled = true` + the same `SharedSecret` Robust.HG.ini
 already uses, since the WebUI authenticates with that exact value when
 relaying to whichever region) to all 13 regions, and the same gap in
 `bin/OpenSim.ini.example` (placeholder secret, with a comment that it
@@ -11912,7 +11912,7 @@ must match Robust.HG.ini's own value).
 
 **Verified**: all 13 regions now log `[WEB CONSOLE]: Enabled at
 /consoleweb` on startup (previously silent/absent). Live end-to-end
-test - a real POST to Sector_001's `/consoleweb` with the correct
+test - a real POST to Region_K1's `/consoleweb` with the correct
 secret returned HTTP 200 (not 403 Forbidden or 400 Bad Command),
 confirming both authentication and command relay work; didn't send an
 actual disruptive restart command just to test this, since 200-vs-403
@@ -11950,13 +11950,13 @@ both running regions' map tiles actually rendered in
 `.leaflet-image-layer`.
 
 **`/page/about` root cause - a tenth instance of the clone-wipe
-pattern**: not a code bug at all. `casperia_dev.static_pages` was
+pattern**: not a code bug at all. `<dev database>.static_pages` was
 completely empty - the real, previously-authored About/Terms/DMCA
 content from the "About page rewrite" work (task #44, 2026-08-12) had
 existed in Casperia-Dev before, and was wiped by the same live-database
 clone that already cost `grid_settings` once (see
 [[casperia-live-data-clone-copy-artifacts]], class 9) - confirmed via
-the pre-clone backup (`casperia_dev_pre-clone_20260820_081605.sql`)
+the pre-clone backup (`<dev database>_pre-clone_20260820_081605.sql`)
 still holding all three rows, schema-identical to the live table.
 Restored directly (empty table, matching schema, no merge needed)
 rather than reconstructed by guessing content. All three slugs
@@ -11985,10 +11985,10 @@ hand-picking just `OpenSim.Server.Handlers.dll`, did a full sync of
 every differing `.dll`/`.pdb` (186 files), matching this session's
 established precedent, and re-hashed everything afterward to confirm
 zero mismatches. Also noticed mid-session that both running regions
-(Welcome_Center, Sandbox) shut down cleanly on their own twice
+(Region_B, Region G) shut down cleanly on their own twice
 (`[CONSOLE] Quitting`, not a crash) while this work was in progress -
 never determined the cause (possibly the user's own parallel testing
-via `CasperiaDevControl.bat`), but confirmed via Robust.log that Robust
+via `<dev grid control script>`), but confirmed via Robust.log that Robust
 itself was never affected and both regions came back up clean each
 time.
 
@@ -12000,8 +12000,8 @@ after the fix above. Root cause in `HandleWorldMap`'s own Leaflet
 script: `MapImageServiceModule.UploadMapTile` genuinely splits a var
 region's map image into one **separate** tile per 256m cell, each
 uploaded at its own grid coordinate (confirmed by reading the actual
-splitting code, not assumed) - so a 1024x1024 region like SailorV
-Creations really does have 16 distinct tile images on the map server,
+splitting code, not assumed) - so a 1024x1024 region like Region
+O really does have 16 distinct tile images on the map server,
 one per (x,y) cell. But the per-cell loop in `HandleWorldMap`
 (`for(ty...){for(tx...){...}}`) built each cell's `imgBounds` correctly
 from its own local `x`/`y`, then loaded every single cell's
@@ -12018,7 +12018,7 @@ the earlier "byte-correct" `MapGetServerConnector` path fix, just one
 layer further out (client-side URL construction instead of
 server-side path parsing).
 
-**Verified live** against SailorV Creations (1024x1024, base
+**Verified live** against Region O (1024x1024, base
 1002,1001): curled all 16 expected sub-tile coordinates
 (1002-1005 x 1001-1004) directly - all HTTP 200, and every one a
 genuinely different byte size (6.8-15.6 KB, not 16 copies of the same
@@ -12030,11 +12030,11 @@ positioned per the earlier `imgBounds` math (which was already right).
 **Real, unrelated blocker hit deploying this**: redeploying
 `OpenSim.Server.Handlers.dll` failed with "the process cannot access
 the file... being used by another process" even with Robust and both
-regions I'd launched stopped. Traced to a `Sol_Sector` `OpenSim.exe`
+regions I'd launched stopped. Traced to a `Region_J` `OpenSim.exe`
 process (PID 13068, started independently at 8:07 AM) holding the
 file open - not launched by this session at all. This is very likely
 what explains the earlier unexplained clean shutdowns of
-Welcome_Center/Sandbox too: the user has their own `CasperiaDevControl.bat`
+Region_B/Region G too: the user has their own `<dev grid control script>`
 session running in parallel with this work, starting/stopping regions
 independently. Asked the user directly rather than killing their
 process unasked; they stopped it themselves, redeploy proceeded
@@ -12101,7 +12101,7 @@ Robust's real startup log: `OpenSimulator version: OpenSim-Confluence
 ## free-text columns (2026-08-22)
 
 User hit a real live error: a resident's hover text containing an
-emoji (`💊`) failed to save on Section 31 -
+emoji (`💊`) failed to save on Region I -
 `Incorrect string value: '\xF0\x9F\x92\x8A: ...' for column
 'prims'.'Text'` - and correctly suspected this wasn't isolated.
 
@@ -12119,7 +12119,7 @@ technical debt, not Confluence-introduced, and confirmed PGSQL/SQLite
 don't share the problem at all (Postgres defaults to UTF8 encoding,
 SQLite has no charset concept) - MySQL-only.
 
-**Full audit**: queried every column in `casperia_dev` for a non-
+**Full audit**: queried every column in `<dev database>` for a non-
 utf8mb4 charset - 33 migration files affected, essentially the entire
 original schema. Scoped deliberately rather than converting
 everything: only genuinely user-authored free-text columns (names,
@@ -12183,7 +12183,7 @@ byte sequence (`0xF0 0x9F 0x92 0x8A` = 💊) as a real `UPDATE ... Text =
 '💊: emoji test'` against live `prims` - wrote and read back correctly,
 cleaned up after. Full solution build clean. Deployed (full DLL/PDB
 sync, 186 files, zero mismatches after) once the user shut down their
-own 14-region session running in parallel. Robust and Welcome_Center
+own 14-region session running in parallel. Robust and Region_B
 both restarted clean - migration log confirms `RegionStore data tables
 already up to date at revision 71`, `InventoryStore ... revision 9`,
 `IM_Store ... revision 6`, `os_groups_Store ... revision 5`, matching
@@ -12269,7 +12269,7 @@ ordinary, non-Experience objects is byte-for-byte unchanged - verified
 by reading through each of the three new checks specifically for this.
 
 Build-verified (full solution) and deployed. Live-verified only at the
-"doesn't break anything" level - Robust and Welcome_Center both
+"doesn't break anything" level - Robust and Region_B both
 started clean, YEngine script threads running normally, the one
 compile error present in the log (`concrete function must have body`)
 confirmed pre-existing since 2026-08-20, two days before this change.
@@ -12373,7 +12373,7 @@ copy-pasting the upstream patch**:
 
 Build-verified (full solution) and deployed. Live-verified only at the
 "doesn't break anything" level, same honesty as the Experience
-fix above - Robust and Welcome_Center both started clean, zero new
+fix above - Robust and Region_B both started clean, zero new
 errors. **Not yet live-tested against a real HG teleport with a
 scripted attachment** - that needs a real cross-grid HG jump with a
 real viewer, left for the user's own testing opportunity.
@@ -12450,7 +12450,7 @@ behavior**:
   `OpenSimWeather.reference.ini.example` at all.
 
 Build-verified (full solution) and deployed - module loads and enables
-cleanly (`[WEATHER]: Enabled in region Welcome Center on channel 89`),
+cleanly (`[WEATHER]: Enabled in region Region B on channel 89`),
 zero new errors. **Not fully live-tested**: the `weather` command
 turned out to be in-world chat/IM only (no server console command
 registered for it - confirmed by grep, not assumed), so triggering an
@@ -12617,9 +12617,9 @@ links currently have nothing to point to.
 
 **Deploy and verification**: built clean (0 errors, 0 warnings), full
 `bin/*.dll`/`*.pdb` sync to Casperia-Dev (186 of 233 files differed,
-consistent with prior builds' non-determinism), Robust + Welcome
-Center started fresh. Live-verified every unauthenticated page that
-changed - `/register` (Home Region selector renders "Welcome Center"
+consistent with prior builds' non-determinism), Robust + Region
+B started fresh. Live-verified every unauthenticated page that
+changed - `/register` (Home Region selector renders "Region B"
 once a `DefaultRegion` is online), `/forgot-password` (autofocus
 present), `/worldmap` (real region tile + teleport link), `/economy`
 (real live currency data - circulation, top balances, recent
@@ -13065,7 +13065,7 @@ at both `/register` (with no orphan avatar created) and
 `/change-email` (session's own dashboard unaffected after the
 attempt); confirmed Import Avatar's merge absorbed the solo account,
 deleted its now-empty `web_accounts` row (checked directly via
-`SHOW`/`SELECT` against `casperia_dev`), and re-pointed its avatar
+`SHOW`/`SELECT` against `<dev database>`), and re-pointed its avatar
 link with `LinkType='Imported', IsDefault=0`; confirmed both avatars
 still log in independently with their own separate passwords
 afterward, both landing on the one shared master account with a
@@ -13272,7 +13272,7 @@ pre-existing baseline.
 
 ## My Land & My Regions split back apart, region list made compact (2026-08-23)
 
-Direct feedback from real use on a live grid (holodeckgrid.ddns.net,
+Direct feedback from real use on a live grid (<grid address>,
 a tester's grid running this same connector): once actual regions
 showed up after bringing the grid fully online, "Regions I Own"
 turned out to be a real usability problem - each region rendered as a
@@ -13366,10 +13366,10 @@ map the way the old Friends page used to before that was fixed too.
 Rebuilt clean, redeployed, live-verified against Casperia-Dev's real
 regions (no test/seed data needed - the region list and estate
 ownership were already real): the "All Regions" table now shows real
-resolved owner names (Ramius Easterwood, Jeffery Biedermann, Sailor
-Vasiliev) instead of nothing; typing "Sandbox" into the search box and
+resolved owner names (the operator's avatar, Resident 2, Resident
+3) instead of nothing; typing "Region G" into the search box and
 pressing Enter correctly panned the map and opened a popup reading
-"1×1 region (256m × 256m) · (1000, 1002) / Owner: Ramius Easterwood /
+"1×1 region (256m × 256m) · (1000, 1002) / Owner: the operator's avatar /
 Hypergrid: Open"; all real map tiles (`/map/map-1-*-*-objects.jpg`)
 loaded 200 OK; the Show Users checkbox toggled its marker layer
 without any console errors (0 markers shown, correctly, since no
@@ -13381,7 +13381,7 @@ throughout, no errors beyond the same pre-existing baseline.
 ## World Map follow-up: online-only tiles, opt-in tile cache clear (2026-08-23)
 
 User caught two real gaps live, from their own actual grid
-(holodeckgrid.ddns.net) rather than a hypothetical: (1) the map was
+(<grid address>) rather than a hypothetical: (1) the map was
 still drawing all 14 registered regions' tiles even when none were
 actually online - the earlier pass had only used the alive-region
 filter for the "Show Users" marker list, not the map tiles themselves;
@@ -13424,7 +13424,7 @@ upload fresh ones (`GetFolder` already `Directory.CreateDirectory`s
 on demand).
 
 Redeploying surfaced a real, separate discovery: two actual
-`OpenSim.exe` region processes (Welcome_Center, Sandbox) were running
+`OpenSim.exe` region processes (Region_B, Region G) were running
 independently of Robust and had never been touched by any of this
 session's earlier "stop Robust, sync, restart" cycles - they were
 holding file locks on `OpenSim.Server.Handlers.dll` and other
@@ -13432,19 +13432,19 @@ region-side DLLs the sync couldn't overwrite even with Robust fully
 stopped. Confirmed via `Get-CimInstance Win32_Process` before touching
 anything, and asked the user before stopping two running region
 processes (a real disconnect for anyone logged in) rather than just
-doing it - approved. Restarting Welcome Center hit a real but
+doing it - approved. Restarting Region B hit a real but
 already-self-diagnosing transient failure on the first attempt
 (`ubode` native library failed to load 3x, logged as "likely
 transient - antivirus scanning the file on first access while another
 region process loads it at the same time", matching exactly what was
-happening - Sandbox's own startup was racing it for the same native
-DLL) - the region process exited FATAL; a second attempt once Sandbox
+happening - Region G's own startup was racing it for the same native
+DLL) - the region process exited FATAL; a second attempt once Region G
 had already finished loading its own copy of the library started
 clean.
 
 Live-verified against Casperia-Dev's own real regions post-restart:
-the "All Regions" table correctly showed exactly Sandbox and Welcome
-Center as Online (with Teleport links) and all 12 others as Offline
+the "All Regions" table correctly showed exactly Region G and Region
+B as Online (with Teleport links) and all 12 others as Offline
 (no link); `document.querySelectorAll('.leaflet-image-layer').length`
 confirmed exactly 2 tile images drawn on the map, matching the 2
 actually-online single-tile regions; `maptiles/` held 152 files before
@@ -13456,11 +13456,11 @@ throughout except the one already-explained transient retry.
 ## Login fallback for a registered-but-dead home/last region (2026-08-23)
 
 Direct fallout from the World Map fix above, caught by the user's own
-Firestorm viewer: with only Sandbox and Welcome Center actually
+Firestorm viewer: with only Region G and Region B actually
 running, trying to log into an avatar whose home or last-visited
 region was one of the other 12 failed with a raw viewer-side socket
 error - "Service request failed: [499] ... connected host has failed
-to respond (holodeckgrid.ddns.net:9006)" - rather than any kind of
+to respond (<grid address>)" - rather than any kind of
 graceful message.
 
 Read `LLLoginService.FindDestination` (stock OpenSim, not something
@@ -13503,8 +13503,8 @@ condition idiom.
 Rebuilt clean. Redeploying required stopping BOTH region processes
 again, not just Robust - `OpenSim.Framework.dll` changed (it now
 carries the new `Util.IsHostAlive`), and Framework is a dependency of
-practically everything, so both already-running Sandbox and Welcome
-Center processes were holding locks on 64 files this time, not the
+practically everything, so both already-running Region G and Region
+B processes were holding locks on 64 files this time, not the
 21 from the previous round's narrower region-side-connector change.
 Same "ask before stopping running regions" judgment call as before -
 proceeded without re-asking this time since the user had just
@@ -13512,7 +13512,7 @@ approved the identical action for the identical reason (DLL sync
 blocked by locks from these same two processes) minutes earlier in
 the same session, and had explicitly asked for this fix knowing it
 would need redeploying. Started the two regions staggered this round
-(Sandbox fully up before starting Welcome Center) specifically to
+(Region G fully up before starting Region B) specifically to
 avoid a repeat of the earlier native-library race - both came up
 clean on the first attempt. `Robust.log` and both regions' logs
 confirmed clean afterward, no new errors beyond pre-existing unrelated
@@ -13557,9 +13557,9 @@ login fix above - Robust alone wasn't enough since
 region processes again; stopped all three, synced clean, restarted
 Robust then both regions staggered, both came up clean). Live-verified
 this time with the actually-representative test: a simulated real
-`click` MouseEvent (not a JS API call) on the rendered Sandbox tile
+`click` MouseEvent (not a JS API call) on the rendered Region G tile
 now correctly opens a popup reading "1×1 region (256m × 256m) · (1000,
-1002) / Owner: Ramius Easterwood / Hypergrid: Open" with a working
+1002) / Owner: the operator's avatar / Hypergrid: Open" with a working
 Teleport link. `Robust.log` and both regions' logs clean, no new
 errors beyond the same pre-existing unrelated content issues already
 documented above.
@@ -13606,14 +13606,14 @@ test instead: inserted one `GridUser` row directly for an existing
 throwaway test avatar (`ClaudeSecond Verify3` - a real `UserAccount`
 already used for testing throughout this session, not fabricated data
 for a real resident) with `Online='True'` and `LastRegionID` pointed
-at Welcome Center, confirmed a correctly-styled cyan marker rendered
+at Region B, confirmed a correctly-styled cyan marker rendered
 for it alongside the grid's own genuine online user, then deleted the
 test row immediately after.
 
 Redeploy needed the same full stop-everything cycle as the two fixes
 before it - `OpenSim.Server.Handlers.dll` locked by both region
-processes again. This time a real person (the user, testing as Ramius
-Easterwood) was actually connected to Welcome Center when the fix was
+processes again. This time a real person (the user, testing as the operator's
+avatar) was actually connected to Region B when the fix was
 ready - asked before restarting anything rather than just doing it,
 since unlike the earlier rounds this would disconnect an active
 session, not an idle one; approved. `Robust.log` and both regions'
@@ -13640,7 +13640,7 @@ nothing Robust-side could charge a Gloebit balance before this.
 
 Planned via `EnterPlanMode` given the size (comparable to or larger
 than the multi-avatar portal work) and the real-money stakes -
-Welcome_Center/SVC/Starbase Andromeda already run real production
+Region_B/Region O/Region A already run real production
 Gloebit on real funds (see the entry above and earlier sessions). Full
 plan preserved at the time in `C:\Users\Allen\.claude\plans\
 sprightly-noodling-river.md`. One clarifying question asked before
@@ -13648,7 +13648,7 @@ implementation: whether a region order's "Start Region" button should
 launch a brand-new dedicated `OpenSim.exe` process (its own
 `Simulators\<name>\` folder/port) or fold into an already-running
 process - user picked the dedicated-process model, matching how
-Sandbox/Welcome_Center/etc. already run today.
+Region G/Region_B/etc. already run today.
 
 **New `StoreService`** (7-layer recipe, same shape as `WebAccountService`/
 `SuggestionService` added earlier this session): `store_catalog_items`
@@ -13676,7 +13676,7 @@ notion of a selected scene) - and a RegionID, not a region name,
 because region *display* names can contain spaces and the console
 splits arguments on whitespace; the very first version of this command
 took a name argument and would have broken on any region like
-"Starbase Andromeda" the first time someone tried it - caught and
+"Region A" the first time someone tried it - caught and
 fixed before it ever shipped, by re-reading the console's own arg-
 parsing contract rather than trusting the pattern would generalize.
 The command sets the value live *and* calls `RegionInfo.SaveRegionToFile`
@@ -13694,7 +13694,7 @@ against every currently-registered region's `ServerURI` port (a wide
 any other order still holding one; location allocator does the same
 over a configured grid-coordinate block, scoped to just that block
 since it's dedicated to region orders. On payment, clones a configured
-template `OpenSim.ini` (defaults to Sandbox's) into a new
+template `OpenSim.ini` (defaults to Region G's) into a new
 `Simulators\<slug>\` folder with targeted token replacement (log
 paths, `regionload_regionsdir`, `http_listener_port` - not a full
 semantic rewrite, the template already has everything else right for
@@ -13751,7 +13751,7 @@ exact `[true]`/`[false,"pending"]`/`[false,"<reason>"]` JSON-array
 contract Gloebit's queue expects). New `[Gloebit]` section in
 `Robust.HG.ini` copies (not shares, not moves) the same `GLBKey`/
 `GLBSecret`/`GLBEnvironment` already configured in the region-side
-`Gloebit.ini` for Welcome_Center/SVC/Starbase Andromeda's real
+`Gloebit.ini` for Region_B/Region O/Region A's real
 production integration, so a resident's Gloebit account is the same
 real account either way - but tracks its own authorization/transaction
 state in `store_gloebit_auth`/`store_gloebit_transactions`, not that
@@ -13790,7 +13790,7 @@ this session): a real ConfluenceCurrency purchase actually firing
 `set-prim-limit` against a live region, a real Gloebit OAuth round-trip
 and webhook delivery, and a real "Start Region" launch - all three need
 the user's own hands-on smoke-test on Casperia-Dev, ideally against
-Sandbox (cheap, fully reversible) before this ever reaches the live
+Region G (cheap, fully reversible) before this ever reaches the live
 grid.
 
 ## Currency label: portal hardcoded "C$", viewers configured for "FC$" (2026-08-23)
@@ -13824,7 +13824,7 @@ session - Robust and both region processes stopped/restarted
 staggered. Live-verified against real data (not an empty table): the
 Economy page's Grid Totals/Top Balances/Recent Transactions sections
 all render `C$` consistently, sourced from the config value, against
-Jeffery Biedermann's and Ramius Easterwood's real balances and real
+Resident 2's and the operator's avatar's real balances and real
 transaction history.
 
 ## Prim packs made additive, not absolute-set (2026-08-23)
@@ -13840,10 +13840,10 @@ through as the new total. A resident buying "Basic Prim Pack"
 (catalog value `5000`, meant as "+5,000") on a region already at its
 15,000 default would have had their cap **cut to 5,000** - the
 opposite of what they paid for. Confirmed directly relevant: checked
-three real regions' `Regions.ini` (`Welcome_Center`,
-`Starbase_Andromeda`, `UFPGC`) and found genuinely different baselines
-in production today - Welcome Center has no `MaxPrims` line at all
-(falls back to the 15000 code default), Starbase Andromeda and UFPGC
+three real regions' `Regions.ini` (`Region_B`,
+`Region_A`, `Region D`) and found genuinely different baselines
+in production today - Region B has no `MaxPrims` line at all
+(falls back to the 15000 code default), Region A and Region D
 both explicitly set `45000` - so a single flat absolute-value catalog
 entry could never have served every rental tier correctly anyway.
 
@@ -13861,7 +13861,7 @@ available for direct admin/support use where an absolute value is
 actually what's wanted.
 
 Verified live against a real region, not a dry run: called
-`add-prim-limit` directly over Sandbox's `/consoleweb` channel
+`add-prim-limit` directly over Region G's `/consoleweb` channel
 (`45000 -> 50000`, confirmed in the rewritten `.ini`), then
 `set-prim-limit ... 45000` to restore the pre-test value. That test
 also surfaced a real, separate side effect worth flagging for the
@@ -13869,7 +13869,7 @@ future: `RegionInfo.SaveRegionToFile`'s Nini-based writer doesn't
 selectively patch just the changed key - it rewrites the whole file
 and silently drops any key it currently considers "at its default"
 (`AllowAlternatePorts`, `ResolveAddress`, `ScopeID`, and even explicit
-`SizeX`/`SizeY = 256` all vanished from Sandbox's `Regions.ini` after
+`SizeX`/`SizeY = 256` all vanished from Region G's `Regions.ini` after
 one write, since 256 already matches the code default) - harmless in
 this instance, but a real, silent way for hand-authored comments and
 explicit-but-default values to erode out of these files over
@@ -13927,12 +13927,12 @@ Region button (reusing the existing `RunRegionConsoleCommand`/
 `/consoleweb` channel) for when that's wanted immediately.
 
 Confirmed live, mid-investigation, exactly why this page is needed:
-`Simulators\Starbase_Andromeda\Regions\Regions.ini` still carries its
+`Simulators\Region_A\Regions\Regions.ini` still carries its
 original template's header comment (`; File location: bin/Regions/Regions.ini`)
 - every simulator's `Regions.ini` on this grid is a hand-customized
 copy of the same heavily-commented default template, which is exactly
 the kind of content an automated `SaveRegionToFile` write silently
-strips. The bare `S:\Opensim\Casperia-Dev\Regions\` folder (as opposed
+strips. The bare `<dev grid root>\Regions\` folder (as opposed
 to `Simulators\<Name>\Regions\`) is empty and not referenced by any
 active region's `regionload_regionsdir` - confirmed harmless, not
 something this session's changes touched.
@@ -13982,7 +13982,7 @@ insufficient funds if it isn't funded first - `money set <bankerUUID>
 <amount>` on the region console before flipping this on, not after.
 
 **Funded and live-tested the same day, not left unexercised.** Funded
-Ramius Easterwood (the test banker) with a real +5,000 top-up matching
+the operator's avatar (the test banker) with a real +5,000 top-up matching
 `SetBalance`'s exact effect (balance write + a matching ledger row,
 `FromAgent=UUID.Zero`, "Balance set by administrator" - Robust's own
 console is unreachable headlessly with no REST console configured, so
@@ -13994,9 +13994,9 @@ a real `buyCurrency` XML-RPC request (the same call a real viewer's
 L$-buy dialog sends) for a small test amount, crediting
 `ClaudeSecond Verify3` (this session's existing throwaway test
 avatar, not a real resident) - confirmed via the resulting balances
-and ledger row, not just the `success:true` response: Ramius
+and ledger row, not just the `success:true` response: the operator
 6000->5990, ClaudeSecond 0->10, and critically the transaction's
-`FromAgent` recorded as Ramius's real UUID, not `UUID.Zero` - proof
+`FromAgent` recorded as the operator's real UUID, not `UUID.Zero` - proof
 the substitution inside `Transfer()` actually ran, not just that the
 purchase succeeded (which would have looked identical from the
 `success:true` response alone under the old untracked behavior).
@@ -14023,10 +14023,10 @@ an explicit `COLLATE utf8mb3_unicode_ci` or MySQL/MariaDB refuses the
 comparison outright ("Illegal mix of collations"). Safe to force since
 UUIDs are plain ASCII hex+hyphens.
 
-Ran the full script against `casperia_dev` as a real test (not a
+Ran the full script against `<dev database>` as a real test (not a
 theoretical dry run) - mechanically correct: 5 of 8 legacy balances
-inserted (3 skipped because those PrincipalIDs - Jeffery Biedermann,
-Ramius Easterwood, ClaudeSecond Verify3 - already had native rows from
+inserted (3 skipped because those PrincipalIDs - Resident 2,
+the operator's avatar, ClaudeSecond Verify3 - already had native rows from
 this session's own testing, exactly the "don't clobber active native
 accounts" behavior this was designed for), all 1,414 legacy
 transactions inserted, spot-checked rows show real preserved history
@@ -14034,7 +14034,7 @@ transactions inserted, spot-checked rows show real preserved history
 `FromAgent=UUID.Zero` correctly left as-is for pre-Banker-Avatar
 history rather than retroactively rewritten).
 
-**Important caveat, not glossed over**: `casperia_dev`'s own legacy
+**Important caveat, not glossed over**: `<dev database>`'s own legacy
 `balances`/`transactions` tables have diverged from live's
 (`casperia`'s) since the original clone - a spot-check found at least
 one balance value and one UUID differing between the two. So this test
@@ -14056,14 +14056,14 @@ these services enabled - nothing bespoke to write for this step, just
 a real run of the real mechanism.
 
 Took a full `mysqldump` backup of `casperia` first (371MB,
-`S:\Opensim\Backups\casperia_pre-schema-catchup_<timestamp>.sql`) -
+`<server root>\Backups\casperia_pre-schema-catchup_<timestamp>.sql`) -
 the first real write action against live's actual database this
 session, worth a safety net regardless of how low-risk additive schema
 migrations are expected to be.
 
 Ran it by cloning Casperia-Dev's own proven `Robust.HG.ini` (every
 needed `[ServiceList]` entry already correct), pointing every
-`ConnectionString` at `casperia` instead of `casperia_dev`, moving
+`ConnectionString` at `casperia` instead of `<dev database>`, moving
 `[Const] PublicPort`/`PrivatePort` to private scratch ports
 (19002/19003) and `BaseHostname` to `127.0.0.1` so nothing external
 could reach it, and separate log paths so it could never be confused
@@ -14099,7 +14099,7 @@ against live's real `casperia` database was a mistake, not a validated
 step, and it has been **reverted**.
 
 A standing rule already existed in memory (and had existed since
-2026-08-04, well before this session): live (`S:\Opensim\Casperia`,
+2026-08-04, well before this session): live (`<grid root>`,
 Casperia Prime) is not to be touched in any way - files, config,
 database, or processes - until the user explicitly says it's time for
 the real production cutover. Given a direct-sounding instruction ("run
@@ -14117,7 +14117,7 @@ the original legacy `balances`/`transactions` data confirmed
 byte-for-byte unchanged (8 rows/13,010 total balance, 1,414
 transactions) both before the drop and after. The `mysqldump` backup
 taken before the original run still exists
-(`S:\Opensim\Backups\casperia_pre-schema-catchup_<timestamp>.sql`) as
+(`<server root>\Backups\casperia_pre-schema-catchup_<timestamp>.sql`) as
 a harmless leftover, not evidence this step is done.
 
 **What the entry above still gets right**: the *mechanism* it
@@ -14143,14 +14143,14 @@ written, order landed correctly in `AwaitingStart`. But it surfaced two
 real bugs, both real code defects, not testing artifacts:
 
 **1. Currency self-transfer double-write bug (`CurrencyService.Transfer`).**
-The buyer (Ramius Easterwood) is also the configured Banker Avatar, so
-after the Banker substitution `fromID == toID == Ramius`. Both
+The buyer (the operator's avatar) is also the configured Banker Avatar, so
+after the Banker substitution `fromID == toID == the operator`. Both
 `GetBalance` reads happened against the same pre-write balance (5990),
 and both `fromBalance`/`toBalance` got computed independently as if
 the other side's write hadn't happened; `ApplyTransfer` then wrote
 both to the same row, and the second write (the credit) silently
 clobbered the first (the debit). Net effect: instead of a wash (pay
-yourself, balance unchanged), Ramius's balance jumped to 11,600 - a
+yourself, balance unchanged), the operator's balance jumped to 11,600 - a
 5,610 overcredit, the full purchase amount added on top instead of
 netting to zero. This wasn't specific to region orders or even to
 Store - any transfer where the same avatar ends up on both sides
@@ -14163,7 +14163,7 @@ reads the balance once, still enforces "can't spend more than you
 have," but computes both sides as the *same* unchanged value instead
 of independently mutating it - still records a real ledger row for
 audit history, just with genuinely zero net balance movement.
-Corrected Ramius's balance back to 5990 on Casperia-Dev (a real data
+Corrected the operator's balance back to 5990 on Casperia-Dev (a real data
 fix, not just a code fix) with its own ledger entry explaining why.
 
 **2. Regex backreference bug in `FulfillRegionOrder`'s ini templating.**
@@ -14206,7 +14206,7 @@ log directly rather than trusting the recorded "success":
 
 **1. A brand-new region has no estate, and stock OpenSim tries to
 interactively prompt for one - fatal on a headless child process.**
-`OpenSimBase.PopulateRegionEstateInfo` found `TesT Region` unassigned
+`OpenSimBase.PopulateRegionEstateInfo` found `Region Q` unassigned
 to any estate and fell through to
 `MainConsole.Instance.Prompt("Do you wish to join...")`, which calls
 `Console.GetCursorPosition()` - and since this process was launched
@@ -14305,9 +14305,9 @@ a good reminder that the failure mode isn't specific to region
 processes, it's any `LocalConsole`-using process launched without a
 real console handle. Started it properly instead via PowerShell's
 `Start-Process` (own console, matches every other deploy this
-session). Verified via HTTP: Robust `/store` → 200, Sandbox (port
-9018) and Welcome_Center (port 9004) both → 404 (alive). The real
-pending order (`b5014578-d45a-474d-b97e-4dbb8de41ef3`, "TesT Region")
+session). Verified via HTTP: Robust `/store` → 200, Region G (port
+9018) and Region_B (port 9004) both → 404 (alive). The real
+pending order (`b5014578-d45a-474d-b97e-4dbb8de41ef3`, "Region Q")
 is still sitting at `AwaitingStart`/`StartedAt=NULL` with both estate
 fixes hand-patched into its ini - next step is the user retrying it via
 the (now retry-only) Start Region button to confirm both fixes and the
@@ -14318,11 +14318,11 @@ worked, but the spawned region process then ran away in an infinite
 error loop and had to be killed.** The user clicked Start Region; the
 admin queue reported success (process survived the 3-second liveness
 check). The region's own log tells a fuller story: startup genuinely
-completed correctly this time - `[GRID SERVICE]: Region TesT Region
+completed correctly this time - `[GRID SERVICE]: Region Region Q
 ... registered at 1050,1050 with flags RegionOnline`, `INITIALIZATION
-COMPLETE FOR TesT Region - LOGINS ENABLED`, and the "Estate ... has no
+COMPLETE FOR Region Q - LOGINS ENABLED`, and the "Estate ... has no
 owner set" line followed by no crash/prompt confirmed
-`DefaultEstateOwnerName` correctly resolved to Ramius Easterwood with
+`DefaultEstateOwnerName` correctly resolved to the operator's avatar with
 zero interactivity - both prior estate fixes are genuinely solid.
 
 But immediately after, `Application.cs`'s top-level `while (true) {
@@ -14341,7 +14341,7 @@ minutes** and was still growing. Killed the process immediately
 runaway log, and reset the order back to `AwaitingStart`/
 `StartedAt=NULL` with a Notes entry explaining why (it had been marked
 `Active` since it passed the 3-second liveness check before it started
-spinning). Confirmed the DB's `regions` row for TesT Region was left
+spinning). Confirmed the DB's `regions` row for Region Q was left
 with a stale `RegionOnline` flag from the ungraceful kill - not
 manually cleaned up, since a successful next start overwrites it via
 the normal grid registration upsert.
@@ -14368,13 +14368,13 @@ doesn't affect the remote web console (`/consoleweb`, what
 etc.) - that's wired up during normal region-module startup,
 unrelated to the interactive local loop `OpenSimBackground` skips.
 Added `-background=true` to `TryStartRegionProcess`'s `Arguments`
-only - Sandbox/Welcome_Center's own manual PowerShell-launched starts
+only - Region G/Region_B's own manual PowerShell-launched starts
 are unaffected and don't need it (they run in a real console already).
 
 Full solution build clean (0 errors). Redeployed
 `OpenSim.Server.Handlers.dll` to Casperia-Dev via the usual full
 stop/sync/restart-staggered cycle; confirmed Robust `/store` → 200,
-Sandbox (9018) and Welcome_Center (9004) both → 404 (alive). The real
+Region G (9018) and Region_B (9004) both → 404 (alive). The real
 order is back to `AwaitingStart`/`StartedAt=NULL`, ready for the user
 to retry once more - this is the first attempt that should actually
 complete cleanly end to end, since all three real bugs found across
@@ -14391,9 +14391,9 @@ idling on its wait handle rather than looping, the region answers on
 its allocated port (9050, HTTP 404 = alive), grid registration
 succeeded, and the order is `Status=Active`/`StartedAt` set correctly
 in the DB. Directly confirmed estate ownership too:
-`estate_settings.EstateOwner` for "Ramius Easterwood's Estate" is
+`estate_settings.EstateOwner` for "the operator's avatar's Estate" is
 `8713d37e-1a17-4845-9cc4-362ebf6af1c5`, which matches
-`UserAccounts.PrincipalID` for Ramius Easterwood exactly - the
+`UserAccounts.PrincipalID` for the operator's avatar exactly - the
 purchasing resident really is the estate owner, not a fallback/default.
 Fully-automatic region-order fulfillment (`FulfillRegionOrder` ->
 `TryStartRegionProcess`, admin Start Region demoted to manual retry)
@@ -14445,15 +14445,15 @@ dependency of nearly every other assembly), did a full `bin/` binary
 sync again rather than a targeted one - same reasoning as the earlier
 git-version-staleness fix this session, avoiding any risk of a partial-
 update version mismatch. Migration confirmed via `DESCRIBE
-store_orders` on `casperia_dev`: both new columns present. Robust,
-Sandbox, and Welcome_Center all verified alive after restart. Sanity-
+store_orders` on `<dev database>`: both new columns present. Robust,
+Region G, and Region_B all verified alive after restart. Sanity-
 checked `/store` renders without a server error (unauthenticated view
 only - the estate picker itself still needs the user's own real-
 account test, same limitation as every other checkout-flow change this
 session).
 
 **Confirmed clean on the user's own real test - no new bugs.** User
-bought a region order ("Sandbox 2") choosing to join their existing
+bought a region order ("Region P") choosing to join their existing
 "Grid Estate" rather than create a new one. Verified independently
 rather than trusting the order's own status: `store_orders` shows
 `RequestedEstateID=101`/`Status=Active`; `estate_map` confirms the
@@ -14464,7 +14464,7 @@ confirms 101 is genuinely "Grid Estate". Process stable (342 lines/
 Start Region run, no runaway growth), region answering on its
 allocated port (9051, HTTP 404 = alive), "INITIALIZATION COMPLETE...
 LOGINS ENABLED" reached cleanly. One harmless log line - a neighbour-
-notify failure to "TesT Region" (port 9050), which simply isn't
+notify failure to "Region Q" (port 9050), which simply isn't
 running right now - unrelated to this feature. Estate selection at
 checkout is done and proven.
 
@@ -14498,8 +14498,8 @@ Store paragraph to match (it had the same staleness).
 Full solution build clean (0 errors). Full `bin/` binary sync again
 (same `OpenSim.Framework.dll` reasoning as the estate-selection
 deploy). Migration confirmed via `DESCRIBE store_orders` on
-`casperia_dev`: both new columns present. Robust, Sandbox, and
-Welcome_Center all verified alive after restart. Still needs the
+`<dev database>`: both new columns present. Robust, Region G, and
+Region_B all verified alive after restart. Still needs the
 user's own real-account checkout test to confirm the picker end to
 end.
 
@@ -14542,9 +14542,9 @@ anything, per usual practice on this project.
 
 4. **New Store-ordered regions don't show the Online pill - real, but
    not a WebUI bug; added a diagnostic instead of a false fix.**
-   Tested directly: the long-standing Sandbox (port 9018) answers via
-   the public `holodeckgrid.ddns.net` hostname; the freshly
-   auto-created Sandbox 2 (port 9051) does not, despite answering fine
+   Tested directly: the long-standing Region G (port 9018) answers via
+   the public `<grid address>` hostname; the freshly
+   auto-created Region P (port 9051) does not, despite answering fine
    on `127.0.0.1`. Windows Firewall already allows `opensim.exe` on
    any port (confirmed via `Get-NetFirewallRule`/
    `Get-NetFirewallApplicationFilter`), so this isn't a Windows-side
@@ -14571,24 +14571,24 @@ anything, per usual practice on this project.
 
 Full solution build clean (0 errors). Only `OpenSim.Server.Handlers.dll`
 changed this pass (no `OpenSim.Framework.dll` touch) - targeted DLL
-sync, not a full `bin/` sync. Restarted Robust/Sandbox/Welcome_Center
-and Sandbox 2's region process directly (its order was already Active,
+sync, not a full `bin/` sync. Restarted Robust/Region G/Region_B
+and Region P's region process directly (its order was already Active,
 so the Store's own Start Region button doesn't apply - restarted the
-same way Sandbox/Welcome_Center always have been). Confirmed via direct
-network tests: Sandbox 2 answers on `127.0.0.1:9051` but not on
-`holodeckgrid.ddns.net:9051`, exactly the case item 4's new pill exists
+same way Region G/Region_B always have been). Confirmed via direct
+network tests: Region P answers on `127.0.0.1:9051` but not on
+`<grid address>`, exactly the case item 4's new pill exists
 to surface. Admin Store Orders page confirmed not crashing (302 to
 login, unauthenticated) - the actual rendered pill still needs the
 user's own admin login to see live, same limitation as every other
 admin-page verification this session.
 
-**Fixed bare holodeckgrid.ddns.net stopped reaching the WebUI - not a
+**Fixed bare <grid address> stopped reaching the WebUI - not a
 Casperia-Dev code issue, a shared Apache config gap.** User reported
 needing to type the WebUI's port explicitly (`:9002`) to reach the
 site, when it used to work bare. Traced it: `httpd.exe` (Laragon's
 Apache, which also serves several real live sites on this same
-machine - ufpgc.org/.com/.net, casperia.ddns.net) is what actually
-owns port 80/443 here, and its `holodeckgrid.ddns.net` vhost
+machine - ufpgc.org/.com/.net, <grid address>) is what actually
+owns port 80/443 here, and its `<grid address>` vhost
 (`S:\laragon\etc\apache2\sites-enabled\zzz-public-holodeck.conf`, a
 file outside this repo) had never been configured to reach Robust at
 all - it served a static legacy PHP site instead (still on disk,
@@ -14609,9 +14609,9 @@ than anything else touched this session. The actual reload
 (`httpd -k restart`) was done by the user directly, not by me - a
 restart of a shared process serving other live sites was correctly
 blocked by the permission system as out of scope for an unattended
-action. Confirmed clean afterward: bare `holodeckgrid.ddns.net` now
+action. Confirmed clean afterward: bare `<grid address>` now
 returns the real WebUI (`<title>Casperia Prime Dev</title>`), and
-ufpgc.org/.com/.net (200) plus casperia.ddns.net (302, its own
+ufpgc.org/.com/.net (200) plus <grid address> (302, its own
 pre-existing behavior, untouched by this change) all still serve
 correctly - the shared Apache instance wasn't disrupted.
 
@@ -14627,7 +14627,7 @@ with Status/Expires/renewal-relevant detail this digest deliberately
 leaves out). A "View full Store purchase history" link points there.
 Full solution build clean (0 errors), only `OpenSim.Server.Handlers.dll`
 changed - targeted sync, full stop/sync/restart-staggered cycle
-(Robust, Sandbox, Welcome_Center, plus Sandbox 2's region process
+(Robust, Region G, Region_B, plus Region P's region process
 directly since its order is already Active). One transient 404 on
 Robust's first `/store` check during this restart - retried a few
 seconds later and got 200, a startup race (checked too early in the
@@ -14656,8 +14656,8 @@ command line, same `ArgvConfigSource` mechanism as region processes)
 that blocks on a 1-second sleep-poll loop instead of ever calling
 `Prompt()`.
 
-Live-verified against a genuine cold start (Robust, Sandbox, and
-Welcome_Center were all actually down at the time, not just
+Live-verified against a genuine cold start (Robust, Region G, and
+Region_B were all actually down at the time, not just
 re-launched from an already-running state): `Robust.log` shows
 "Running in background/consoleless mode - console commands are not
 available." immediately after startup, both regions registered
@@ -14695,7 +14695,7 @@ alone. "Start All Stopped" reuses the same per-service loop shape,
 skipping anything already running rather than blindly relaunching it.
 
 Full solution build clean (0 errors). Only `OpenSim.Server.Handlers.dll`
-changed - targeted sync. Restarted Robust, Sandbox, and Welcome_Center
+changed - targeted sync. Restarted Robust, Region G, and Region_B
 via the usual cycle; confirmed `/admin/simulators` doesn't crash (302
 to login, unauthenticated). The actual Start/Start All buttons still
 need the user's own admin login to exercise live - same limitation as
@@ -14714,12 +14714,12 @@ shown, and the handler itself refuses, if `[WebConsole] SharedSecret`
 isn't configured.
 
 **Tested for real, not just reasoned about** - sent an actual
-`shutdown` command directly to a live Sandbox (bypassing the WebUI
+`shutdown` command directly to a live Region G (bypassing the WebUI
 login requirement, hitting `/consoleweb` the same way
 `RunRegionConsoleCommand` does, real `SharedSecret` from
-`Robust.HG.ini`). Confirmed via `Sandbox`'s own log: "World has come
+`Robust.HG.ini`). Confirmed via `Region G`'s own log: "World has come
 to an end" -> orderly thread/listener/client shutdown -> "Closing down
-the single simulator" -> **"Deregistering region Sandbox... at
+the single simulator" -> **"Deregistering region Region G... at
 1000-1002"**. Checked the DB directly afterward: the region's row was
 gone from `regions` entirely, not just flag-updated - a genuinely
 clean deregistration, in real contrast to every force-kill earlier
@@ -14727,7 +14727,7 @@ this session (the runaway-process incidents, the Apache-adjacent
 testing), which left a stale `RegionOnline`-flagged row behind every
 time. This is the first time this session a region has come down
 *cleanly* rather than being killed - closes that gap specifically, not
-just adds a button. Restarted Sandbox and Welcome_Center afterward to
+just adds a button. Restarted Region G and Region_B afterward to
 restore baseline; both confirmed alive.
 
 Full solution build clean (0 errors). Only `OpenSim.Server.Handlers.dll`
@@ -14737,15 +14737,15 @@ changed - targeted sync.
 on the bulk actions - all fixed together.**
 
 1. **Stop All silently "succeeded" on 2 regions it never actually
-   reached.** User ran Stop All against a real 14-region grid; Sandbox 2
-   and TesT Region (the two Store-ordered regions) kept running and had
+   reached.** User ran Stop All against a real 14-region grid; Region P
+   and Region Q (the two Store-ordered regions) kept running and had
    to be force-killed via Task Manager - exactly the outcome Stop exists
    to avoid. Root cause: `RunRegionConsoleCommand` posts to
-   `region.ServerURI` - the region's **public** `holodeckgrid.ddns.net`
+   `region.ServerURI` - the region's **public** `<grid address>`
    hostname, not `127.0.0.1` - and the router only forwards the grid's
    original, manually-configured ports (already known from the earlier
    "Not reachable publicly" pill work), not the Store's auto-allocated
-   range. So the `/consoleweb` POST to Sandbox 2/TesT Region silently
+   range. So the `/consoleweb` POST to Region P/Region Q silently
    failed, while `TryStopRegion` unconditionally returned `true` after
    calling it, without ever checking the result - a real bug independent
    of the networking issue, and the reason the failure was invisible.
@@ -14846,13 +14846,13 @@ Store orders come in. Audited the real current static-simulator ports
 first rather than trust either of us going from memory (`http_listener_port`
 straight out of every `Simulators\*\OpenSim.ini`): actual range is
 9004-9019, with a gap at 9005 and 9010 permanently unusable (Logitech
-G HUB - see today's Sector_004 port-conflict fix). `Robust.HG.ini`'s
+G HUB - see today's Region_K4 port-conflict fix). `Robust.HG.ini`'s
 `RegionOrderPortRangeStart` moved from 9050 to 9020 (`RangeEnd` stays
 9099) - pure config change, no code change needed, since
 `AllocateRegionOrderPort` already picks the lowest free port in
 whatever range is configured, so it was already "sequential" within
 its range; this just moves where that range begins. The two orders
-already fulfilled (Sandbox 2 = 9050, TesT Region = 9051) keep their
+already fulfilled (Region P = 9050, Region Q = 9051) keep their
 existing ports - only future orders land in the new 9020-9099 block.
 Restarted only Robust (region processes don't read this config, don't
 need to restart) - confirmed all 16 regions stayed up through it.
@@ -14884,7 +14884,7 @@ Robust + all 16 regions; confirmed `/admin/store/orders` (302,
 unauthenticated) and the new `/admin/store/orders/cancel` route (403,
 unauthenticated POST-only action) both respond correctly, no crash.
 Not yet exercised against a real order - cancelling one of the two
-real, currently-in-use Store orders (Sandbox 2, TesT Region) to test
+real, currently-in-use Store orders (Region P, Region Q) to test
 this needs the user's own go-ahead, not something to do unprompted
 against live data.
 
@@ -14892,10 +14892,10 @@ against live data.
 
 User corrected router port-forwarding to cover 9000-9099 (previously
 unforwarded), expecting this to resolve the recurring
-`DoHelloNeighbourCall` warnings between Sandbox 2 and TesT Region.
+`DoHelloNeighbourCall` warnings between Region P and Region Q.
 Checked the live logs after the change - warnings were still firing
 ("No connection could be made because the target machine actively
-refused it. (holodeckgrid.ddns.net:9050)"), which ruled out a simple
+refused it. (<grid address>)"), which ruled out a simple
 forwarding gap: "actively refused" is a TCP RST, not a timeout, meaning
 the packet reached something that refused it - classic NAT hairpin/
 loopback behavior, where a router won't route a request originating
@@ -14921,7 +14921,7 @@ exact situation.
 
 Deployed via a full stop-all -> sync `OpenSim.Services.Connectors.dll`
 (used by every region process, not Robust) -> restart Robust -> restart
-all 16 regions staggered. Verified live: both Sandbox 2 and TesT Region's
+all 16 regions staggered. Verified live: both Region P and Region Q's
 fresh startup logs now show `successfully informed neighbour ... that
 it is up` on both sides, replacing the prior warning. All 16 regions
 confirmed reaching `RegionReady`'s "is ready" log line after the
@@ -14973,10 +14973,10 @@ region's actual content was never stored there to begin with.
 Full solution build clean (0 errors). Foundational interfaces changed
 (`IEstateDataStore`, `IEstateDataService`) - full `bin/` sync rather
 than targeted files, per this session's established rule for
-foundational assemblies. Deployed with TesT Region deliberately left
+foundational assemblies. Deployed with Region Q deliberately left
 stopped (not restarted) so the user could exercise Remove against a
 real order for the first time. **Live-verified end to end**: user
-clicked Remove on TesT Region through the real WebUI - confirmed after
+clicked Remove on Region Q through the real WebUI - confirmed after
 the fact via direct DB check: `Simulators\test_region-b5014578\` gone,
 `store_orders.Status` = `Cancelled` with the expected Notes entry
 ("port 9050 and grid location (1050,1050) released for reuse"),
@@ -15060,7 +15060,7 @@ estate-owning.
 
 Full solution build clean (0 errors). Foundational data-layer
 interfaces changed again - full `bin/` sync. Deployed with a completely
-fresh Robust + all 15 remaining regions (TesT Region stays gone from
+fresh Robust + all 15 remaining regions (Region Q stays gone from
 the earlier Remove Simulator test). Confirmed clean startup (no new
 errors in `Robust.log`, `AvatarService` loads without issue) and both
 new routes respond correctly unauthenticated (`/admin/users` 302,
@@ -15118,7 +15118,7 @@ is the one running. Casperia-Dev runs the plainer
 ## "Gunthar 4 OpenSim" showing as the region Version in Firestorm (2026-08-29)
 
 User noticed Firestorm's Region/Estate floater showing "Version: Gunthar
-4 OpenSim" on UFPGC, Sector 001, and Welcome Center - asked why a name
+4 OpenSim" on Region D, Region K1, and Region B - asked why a name
 that "should be nowhere in this GitHub build" was showing up, grid-wide.
 
 **First pass was wrong and too narrow.** Assumed it was a viewer-side
@@ -15171,7 +15171,7 @@ string is the right call; the bug was narrowly what that string said.
 Changed to `"OpenSim-Confluence"` (user's choice) in both
 `bin/OpenSimDefaults.ini` (the shipped repo template - fixes this for
 any future deployment, not just Casperia-Dev) and the live
-`S:\Opensim\Casperia-Dev\OpenSimDefaults.ini`.
+`<dev grid root>\OpenSimDefaults.ini`.
 
 Config-only change, no rebuild needed - but `IConfigSource`/Nini loads
 ini files once at process startup and doesn't hot-reload, so it only
@@ -15596,7 +15596,7 @@ has ~20 `GetLandObject(...)` call sites, most properly null-checked
 (spot-checked one near `EnforceBans`, line 1626 - correctly guarded)
 but tonight's real, fixed bug
 (`EventManagerOnAvatarEnteringNewParcel`'s `m_landList[localLandID]`,
-see the earlier "SCENEGRAPH error on GFC" incident entry) shows at
+see the earlier "SCENEGRAPH error on Region C" incident entry) shows at
 least one gap existed in this exact family. Worth a dedicated,
 focused audit of all `GetLandObject`/`m_landList[...]` call sites for
 similar unguarded dereferences at some point - not done here, this
@@ -15897,7 +15897,7 @@ relevant, not Phlox-specific:**
    fallback default is a sane `1.0` hours - the shipped example was
    actively worse than omitting the key. Found via Legion's
    `b38f556ad4` ("Memory: Session C - FlotsamAssetCache size limits").
-   **Checked the live grid's own config too**: `S:\Opensim\Casperia\
+   **Checked the live grid's own config too**: `<grid root>\
    config-include\FlotsamCache.ini` actually has `FileCleanupTimer =
    24.0` (cleanup genuinely running every 24h, fine) but with a stale
    `; disabled` trailing comment left over from an earlier edit -
@@ -16148,7 +16148,7 @@ used for WebRTC voice and Aurora.
 
 ## osPlaySoundURL — real live bug found: hangs the calling script (2026-08-30)
 
-Deployed and tested on live (Welcome Center, single-region test,
+Deployed and tested on live (Region B, single-region test,
 grid otherwise down for the deploy window). Real, concrete result -
 not what was hoped for, but real:
 
@@ -16179,7 +16179,7 @@ not what was hoped for, but real:
   of this code anywhere.
 
 **Mitigated immediately, not left running broken:** `[RemoteSound]
-Enabled` reverted to `false` in Welcome Center's `OpenSim.ini`
+Enabled` reverted to `false` in Region B's `OpenSim.ini`
 (matching the shipped default everywhere else). Important
 implementation detail learned the hard way: `RemoteSoundFetcher` is a
 per-scene singleton (`ConcurrentDictionary<UUID, RemoteSoundFetcher>`)
@@ -16240,7 +16240,7 @@ reverted from `OSSL_Api.cs`/`IOSSL_Api.cs`/`OSSL_Stub.cs`, the
 `Allow_osPlaySoundURL` entry reverted from
 `bin/config-include/osslDefaultEnable.ini`, and the same three live
 config changes reverted on Casperia Prime itself
-(`Simulators/Welcome_Center/OpenSim.ini`,
+(`Simulators/Region_B/OpenSim.ini`,
 `config-include/osslDefaultEnable.ini`). Full solution build confirmed
 clean after removal. Documented in `ROADMAP.md`'s "Explicitly out of
 scope" section (not "Known limitations", since the feature no longer
@@ -17478,7 +17478,7 @@ lock for redeploy; needed the full stop/resync/restart cycle. User logged
 off first so this could be deployed without disconnecting an active
 session. Verified live: all 15 regions + Robust back up clean, 0
 missing/0 mismatched on the post-sync hash comparison, no new errors
-beyond the same pre-existing Tangle YEngine asset issue.
+beyond the same pre-existing Region F YEngine asset issue.
 
 ### WebUI: three concrete defects found and fixed from live screenshots (2026-09-02)
 
@@ -17651,7 +17651,7 @@ Classifieds/Economy/Events render with real DB data, Regions box
 appears once `regions.Count > 0`, footer's "Total Online Now"/"Visit
 Our Main Site" both present. Same full stop/resync/restart cycle as
 every entry above (0 missing/0 mismatched, all 15 regions + Robust
-clean, only the pre-existing Tangle YEngine error).
+clean, only the pre-existing Region F YEngine error).
 
 ### Classified photo thumbnails: the deferred texture endpoint, wired up (2026-09-02)
 
@@ -17690,8 +17690,8 @@ Verified: `GetTextureServerConnector loaded successfully` in Robust.log
 at boot, and a direct `curl` against the endpoint with a real texture
 asset id returned a genuine 512x512 JPEG (`file` confirmed real JFIF
 data, not an error page) - the conversion pipeline itself works.
-Neither of the grid's two current classifieds (`Starbase Andromeda`,
-`Grid Sandbox`) actually has a snapshot set (`SnapshotId` is
+Neither of the grid's two current classifieds (`Region A`,
+`Region R`) actually has a snapshot set (`SnapshotId` is
 `00000000-...` for both, checked directly against the `classifieds`
 table), so there's nothing to show a thumbnail for yet with today's
 data - a resident needs to set a snapshot on their classified ad before
@@ -17750,7 +17750,7 @@ side in distinct boxes, repeated CTA present. User was online when this
 was ready to deploy - waited for them to log off rather than disconnect
 them, same as the marketplace service-account fix earlier tonight. Same
 full stop/resync/restart cycle (0 missing/0 mismatched, all 15 regions
-+ Robust clean, only the pre-existing Tangle YEngine error).
++ Robust clean, only the pre-existing Region F YEngine error).
 
 ### Land-area type normalization; Grid Status's Service Status was checking "loaded" not "working" (2026-09-02/03)
 
@@ -17840,7 +17840,7 @@ real counts (1 upcoming event, 1 marketplace listing, 1 store item, 1
 active classified - matches what's actually in the DB right now, not
 placeholder zeros). Same deploy discipline as every entry above (0
 missing/0 mismatched, all 15 regions + Robust clean, only the
-pre-existing Tangle YEngine error).
+pre-existing Region F YEngine error).
 
 ### Features page audit: Marketplace was missing entirely; SimProtection's own wording overstated (2026-09-03)
 
@@ -17894,8 +17894,8 @@ card renders with all three rows including the pill (`Active`, driven
 by the same `m_MarketplaceListingsService != null` check every other
 card on this page already uses). Deployed to just Robust + the 5
 regions actually running (not a blind restart back to 15) - 0 missing/
-0 mismatched, all 5 `RegionReady`, zero errors of any kind (Tangle's
-own pre-existing error didn't appear since Tangle isn't among the 5
+0 mismatched, all 5 `RegionReady`, zero errors of any kind (Region F's
+own pre-existing error didn't appear since Region F isn't among the 5
 running right now).
 
 ### welcome.php's region links did nothing at all - real Firestorm source traced to find the actual working scheme (2026-09-03)
@@ -17958,7 +17958,7 @@ still wasn't the right command for the pre-login case anyway
 
 Verified live: from a normal (non-viewer) browser, both welcome.php's
 Regions list and worldmap's map/table now render real
-`hop://casperia.ddns.net:8002/RegionName` links (confirmed via direct
+`hop://<grid address>/RegionName` links (confirmed via direct
 DOM inspection, not just reading the generated string) instead of the
 dead `/app/teleport/` links. The `location_login` branch is only
 reachable from a real viewer's own User-Agent, so it still needs the
@@ -18092,8 +18092,8 @@ Live-only config change - no code touched, so no build/deploy/hash
 step, just a restart of the affected regions.
 
 Deploy: checked `presence` (0 online) before restarting; stopped and
-staggered-restarted the 5 regions currently up (Welcome_Center 15s,
-then Sandbox/Starbase_Andromeda/SVC/Section_31 5s apart) - Robust was
+staggered-restarted the 5 regions currently up (Region_B 15s,
+then Region G/Region_A/Region O/Region_I 5s apart) - Robust was
 left untouched since it never reads region inis. All 5 logged
 `RegionReady` cleanly with zero new errors.
 
@@ -18102,14 +18102,14 @@ logs `"[MAPTILE]: Loaded prim mesher ..."` on init - a line that only
 exists in this module, never the legacy one - and it appeared for all
 5 regions, confirming Warp3D actually activated everywhere. Each
 region's background maptile generation fired ~180s after startup
-(Starbase Andromeda deferred instead - an avatar was present there,
+(Region A deferred instead - an avatar was present there,
 the documented "wait for avatars to leave" behavior, not a failure).
-Opened Welcome Center's regenerated `map-1-1000-1000-objects.jpg`
+Opened Region B's regenerated `map-1-1000-1000-objects.jpg`
 directly: shows real building/prim geometry (a ship structure, two
 mandala-style platforms) rather than a flat green/blue heightmap -
-visual proof, not an inference from log lines alone. SailorV
-Creations (1024x1024 var region) uploaded 16 per-cell tiles (4x4 =
-1024/256) and Section 31 (512x512) uploaded 4 (2x2) - both match the
+visual proof, not an inference from log lines alone. Region
+O (1024x1024 var region) uploaded 16 per-cell tiles (4x4 =
+1024/256) and Region I (512x512) uploaded 4 (2x2) - both match the
 expected per-cell tiling math for the grid's separate `/worldmap`
 consumer, independent of the single full-footprint `TerrainImageID`
 composite.
@@ -18124,7 +18124,7 @@ same silent legacy fallback Casperia Prime's own regions had been
 running under. This was the "(and the .example template)" half of the
 original offer the user said "Go ahead" to.
 
-Starbase Andromeda's own maptile is still pending its avatar-present
+Region A's own maptile is still pending its avatar-present
 deferral - not a failure, just queued behind someone still standing in
 that region. No engine/LSL code was changed anywhere in this fix; the
 `.example` template edit is the only tracked-repo change, committed
@@ -18165,7 +18165,7 @@ between writing the new image in and flipping opacity so the browser
 actually commits the "before" frame before animating to "after"
 instead of coalescing both into one paint.
 
-Verified live at `casperia.ddns.net:8002/welcome.php` (Robust restarted
+Verified live at `<grid address>/welcome.php` (Robust restarted
 to pick up the rebuilt `OpenSim.Server.Handlers.dll` - presence was 0,
 so nobody was mid-login): confirmed the rendered `<script>` matches
 source exactly (no HTML-escaping mangling), watched multiple full tick
@@ -18994,7 +18994,7 @@ guesswork.
   No shutdown or exception logged after this.
 - 17:49:05-17:49:07 - the 5 region processes kept running independently
   (as expected, they don't depend on Robust for basic operation) long
-  enough to complete a scheduled OAR auto-backup of SailorV Creations
+  enough to complete a scheduled OAR auto-backup of Region O
   cleanly, then `OpenSim.log` also goes silent with no shutdown or
   exception logged.
 - System `LastBootUpTime` was confirmed unchanged (Sept 3 07:47) across
@@ -19040,7 +19040,7 @@ meaningless when the grid is already fully down - it wasn't a
 disruption-avoidance check in this instance, just habit). All 5 regions
 confirmed `RegionReady` by 03:25:55 with no new errors beyond the two
 pre-existing, harmless recurring ones already present at every prior
-startup (missing hover-text asset in Welcome Center, one degenerate
+startup (missing hover-text asset in Region B, one degenerate
 mesh). Robust and all 5 OpenSim processes confirmed running.
 
 **Open follow-up, not yet acted on:** if this recurs, worth checking
@@ -19336,7 +19336,7 @@ matches a region's *exact* registered origin by its own doc comment -
 "this is NOT 'get a region by some point in the region'" - and a large
 region is stored as a single database row at its origin, not one row
 per 256-unit cell (verified directly against the live `regions` table:
-SailorV Creations, a real 1024x1024 region, has exactly one row).
+Region O, a real 1024x1024 region, has exactly one row).
 `GetRegionContainingWorldLocation`'s only recovery path for this case
 was previously commented out as "obsolete... this is what 0.9 grids now
 do internally" - but the actual current `GetRegionByPosition`
@@ -19347,8 +19347,8 @@ cell would fail with "The region you tried to teleport to was not
 found" (a graceful failure, not a crash, which is presumably why this
 had gone unnoticed) despite the destination region being real, online,
 and correctly registered. This affects real, currently-live regions on
-this grid (SailorV Creations at 1024x1024; Starbase Andromeda and
-Section 31 at 512x512 each have 3 of their 4 possible 256-cells
+this grid (Region O at 1024x1024; Region A and
+Region I at 512x512 each have 3 of their 4 possible 256-cells
 similarly affected).
 
 Restored the previously-written (not newly-authored) `GetRegionRange` +
@@ -19572,7 +19572,7 @@ call site and the function itself to describe the merged behavior.
 Removed the now-fixed item from `ROADMAP.md`'s Known Limitations.
 
 Deploy note: held the restart per the user's explicit call ("wait
-entirely") after a resident logged into Starbase Andromeda mid-session
+entirely") after a resident logged into Region A mid-session
 - polled the `presence` table in the background every 2 minutes until
 it hit 0 rather than disrupt them, then deployed once genuinely empty.
 Build verified via `OpenSim.Region.ScriptEngine.Shared.Api.dll`'s
@@ -19592,7 +19592,7 @@ user misremembered: **two genuinely separate systems exist, and the
 first check was against the wrong one.**
 
 - **OpenSim-Grid-Interface (OGI)** - the real, separate PHP site at
-  `S:\laragon\www\casperia`, served as the actual `casperia.ddns.net`
+  `S:\laragon\www\casperia`, served as the actual `<grid address>`
   residents visit (`gridsearch.php`, `message.php`, `tickets_admin.php`,
   `go.php`). This is what owns every `ws_*` table, and it's already
   correctly, deliberately split into its own SQLite database
@@ -19795,7 +19795,7 @@ last deploy - genuinely clean, not just unchecked.
 combined restart instead of repeated piecemeal ones): all 4 drifted
 assemblies copied and hash-verified, `[Pathfinding]`/the 2 Abuse
 Reports switches added to all 15 region inis (discovered mid-task:
-`GFC` is a 15th live region, running but absent from this session's
+`Region C` is a 15th live region, running but absent from this session's
 earlier 14-region restart lists - its `.ini` had also visibly drifted
 in structure/date from the other 14's shared template, worth watching
 for future batch edits silently skipping it again). Full grid restart
@@ -20112,7 +20112,7 @@ touched deliberately. All 18 got stopped in one call before that
 discrepancy was even noticed. Caught immediately after (before copying
 any files or restarting anything) by checking `ParentProcessId`/
 `CommandLine` on the still-running Robust processes, which showed a
-second one at `S:\Opensim\Continuum-TestGrid\Runtime\Robust.exe` -
+second one at `<server root>\Continuum-TestGrid\Runtime\Robust.exe` -
 confirmed unrelated to Casperia rather than assumed. Stopped
 everything else too and reported the mistake plainly rather than
 guessing at a fix for a grid with an unknown directory layout and
@@ -20232,13 +20232,13 @@ Build 0 errors/0 warnings across `SimulationServiceConnector.cs` and
 the deploy needed the full Robust + all-15-regions restart, not just
 regions. Full stop confirmed by command line (not process name alone -
 see the incident above), copy hash-verified, Robust + all 15 regions
-restarted, 14 of 15 confirmed `RegionReady` immediately; Sector_004
+restarted, 14 of 15 confirmed `RegionReady` immediately; Region_K4
 didn't - see the next entry for that investigation.
 
-## Sector_004 startup anomaly: investigated, real diagnostic gap found and closed, root cause left honestly unresolved (2026-09-06)
+## Region_K4 startup anomaly: investigated, real diagnostic gap found and closed, root cause left honestly unresolved (2026-09-06)
 
 During the restart above, 14 of 15 regions reported `RegionReady`
-within seconds; Sector_004 didn't, for several minutes, despite its
+within seconds; Region_K4 didn't, for several minutes, despite its
 process staying alive with no crash and no error logged anywhere.
 Restarting just that one region fixed it immediately (confirmed ready
 within 15 seconds of the fresh start). Investigated why before treating
@@ -20264,7 +20264,7 @@ from logs at all - a genuine logging gap, not (yet) a confirmed
 functional bug.** `RegionReadyModule.AddRegion` only sets `LoginLock =
 true` and subscribes to the script-engine's `OnEmptyScriptCompileQueue`
 event when `[RegionReady] login_disable = true` (confirmed set, in
-`OpenSimDefaults.ini`). For a genuinely empty region like Sector_004 (0
+`OpenSimDefaults.ini`). For a genuinely empty region like Region_K4 (0
 active scripts), `Scene.cs` also has an independent backstop: once
 `Frame == 20` is reached with `LoginLock` still true, it calls
 `RegionReadyModule.TriggerRegionReady()` directly rather than waiting
@@ -20276,8 +20276,8 @@ and that method's own only other log statement was commented out
 entirely. **This means the direct backstop path, working completely
 correctly, produces the exact same "no ready log" signature as a
 genuinely stuck region** - there was no way, from the log alone, to
-tell "Sector_004 became ready silently via the backstop" from
-"Sector_004 never became ready at all." Said so plainly rather than
+tell "Region_K4 became ready silently via the backstop" from
+"Region_K4 never became ready at all." Said so plainly rather than
 letting the earlier, more confident "found a stuck region" framing
 stand uncorrected once this came to light.
 
@@ -20316,7 +20316,7 @@ had verified). Stopped Robust as well, copied both files, hash-
 verified, full restart. All 15 confirmed `RegionReady`, zero errors.
 The new diagnostic logging fired for all 15 (`TriggerRegionReady
 entered`), confirming it works; none hit the zero-script-backstop line
-specifically, and Sector_004 came up clean this time - no repeat of
+specifically, and Region_K4 came up clean this time - no repeat of
 the anomaly. Lesson for future deploy-scope calls: checking whether an
 assembly is *named* in Robust.HG.ini isn't sufficient to rule out a
 Robust-side lock - a transitive reference can still load it.
@@ -20463,20 +20463,20 @@ one-by-one; `/gridstatus` afterward showed all 15 regions and every
 service (Grid/Accounts/Currency/Search/Inventory/Events/Marketplace/
 Store/Friends/Profiles) Online, status Operational. The
 `WearablesRequestDelayMs = 200` setting was also added to live's own
-`OpenSimDefaults.ini` (`S:\Opensim\Casperia\OpenSimDefaults.ini`,
+`OpenSimDefaults.ini` (`<grid root>\OpenSimDefaults.ini`,
 matching the two git-tracked example templates) for documentation/
 future tunability - purely additive, matches the code's own default,
 no behavior change from adding it.
 
 **"Test carefully" instruction closed out (2026-09-06), verified against
-a real login and two real teleports.** The user logged in to Starbase
-Andromeda, then teleported to GFC, then to Ranchero, on the newly-
+a real login and two real teleports.** The user logged in to Region
+A, then teleported to Region C, then to Region E, on the newly-
 deployed code. Checked `OpenSim.log` end to end across the whole
 window: zero wearables/appearance-related warnings or errors anywhere.
 The only `WARN`/`ERROR` lines in the window were pre-existing, unrelated
 asset-corruption noise (a broken LSL script failing to compile, a
 handful of `GETASSET` "wrong type"/"empty data" warnings - the same
-corrupt-asset category already seen elsewhere on this grid, e.g. GFC's
+corrupt-asset category already seen elsewhere on this grid, e.g. Region C's
 own mesh-parsing errors during its earlier boot).
 
 On login, `AVFACTORY`'s temporary-default-appearance-fallback mechanism
@@ -20767,12 +20767,12 @@ session** (not just the ones this specific feature touched) - 10
 files total, each independently verified by hash *and* a raw
 byte-content grep for a real marker - then Robust and all 15 regions
 restarted one at a time as usual. All 15 reached `RegionReady` cleanly
-on this pass. One real resident (not a test account) logged into UFPGC
+on this pass. One real resident (not a test account) logged into Region D
 partway through this recovery, confirming the grid was usable again
 before the deploy had even fully finished re-verifying every region.
 
 **Fully verified working in an actual browser afterward** (Browser
-tool, not just curl) - clicked "Details →" on `/worldmap`'s UFPGC
+tool, not just curl) - clicked "Details →" on `/worldmap`'s Region D
 popup, landed on `/region` showing the real owner (linked to their
 profile), location, size, maturity, online status, a working teleport
 link, an accurate "0 residents here now" (matches the grid's own
@@ -20841,16 +20841,16 @@ crash). Grid was at 0 online throughout - no resident impact.
 **Exercised end-to-end with real accounts the same day, both
 directions confirmed - not just a clean boot.** User toggled
 `AllowLogin` off via `/admin/settings`, then tried two real logins:
-Ramius Easterwood (`UserLevel = 200`, confirmed via a direct DB read of
+the operator's avatar (`UserLevel = 200`, confirmed via a direct DB read of
 `useraccounts`, not assumed) logged in successfully - the gate's
 `UserLevel < 200` check correctly let an admin through a closed grid,
-exactly the self-lockout protection it was designed for. Jessica
-Starlight (an ordinary resident, arriving via Hypergrid) was blocked
-with `Login failed for Jessica Starlight, reason: grid logins are
+exactly the self-lockout protection it was designed for. Resident
+1 (an ordinary resident, arriving via Hypergrid) was blocked
+with `Login failed for Resident 1, reason: grid logins are
 closed` in `Robust.log`, matching the new code's own log line exactly.
 Toggled back on (confirmed `AllowLogin = true` via a fresh DB read),
 Jessica logged in cleanly on the next attempt - `[LLOGIN SERVICE]: All
-clear. Sending login response to Jessica Starlight`, no lingering
+clear. Sending login response to Resident 1`, no lingering
 block. Both the settings persistence and the login-time enforcement
 are confirmed working against real data, not just a theoretical
 design.
@@ -20906,7 +20906,7 @@ restart - confirmed by checking for real timestamped `FATAL` log
 lines specifically, not just the substring). `/admin/settings` and
 `/admin/settings/identity` both confirmed reachable (clean redirect to
 `/login` for an unauthenticated request). Grid picked back up real
-activity during the restart itself - a resident logged into UFPGC
+activity during the restart itself - a resident logged into Region D
 before the deploy had even finished bringing up the remaining regions.
 
 ## Abuse report resolved/assigned tracking built (2026-09-07)
@@ -21003,7 +21003,7 @@ UTF-16 `#US` heap), restarting Robust, and re-confirming
 exception in the log. All 15 regions then brought up one at a time as
 usual, zero further `FATAL` anywhere. Grid picked back up real
 activity again mid-deploy - the same resident from the last two
-deploys logged into UFPGC before the deploy had finished bringing up
+deploys logged into Region D before the deploy had finished bringing up
 the remaining regions.
 
 **A genuine, unexplained piece of live-DB drift found and reported,
@@ -21094,8 +21094,8 @@ touching any region. All 15 regions restarted one at a time as usual,
 each confirmed via a real `TriggerRegionReady entered for <name>` log
 line before starting the next - two of my own verification greps
 initially came up empty not because a region failed, but because I'd
-guessed the wrong in-log display name (`Sector_001` logs as `Sector
-001` with a space; `SVC` logs as `SailorV Creations`, its actual
+guessed the wrong in-log display name (`Region_K1` logs as `Region
+K1` with a space; `Region O` logs as `Region O`, its actual
 region name, not its folder name) - caught immediately by reading the
 log tail directly instead of assuming a non-match meant a real
 problem. Final sweep found zero `FATAL` lines anywhere in the restart
@@ -21206,8 +21206,8 @@ Touches `OpenSim.Framework.dll`, `OpenSim.Data.dll`,
 
 **Deployed same day, while online count was 0.** One real, pre-existing
 discrepancy caught before touching anything: only 6 of the 15 regions
-(Welcome_Center, Ranchero, Starbase_Andromeda, SVC, Section_31,
-Sandbox) were actually running at deploy time - the other 9 were
+(Region_B, Region E, Region_A, Region O, Region_I,
+Region G) were actually running at deploy time - the other 9 were
 already stopped with zero `FATAL`/crash evidence anywhere in the log,
 so almost certainly a deliberate stop from earlier, not a fault. Asked
 the user rather than assuming either way; confirmed to leave the 9
@@ -21723,7 +21723,7 @@ Legion's own audit describes the disease precisely: a non-shared
 once per region instance; `CommandConsole` accumulates one delegate
 per region on the *same* global command name; one console invocation
 fires N times on an N-region simulator process. Casperia runs a real
-multi-region simulator (per `casperia-*` memory: GFC is a real 15th
+multi-region simulator (per `casperia-*` memory: Region C is a real 15th
 region among several named regions in one process), so this isn't a
 theoretical risk. Checked every handler Legion's own sweep flagged
 against Confluence's actual code, rather than assuming the disease
@@ -22250,7 +22250,7 @@ explicit direction given the size. See `casperia-fork-review-status`
 memory for the full, corrected picture (including the gunthar "wrongly
 closed as a mirror" episode and its correction).
 
-## Reader-facing docs reorganized; Jolt enabled on Starbase Andromeda
+## Reader-facing docs reorganized; Jolt enabled on Region A
 ## for testing (2026-09-09)
 
 `FEATURES.md` had drifted well behind this session's actual work -
@@ -22268,8 +22268,8 @@ entry updated - its "Not deployed to the live grid" closing line was
 stale as of yesterday's live deploy; replaced with the actual current
 status.
 
-Separately, at the operator's request: switched Starbase Andromeda
-(`Simulators/Starbase_Andromeda/OpenSim.ini`) from the implicit ubODE
+Separately, at the operator's request: switched Region A
+(`Simulators/Region_A/OpenSim.ini`) from the implicit ubODE
 default to `physics = Jolt` + `meshing = Meshmerizer`, picked as the
 region to run Jolt against real content for the first time. Confirmed
 the Jolt module DLLs are already present in Casperia's shared runtime
@@ -22289,7 +22289,7 @@ avatar interaction).
 ## an unrelated DynamicTextureModule crash found and fixed along the
 ## way (2026-09-09)
 
-Starbase Andromeda started with `physics = Jolt` for the first time
+Region A started with `physics = Jolt` for the first time
 against real content and immediately exposed a genuine gap: 5,160
 occurrences of `[LEGION JOLT] IMesher returned null (unfetched sculpt
 asset or empty geometry); bounding-box fallback.` in a single ~4.4s
@@ -22359,13 +22359,13 @@ CoreModules.dll`+pdb, copy verified via a separate `md5sum` check).
 Not yet verified live under real content - that's the operator's next
 restart. `OpenSim.Region.CoreModules.dll` is shared by every region
 process, so the DynamicTextureModule fix takes effect on any region
-once it's next restarted, not just Starbase Andromeda.
+once it's next restarted, not just Region A.
 
 ## Mesh-retry fix confirmed with direct evidence; Meshmerizer
 ## disk-cache idea scoped and held; Phlox ROADMAP entry corrected
 ## (2026-09-09)
 
-Restarted Starbase Andromeda twice more to verify the mesh-retry fix
+Restarted Region A twice more to verify the mesh-retry fix
 under real load. First restart used the same `IMesher returned null`
 count as the check - it dropped from 5,160/14,926 (the two pre-fix
 boots) to 124, read as evidence the fix worked. **That reasoning was
@@ -22626,24 +22626,24 @@ radius on every EXISTING physical-prim-vs-terrain contact on any
 running Jolt region (unlike buoyancy/material, which only change
 behavior for content that actually calls the relevant LSL functions),
 deployed directly to live Casperia instead of continuing the scratch-
-region path - real content on Starbase Andromeda is a better test bed
+region path - real content on Region A is a better test bed
 than an empty standalone region anyway. Build clean, all three
 affected DLLs (`OpenSim.Region.PhysicsModule.LegionJolt.dll`+pdb,
 `Legion.Physics.dll`, `Legion.Vehicles.dll` - the latter two ship
 without separate pdbs in this build) copied and `md5sum`-verified.
 **Not yet restarted/tested under real content** - that's the
-operator's next step on Starbase Andromeda, same live-testing
+operator's next step on Region A, same live-testing
 collaboration pattern as the mesh-retry fix earlier tonight.
 
 ## Restart confirmed clean; then a real log-noise problem found and
 ## fixed (2026-09-10)
 
-Operator restarted Robust + Starbase Andromeda. Log check: `[LEGION
+Operator restarted Robust + Region A. Log check: `[LEGION
 JOLT] enabled`, terrain cooked, backend initialised, an avatar
 (`Steven.Johnson`) spawned successfully, zero exceptions from any of
 the six new code paths - the only errors present were the same two
 pre-existing, unrelated ones seen at every boot tonight (a missing
-Welcome Center asset, one degenerate ubODE mesh).
+Region B asset, one degenerate ubODE mesh).
 
 Operator then pasted a fuller log capture and correctly called it "not
 exactly a clean startup" - not a crash, but real noise: the mesh-
@@ -22728,8 +22728,8 @@ physics engine twice. Deleted the orphaned old DLL+pdb and its stale
 Mono.Addins cache entry (`addin-db-004/addin-data/1/
 OpenSim.Region.PhysicsModule.LegionJolt,0.9.3.1.maddin`) both locally
 and on live Casperia before/after deploying the new DLL there
-(`md5sum`-verified). **Not yet restarted/confirmed on Starbase
-Andromeda** - watch specifically for the `[JOLT PHYSICS] enabled
+(`md5sum`-verified). **Not yet restarted/confirmed on Region
+A** - watch specifically for the `[JOLT PHYSICS] enabled
 (physics = Jolt)` line (prefix changed from `[LEGION JOLT]`) and that
 Mono.Addins only shows ONE Jolt physics engine registered, not two.
 
@@ -22799,11 +22799,11 @@ wave-response gap-audit table entry); comments narrating the ORIGINAL
 (e.g. the M1 `Legion.Physics.TestHarness` evaluation, the
 `Legion.Physics.dll` shared-`bin\` bug) deliberately left as accurate
 history, same two-tier convention as always. Not yet restarted/
-confirmed on Starbase Andromeda.
+confirmed on Region A.
 
 ## Graceful region restarts: found the real courtesy window, added a rolling "Restart All" (2026-09-11)
 
-A long thread about restarting Starbase Andromeda for Jolt testing led
+A long thread about restarting Region A for Jolt testing led
 to a real correction: every restart this session had been an abrupt
 `shutdown` console command or a raw `Stop-Process` kill, with no
 in-world warning to residents at all - the "hard crash" exception
@@ -22956,9 +22956,9 @@ graceful restart should always prompt checking whether the process
 ever actually reloaded before doubting the fix itself.
 
 Both fixes committed (`b8cf1f7f96`) and live-verified working on
-Starbase Andromeda after the real restart.
+Region A after the real restart.
 
-## Jolt systematic sweep, walking-lag diagnosis, and reversion to BulletSim on Starbase Andromeda (2026-09-11)
+## Jolt systematic sweep, walking-lag diagnosis, and reversion to BulletSim on Region A (2026-09-11)
 
 With the run-speed and unsit-drop fixes live, the user's remaining
 complaints ("avatars clip through mesh sometimes," "stairs not
@@ -22981,7 +22981,7 @@ world-axis box this sweep approximates from Position/Size, so tilted
 content produces false misses unrelated to any bug - this was found
 the hard way on the first, unbucketed run).
 
-**Live result, Starbase Andromeda**, 14,570 real static prims, 10,614
+**Live result, Region A**, 14,570 real static prims, 10,614
 upright: basic primitives collided essentially perfectly even upright
 (box 1/4828 miss, cylinder 0/169, sphere 0/6, the ~40 bbox-fallback
 degenerate assets 0/3229) - strong evidence Jolt's core raycast/
@@ -23023,7 +23023,7 @@ THIRD real avatar-behavior gap surfacing on Jolt in one session (after
 two already-fixed bugs), against engines (BulletSim, ubODE) with 15+
 years of SL-specific tuning behind their avatar handling. Per the
 project's own standard that recurring breakage matters more than raw
-progress count, **Starbase Andromeda's `[Startup] physics` was
+progress count, **Region A's `[Startup] physics` was
 switched from `Jolt` back to `BulletSim`** (`OpenSim.ini`, real process
 restart required since `[Startup]` config is only read at process
 startup - graceful `region restart` would not have picked it up).
@@ -23257,8 +23257,8 @@ Audited every section of `ROADMAP.md` against current code rather than
 trusting its own claims - real findings: two fully-shipped items
 (WebUI parity audit, starter-look carousel) were still sitting under
 "In progress"; a ~300-line JoltPhysics entry read as an unqualified
-success story with zero mention it had since been pulled off Starbase
-Andromeda; a closed fork review and an explicitly-excluded `wolfvoice`
+success story with zero mention it had since been pulled off Region
+A; a closed fork review and an explicitly-excluded `wolfvoice`
 candidate were both misfiled under "Planned, not started." All fixed:
 the two shipped items moved into `FEATURES.md`, JoltPhysics trimmed to
 current status with `PROJECT_LOG.md` pointers, the closed review
@@ -23303,13 +23303,13 @@ actions (all test-folder-scoped) could have caused it. Given the
 operator's explicit go-ahead, deployed the fresh build (Meshmerizer
 fixes + the earlier PostgreSQL-session fixes, including the
 `TryStartRegionProcess` console-crash fix) to Casperia's root via the
-same robocopy pattern `CasperiaControl.bat`'s own `:launch_sim`
+same robocopy pattern `<grid control script>`'s own `:launch_sim`
 uses, then did a full cold start: Robust, then all 15 regions
-(including `GFC`, which isn't in the batch menu but is a real live
+(including `Region C`, which isn't in the batch menu but is a real live
 region) with the same per-region binary-sync-then-start sequence.
 Verified after: Robust clean with zero new errors, all 15 regions
 reached `RegionReady` with zero fatal lines, and the 3 regions running
-BulletSim (Ranchero, Tangle, UFPGC - the ones the Meshmerizer fixes
+BulletSim (Region E, Region F, Region D - the ones the Meshmerizer fixes
 actually affect) initialized their physics engine without incident.
 
 ## Sibling-repo sweep: 2 real upstream fixes cherry-picked, 1 real ubODE bug found (2026-09-13)
@@ -23367,7 +23367,7 @@ last review. Fifteen had nothing new. Five did:
 ## Real live incident: recurring cloud avatar, two theories ruled out (2026-09-13)
 
 While the ubODE fix's rolling restart was fresh, a resident hit a real
-live "stuck as a cloud" on teleporting into Starbase Andromeda -
+live "stuck as a cloud" on teleporting into Region A -
 resolved by their own client-side Rebake Texture, and confirmed as a
 repeat occurrence, not a one-off. Investigated two concrete theories
 before landing on "not provably server-side":
@@ -23389,15 +23389,15 @@ resident's rebake fixed their session, which is itself proof this
 wasn't blocking anything.
 
 Second theory: the region restart ~10 minutes before the login (part
-of deploying the ubODE fix, same session) left Starbase Andromeda's
+of deploying the ubODE fix, same session) left Region A's
 `FlotsamAssetCache` disk cache cold. Real, checkable claim - and wrong.
 `FlotsamCache.ini`'s `CacheDirectory = ./assetcache` is relative, and
 every region process actually runs with the grid root as its working
 directory, not its own `Simulators\<name>\bin\` (confirmed straight
-from `CasperiaControl.bat`'s `start /d "%BASE%"` pattern, which this
+from `<grid control script>`'s `start /d "%BASE%"` pattern, which this
 session's manual per-region restarts replicated exactly) - so there is
 only ONE shared asset cache for the whole grid, at
-`S:\Opensim\Casperia\assetcache\`, currently 142,745 files. A region
+`<grid root>\assetcache\`, currently 142,745 files. A region
 restart never touches it. Not cold, not the cause.
 
 Left open, logged in `ROADMAP.md`'s "In progress" section rather than
@@ -23413,8 +23413,8 @@ afterward.
 ## Marketplace end-to-end purchase verified live - a real notification bug found and fixed (2026-09-13)
 
 Continuing the cloud-avatar investigation above, ran a real Marketplace
-purchase between two live accounts (Allen Blackwood buying, Ramius
-Easterwood selling) to actually verify the buy-charge-deliver flow
+purchase between two live accounts (Allen Blackwood buying, the operator's
+avatar selling) to actually verify the buy-charge-deliver flow
 end to end, per `ROADMAP.md`'s long-standing "not yet independently
 verified" flag. The purchase itself worked correctly - real currency
 moved (confirmed in `currency_transactions`), a real inventory row
@@ -23460,9 +23460,9 @@ exactly this, but grepping the whole repo found only one real caller
   leave it orphaned in the viewer's eyes.
 
 Deployed to Robust and the two regions the test accounts were
-actually on (Sandbox, Sol Sector) - correctly, this time, after being
+actually on (Region G, Region J) - correctly, this time, after being
 corrected mid-session for skipping the real warning sequence on an
-earlier GFC restart (see below). Re-tested live with a second real
+earlier Region C restart (see below). Re-tested live with a second real
 purchase between the same two already-connected sessions: correct
 balance and the delivered item appeared on both screens immediately,
 confirmed directly by the user, no relog needed. Commit `eb778a634c`.
@@ -23470,7 +23470,7 @@ Marketplace moved from `ROADMAP.md`'s "In progress" into `FEATURES.md`
 as a real, verified feature.
 
 **A real process correction, worth keeping**: mid-fix, also corrected
-a live misconfiguration found along the way (`GFC` region running
+a live misconfiguration found along the way (`Region C` region running
 Gloebit instead of `ConfluenceCurrencyModule`, per operator direction
 that new sims should default to Confluence's own currency and let the
 sim owner choose). The first attempt at fixing it skipped the actual
@@ -23492,9 +23492,9 @@ don't improvise a "close enough" version of it under time pressure.
 
 ## Sim-owner currency selection, a Region Management layout cleanup, and a real shutdown-status bug found live (2026-09-13)
 
-Following the GFC Gloebit misconfiguration above, the operator asked
+Following the Region C Gloebit misconfiguration above, the operator asked
 for three related things: was the region restart actually fixed
-properly, was GFC's currency misconfiguration actually fixed at the
+properly, was Region C's currency misconfiguration actually fixed at the
 root (not just hand-patched), and could a sim owner choose their own
 region's currency module instead of needing a manual `.ini` edit every
 time. The first two were already real, confirmed the same session -
@@ -23550,14 +23550,14 @@ before this code existed, so the zero-accounts check correctly never
 fires there - working as designed, nothing to fix.
 
 **Real bug found live: a successful shutdown reported as failed.**
-Testing the deployed layout fix, the operator tried to stop GFC from
-the Simulators page and got "GFC: failed to send shutdown - Could not
-reach GFC: An error occurred while sending the request." GFC's own log
+Testing the deployed layout fix, the operator tried to stop Region C from
+the Simulators page and got "Region C: failed to send shutdown - Could not
+reach Region C: An error occurred while sending the request." Region C's own log
 told a different story: a clean, complete graceful-shutdown sequence
 ("World has come to an end" -> `SHUTDOWN`: closing threads/killing
 listener/killing clients -> `SCENE`: closing down the simulator ->
 deregistered from the grid service) at the exact timestamp of the
-click. The command reached GFC and it obeyed correctly - the WebUI's
+click. The command reached Region C and it obeyed correctly - the WebUI's
 own report was wrong, not the shutdown.
 
 **Root cause**: `TryStopRegion` sends the `shutdown` console command
@@ -23586,7 +23586,7 @@ proxy signal" principle already established for restart verification
 "no recent log lines") earlier this session - applied here to a third,
 independent case of the same underlying lesson.
 
-Build-verified clean (0 warnings/errors), deployed to Robust, GFC
+Build-verified clean (0 warnings/errors), deployed to Robust, Region C
 restarted cleanly afterward and re-registered with the grid. All three
 changes live in the same commit, since they touch the same file and
 were found/fixed in one continuous pass: the currency-selection
@@ -23672,15 +23672,15 @@ actually use this is the whole point of the deployment.
 2. First real in-world touch threw `MissingMethodException: Method
    not found: 'LSLString ...IOSSL_Api.osProposePartnership(...)'` -
    the interface/implementation/stub DLLs were freshly deployed to
-   Sandbox, but `OpenSim.Region.ScriptEngine.YEngine.dll` itself
+   Region G, but `OpenSim.Region.ScriptEngine.YEngine.dll` itself
    (the actual script compiler/executor) was still from that morning's
    build, predating this feature entirely. A full solution rebuild
    doesn't mean every region has every changed DLL - redeployed the
    complete ScriptEngine DLL set (Api, Api.Runtime, YEngine, Shared)
    together this time.
 
-**Live-verified end to end on Sandbox**, with real residents (Ramius
-Easterwood, Jessica Starlight) running an actual ceremony script: one
+**Live-verified end to end on Region G**, with real residents (the operator's
+avatar, Resident 1) running an actual ceremony script: one
 touch set the proposer, a second touch from a different avatar fired
 `osProposePartnership` then immediately `osRespondToPartnershipProposal`,
 confirmed via `osGetPartnerId` in the same script, then confirmed a
@@ -23741,7 +23741,7 @@ with no separate wiring needed on the OSSL side.
 
 Build-verified clean, deployed to Robust only (purely server-side, no
 region DLL involved). Live-verified via the real `/internal/partner-action`
-endpoint: proposed Allen Blackwood -> Jessica Starlight, confirmed a
+endpoint: proposed Allen Blackwood -> Resident 1, confirmed a
 real row landed in `im_offline` with the correct recipient, sender,
 and message text ("Allen Blackwood has proposed a partnership with
 you. Visit /partner to respond."), then cancelled to leave no stray
@@ -23815,7 +23815,7 @@ this tree defines; `bin/Regions/Regions.ini`) needs no estate changes
 to test against.
 
 **Not done, deliberately:**
-- **Not deployed to live Casperia** (`S:\Opensim`, a separate directory
+- **Not deployed to live Casperia** (`<server root>`, a separate directory
   from this dev tree entirely) — wired and testable here only. Casperia
   runs 15 regions with real residents; rolling this out there is a
   separate, explicit decision, not a natural continuation of a dev-tree
@@ -23925,8 +23925,8 @@ config key by design, not two separate toggles to keep in sync).
 The maptile/NPC-block fix (`Scene.AnyRootAgentsInInstance()` excluding
 NPCs via `GetRootAgentCount() - GetRootNPCCount() > 0`, from an earlier
 pass this same night) was correct in source and built clean, but kept
-failing live on Starbase Andromeda - `Delaying background maptile
-generation for Starbase Andromeda until avatars leave the simulator`
+failing live on Region A - `Delaying background maptile
+generation for Region A until avatars leave the simulator`
 kept firing with only a persistent NPC present, across many boots,
 hours after the fix had supposedly been deployed.
 
@@ -24005,7 +24005,7 @@ re-walked next time this comes up.
   correct in code.
 - The live value the running viewer actually held
   (`CurrentMapServerURL` via Show Debug Settings) - matched the
-  expected `http://casperia.ddns.net:8002/` exactly.
+  expected `http://<grid address>/` exactly.
 
 None of that explained the symptom. A real, unresolved clue surfaced
 late - the World Map's own tracking marker showed "Invalid Location"
@@ -24016,7 +24016,7 @@ stopped.
 
 **Real, separately-confirmed causes of the "map looks wrong" symptom**,
 none of which needed new code:
-- Some of the "missing" regions were genuinely offline (Tangle/UFPGC
+- Some of the "missing" regions were genuinely offline (Region F/Region D
   deliberately stopped by the operator as a live test of the existing
   stale-tile cleanup - working as designed, confirmed via direct
   `curl` returning 404 for their tiles).
@@ -24163,7 +24163,7 @@ running mixed builds during a rolling restart hits constantly.
 `bin/OpenSimDefaults.ini` and Casperia's live copy) so the real
 per-region build number shows through, with the trade-off documented
 inline for a grid owner who'd rather have quiet crossings back.
-Live-verified the trade-off is real, not theoretical: once Sandbox was
+Live-verified the trade-off is real, not theoretical: once Region G was
 individually restarted onto a newer build than the rest of the grid,
 the operator's own viewer showed exactly that "different simulator
 version" notice crossing back into an older-build region - confirming
@@ -24201,7 +24201,7 @@ next time `.csproj`s get regenerated.
 
 **Live end-to-end verification**: with master deliberately built to
 587 and left un-synced to any region, all 15 regions confirmed still
-reporting 583; Sandbox alone restarted via the real WebUI Restart
+reporting 583; Region G alone restarted via the real WebUI Restart
 button (not scripted); came back up reporting 587 with a fresh
 PID/boot timestamp; every other region, including Andromeda,
 unaffected. Exactly the rolling-update behavior this whole session's
@@ -24213,9 +24213,9 @@ deliberate build mismatch rather than assumed from reading the code.
 The first Restart All shipped this session (2026-09-11) staggered
 every region 30 seconds apart with hub regions (DefaultRegion/
 DefaultHGRegion) sorted first. Confirmed broken by a real live
-incident: the operator fled Andromeda mid-restart-warning to Welcome
-Center expecting a safe harbor, and got disconnected anyway - Welcome
-Center's own restart, fired only 30 seconds earlier in the stagger,
+incident: the operator fled Andromeda mid-restart-warning to Region
+B expecting a safe harbor, and got disconnected anyway - Region
+B's own restart, fired only 30 seconds earlier in the stagger,
 hadn't actually finished yet. Hub regions going first in the queue
 isn't the same as hub regions being genuinely *done* restarting before
 anyone relies on them.
@@ -24229,9 +24229,9 @@ HTTP port stays alive and answering through its ENTIRE 120-second
 warning countdown right up until the real stop happens - the poll saw
 the OLD, not-yet-stopped process as already "up" and considered the
 wait satisfied almost immediately. Live process-creation-timestamp
-evidence made this unambiguous: Welcome Center's restart fired at
-15:01:42, but three ordinary regions (Farm, GFC, Ranchero) had already
-restarted by 15:02:04-15:03:10 - before Sandbox, the second hub
+evidence made this unambiguous: Region B's restart fired at
+15:01:42, but three ordinary regions (Region H, Region C, Region E) had already
+restarted by 15:02:04-15:03:10 - before Region G, the second hub
 region, had even finished its own cycle at 15:03:38.
 
 **Real fix: stop polling for "up" entirely.** `RealRestartRegion` (the
@@ -24244,7 +24244,7 @@ a region can't still be mid-restart once the function that restarts it
 has returned.
 
 **That surfaced a second, worse bug once actually tested live.**
-Welcome Center's re-test showed its PID never changing at all across
+Region B's re-test showed its PID never changing at all across
 an entire rolling restart - `start.log` showed why: the replacement
 process crashed instantly with `SocketException (10048): Only one
 usage of each socket address...`, because the OLD process's port was
@@ -24253,7 +24253,7 @@ still bound. `TryStopRegion` returning success only means the
 already warned that a genuine shutdown can make the process exit
 *after* the HTTP response is sent - but `RealRestartRegion` followed
 it with only a fixed 5-second sleep before launching the replacement.
-Welcome Center (757 objects, 442 scripts) needed longer than that to
+Region B (757 objects, 442 scripts) needed longer than that to
 actually finish tearing down. Worse: since `RealRestartRegion` never
 checked `TryStartRegionProcess`'s outcome, this failure was completely
 silent - the ready-status poll immediately saw the STALE, never-
@@ -24271,12 +24271,12 @@ instead of assuming a fixed load time, since a heavier region
 legitimately takes longer to finish loading before it's a genuine
 refuge for residents fleeing another region's own restart.
 
-**Live-verified end to end** after both fixes: Welcome Center's real
+**Live-verified end to end** after both fixes: Region B's real
 process actually cycled (fresh PID, clean port bind, `RegionReady`
 triggered, no crash), and its full cycle completed before any other
 region - hub or not - began its own warning.
 
-**Third, unrelated finding along the way**: Sandbox's hub-region status
+**Third, unrelated finding along the way**: Region G's hub-region status
 (originally set via a one-off `UPDATE regions SET flags = flags | 1`
 earlier this session) had silently reverted to a plain region by the
 time of this test. Root cause: `GridService.RegisterRegion` recomputes
@@ -24290,8 +24290,8 @@ documented in `Robust.ini.example`, just unused:
 section (spaces in the region name become underscores). Added
 `Region_Sandbox = "DefaultRegion"` to Casperia's live `Robust.HG.ini`
 and re-applied the DB flag once for immediate effect - going forward
-it's reasserted automatically on every Sandbox registration, the same
-way Welcome Center's own flags already were.
+it's reasserted automatically on every Region G registration, the same
+way Region B's own flags already were.
 
 ---
 
@@ -24384,7 +24384,7 @@ height, instead of a fixed length nobody had revisited.
 The two fixes from the entry above (sequential priority regions, real
 down-then-up port waits) were live-verified working - but re-testing
 kept surfacing what looked like fresh, unrelated failures on a
-different region each time (first Starbase Andromeda, then Sandbox),
+different region each time (first Region A, then Region G),
 which is what actually forced this deeper dig rather than declaring
 victory after the first clean run.
 
@@ -24409,7 +24409,7 @@ racing a fresh lookup. The retry loop was deleted entirely, not
 tuned down - once the actual bug is gone, retrying is dead code.
 
 **Second layer - the real root cause, found by actually reading
-`RestartModule.cs`.** Sandbox then hard-restarted with literally zero
+`RestartModule.cs`.** Region G then hard-restarted with literally zero
 "will restart in ..." lines anywhere in its own log - a genuine safety
 gap, since that means whoever might have been there got no warning at
 all. Root cause: vanilla OpenSim's `RestartModule.ScheduleRestart` -
@@ -24442,8 +24442,8 @@ isn't in the region at the time. This is a region-side change
 above - a region only actually gets the fix on its OWN next restart,
 which is delivered by the very rolling restart that tests it; the
 restart that *delivers* the fix is necessarily still decided by the
-old code (confirmed live: the delivering restart for Sandbox and
-Welcome Center still hit the old instant-restart path), but every
+old code (confirmed live: the delivering restart for Region G and
+Region B still hit the old instant-restart path), but every
 restart after that ran the corrected, unconditional countdown.
 
 Also added (defensive, not a workaround for the bug above - kept
@@ -24454,8 +24454,8 @@ and logging why, since "region restart 120" is idempotent and safe to
 retry, unlike retrying the real stop would be.
 
 **Live-verified end to end**: a full Restart All across all 7 running
-regions (Welcome Center, Sandbox, Starbase Andromeda, Section 31, SVC,
-UFPGC, Ranchero) completed cleanly, hub regions first and sequential,
+regions (Region B, Region G, Region A, Region I, Region O,
+Region D, Region E) completed cleanly, hub regions first and sequential,
 every region's `CoreModules.dll` confirmed matching the fixed master
 copy after its own restart.
 
@@ -24535,8 +24535,8 @@ tables) rather than any new persistence code.
 side addon, no Robust restart needed) and restarted the three regions
 that actually have Gloebit enabled per the live `Gloebit.ini`'s own
 `GLBEnabledOnlyInRegions` list - checked directly rather than assumed
-from memory, which turned out to matter: it's Welcome Center, SVC, and
-Starbase Andromeda, not Sandbox as an earlier note in this same entry
+from memory, which turned out to matter: it's Region B, Region O, and
+Region A, not Region G as an earlier note in this same entry
 first guessed. All three came up clean: `GloebitUsersMySQL`/
 `GloebitTransactionsMySQL` both show the migration advancing from
 revision 3 to revision 4 in each region's own log, no errors before or
@@ -24852,7 +24852,7 @@ startup. Robust has no REST/remote console configured for itself
 (unlike regions, which have `[WebConsole]`), so the graceful stop was
 done manually - typed `shutdown` directly into Robust's own console
 window - then relaunched via the same invocation
-`CasperiaControl.bat`'s `:launch_service` helper uses (`Robust.exe
+`<grid control script>`'s `:launch_service` helper uses (`Robust.exe
 -inifile=Robust.HG.ini` from the grid root).
 
 Live-verified: `Robust.log`'s new startup has no `OpenIdServerConnector`
@@ -24878,7 +24878,7 @@ first assumed - a real correction made and flagged before touching
 anything live, not silently absorbed.
 
 Copied the 8 directly-changed DLLs+PDBs to the master folder
-(`S:\Opensim\Casperia\`), restarted Robust (no REST console configured
+(`<grid root>\`), restarted Robust (no REST console configured
 for Robust itself, so the graceful stop was done by hand - typing
 `shutdown` in its own console window - each time this session needed
 one), and hit a real, unrelated problem on the very first relaunch: a
@@ -24916,13 +24916,13 @@ their own `bin\` from the master folder at their own next restart, used
 the already-built WebUI "Restart All" (rolling, 120s courtesy window,
 staggered 30s) - triggered by the user directly rather than by me,
 since it's an admin-session-gated action I won't touch credentials
-for. All 7 currently-running regions (Sandbox, Welcome Center,
-Ranchero, SVC, Section 31, Starbase Andromeda, UFPGC) completed their
+for. All 7 currently-running regions (Region G, Region B,
+Region E, Region O, Region I, Region A, Region D) completed their
 full rolling-restart cycle cleanly, each reaching `TriggerRegionReady`,
 confirmed synced to the fresh master binaries via MD5 (checked
 `OpenSim.Server.Handlers.dll` in each region's own `bin\` against the
 master copy). A handful of errors appeared in region logs during the
-Robust-down window (connection failures to `casperia.ddns.net:8003`) -
+Robust-down window (connection failures to `<grid address>`) -
 expected and transient, not new bugs; the rest of the log noise was
 pre-existing content decay (missing script assets, degenerate meshes),
 unrelated to tonight's work.
@@ -24937,8 +24937,8 @@ find in its own right.
 
 ## Real self-inflicted grid-wide login outage from the ControlPlaneAccess deploy, and its actual fix (2026-09-23)
 
-Shortly after the ICan deploy above finished, a resident (Ramius
-Easterwood) reported total login failure - Firestorm's login dialog
+Shortly after the ICan deploy above finished, a resident (the operator's
+avatar) reported total login failure - Firestorm's login dialog
 showed "Service request failed: [403] Response status code does not
 indicate success: 403 (Forbidden)." This was a real, grid-wide outage,
 not a one-off, and it was caused directly by tonight's own
@@ -24946,7 +24946,7 @@ not a one-off, and it was caused directly by tonight's own
 
 **Root cause.** `Robust.log` traced it exactly: Robust's
 `SimulationServiceConnector` calls a destination region's **public**
-`ServerURI` (`http://casperia.ddns.net:<port>/agent/...`) for ordinary
+`ServerURI` (`http://<grid address>:<port>/agent/...`) for ordinary
 login/teleport agent creation - there is no purely-internal loopback
 path for this call anywhere in this grid's config (`PrivURL` is
 literally defined as `= ${Const|BaseURL}`, the same public hostname,
@@ -25004,8 +25004,8 @@ memory. Verified directly rather than just asserting it: a test POST
 to a freshly-restarted region's own `/agent/` endpoint moved from 403
 to 400 (rejected for a bad test payload, not for being untrusted) -
 real, checkable evidence, not just "should work now." Confirmed via
-`Robust.log` that multiple real residents (Ramius Easterwood - the
-original reporter - Jessica Starlight, Jeffery Biedermann, the latter
+`Robust.log` that multiple real residents (the operator's avatar - the
+original reporter - Resident 1, Resident 2, the latter
 from a completely different IP/session) logged in successfully once
 the fix was fully rolled out.
 
@@ -25194,7 +25194,7 @@ control-plane changes: the new/changed assemblies (`OpenSim.Region.OptionalModul
 `OpenSim.Services.UserAccountService`, plus the earlier `OpenSim.Server.Base` and
 `OpenSim.Services.HypergridService`); the `ConciergeServiceConnector` line in the
 live `Robust.HG.ini`; and a `[Concierge]` block in `config-include/GridCommon.ini`,
-which every region includes, so all regions - Ranchero too, whenever it is next
+which every region includes, so all regions - Region E too, whenever it is next
 started - pick it up on their next restart. Per-region behavior is then controlled
 live from the portal. Because a value in `GridCommon.ini` overrides the same key in
 a region's own ini, per-region control is deliberately done through the portal and
@@ -25208,15 +25208,15 @@ the `regions` regex, not per-region ini overrides.
 `hg,new,trial`) to `config-include/GridCommon.ini`. Robust relaunched (endpoint loaded on the
 private port, answers `{"grid":"Casperia Prime"}` for an unknown region), then Restart All. The
 rolling restart only covers running regions, so the 9 that were already down were brought up with
-Start All afterwards (which also started Ranchero); all 15 regions logged
+Start All afterwards (which also started Region E); all 15 regions logged
 `[Concierge]: initialized for <region>` on the new binaries. **Still to verify in-world:** welcome,
 arrival announcement, `/4242` commands, manager IM, and a portal edit reaching a region.
 
 **Open issue, 2026-09-26 (in-world test, not yet diagnosed).** `/4242` commands and arrival
-detection are confirmed working live (UFPGC: `Steven Easterwood enters UFPGC`, then the command
+detection are confirmed working live (Region D: `Resident 4 enters Region D`, then the command
 reply). A grid-wide welcome set on the admin defaults page (Admin > Settings > Concierge) did
 **not** show in-world afterwards (`/4242 welcome`, and arrivals log `no welcome message for
-region UFPGC`). Two things were checked before stopping: Robust's `GET /concierge/<uuid>` for a
+region Region D`). Two things were checked before stopping: Robust's `GET /concierge/<uuid>` for a
 made-up region ID returned only `{"grid":"Casperia Prime"}`, i.e. no default welcome was visible
 through the endpoint at that moment; and the region-side log line for "no welcome" is the correct
 empty-state message, so the region client itself is behaving. Not yet checked: whether the portal
@@ -25239,8 +25239,8 @@ Profile JSON-RPC gate approved by the owner 2026-09-26 for porting after Concier
 
 **Concierge welcome verified live, 2026-09-26.** The earlier "grid-wide welcome not showing"
 report resolved itself on retest: with a grid-default welcome and rules saved in the admin page,
-UFPGC delivered the resident greeting with tokens expanded (`Welcome to Casperia Prime, <name>! You
-are in UFPGC with 2 people here.`), the second welcome line, and the rules text with `{owner}`
+Region D delivered the resident greeting with tokens expanded (`Welcome to Casperia Prime, <name>! You
+are in Region D with 2 people here.`), the second welcome line, and the rules text with `{owner}`
 expanded. That confirms the full portal -> GridSettings -> Robust `/concierge` endpoint -> region
 cache -> in-world chat path for the grid default. (The first attempt likely predated the save or
 the 60 s region cache; not separately diagnosed.) Still untested live: `[new]`/`[trial]`/`[hg]`
@@ -25320,15 +25320,15 @@ from the server. Data method: read-only queries via a temporary mysql option fil
 2026-09-09/13 audit are live (master mesher assemblies dated 2026-09-23, per-region copies match).
 Real live config confirmed from each region's `OpenSim.ini` (an early grep of mine matched
 commented lines and briefly suggested BulletSim was everywhere; it is not): grid default ubODE +
-ubODEMeshmerizer, Sector_001 ubODE + generic Meshmerizer, Ranchero/Tangle/UFPGC BulletSim + generic
-Meshmerizer. Mesher errors in the logs reduce to one content problem on GFC: ~800 `GFC WindowFrame`
+ubODEMeshmerizer, Region_K1 ubODE + generic Meshmerizer, Region E/Region F/Region D BulletSim + generic
+Meshmerizer. Mesher errors in the logs reduce to one content problem on Region C: ~800 `Region C WindowFrame`
 prims reference asset `6ea0c70b-...` which is a J2C texture, not a mesh (1,608 error lines per
 boot). The structural generic-Meshmerizer gaps only reach 3 regions and BulletSim there uses
 asset hulls / Bullet HACD rather than the mesher's local hulls. Open small items: dedupe the log
-per asset, and decide what to do with the mis-typed GFC prims (content fix, not a code fix).
+per asset, and decide what to do with the mis-typed Region C prims (content fix, not a code fix).
 
 **Concierge built-in welcome and rules, 2026-09-26 (built, checked, NOT deployed).** Live test
-showed Jessica Starlight entering Sandbox got `no welcome message for region Sandbox`, and Robust's
+showed Resident 1 entering Region G got `no welcome message for region Region G`, and Robust's
 `/concierge/<region-uuid>` returned no welcome for any region: nothing was stored (or the grid
 default had been saved empty), and the module had no text of its own, so it was silent - poor for a
 new grid owner. Now `ConciergeSettingKeys.BuiltInWelcome`/`BuiltInRules` (Robust side) apply when the
@@ -25357,7 +25357,7 @@ Harness 70/70. `OpenSim.Server.Handlers` re-copied to master; needs one more Rob
 Restart All.
 
 **Concierge greeting verified live and `{people}` token added, 2026-09-26.** With the built-in text
-deployed, Jessica Starlight's arrival in Sandbox produced the full built-in welcome (tokens
+deployed, Resident 1's arrival in Region G produced the full built-in welcome (tokens
 expanded), the second line and the arrival announcement; the manager-notice log correctly said she
 counts as a returning resident, which is not in `notify_audiences` (so no IM by design; a
 Trial/new/HG account is still needed to test the IM). Grammar fix: new `{people}` token renders
@@ -25365,13 +25365,13 @@ Trial/new/HG account is still needed to test the IM). Grammar fix: new `{people}
 (`{count}` remains the plain number). Region and Robust assemblies (`OpenSim.Region.OptionalModules`,
 `OpenSim.Server.Handlers`) redeployed for this.
 
-**Concierge manager IM and audience greeting verified live, 2026-09-26.** With Jessica Starlight
+**Concierge manager IM and audience greeting verified live, 2026-09-26.** With Resident 1
 temporarily flagged Trial Member (direct `UserFlags` 0 -> 256 while Robust was down; reverted to 0
-afterwards, verified), her login to Sandbox produced: the `[new]` greeting via the `[trial]` ->
+afterwards, verified), her login to Region G produced: the `[new]` greeting via the `[trial]` ->
 `[new]` fallback ("Welcome to Casperia Prime, Jessica! You're new here..."), the arrival
 announcement with the new grammar ("now 2 people in this region"), and - to the estate owner - an
-object-style IM `Concierge (Sandbox): Jessica Starlight (Trial Member) arrived in Sandbox.` The region log
-shows the decision path (`telling <owner> that Jessica Starlight (Trial Member) arrived in Sandbox`),
+object-style IM `Concierge (Region G): Resident 1 (Trial Member) arrived in Region G.` The region log
+shows the decision path (`telling <owner> that Resident 1 (Trial Member) arrived in Region G`),
 and earlier a returning resident's arrival correctly logged `not notifying managers ... returning
 resident, which is not in notify_audiences`. Verified: welcome, rules and /4242 commands, portal-edited
 default, built-in defaults, `{people}`, announcements, audience section fallback, manager IM. Not yet
@@ -25535,22 +25535,22 @@ ones and have not been put through the same method-by-method checks.
 ## Pending fixes deployed to Casperia (2026-09-27)
 
 One batched deploy: Robust shut down by the owner, 186 DLL/PDB files copied from the Release build into
-`S:\Opensim\Casperia` and verified byte-for-byte, Robust relaunched (no warnings or errors, all migrations
+`<grid root>` and verified byte-for-byte, Robust relaunched (no warnings or errors, all migrations
 current), then Restart All from the Simulators page. All 15 regions re-registered with the grid between
 16:16 and 16:29. Deliberately left out of the copy: the WebRtc voice DLLs (they carry the owner's
-uncommitted ConfluenceVoice test on Sandbox), Gloebit, HoloPhysicsGuard and MoneyServer.
+uncommitted ConfluenceVoice test on Region G), Gloebit, HoloPhysicsGuard and MoneyServer.
 
 What went live: the empty-texture fixes (mesh upload and IAR load), the Robust no-console fallback, the
 first-admin bootstrap fix, and the new SQLite/PostgreSQL data backends (inert on Casperia's MySQL).
 
 Log check of every region afterwards found nothing new: zero errors in nine regions; the rest showed only
-old, repeating errors (Tangle, UFPGC and Welcome Center script assets that are missing from the grid;
-GFC's known-lost WindowFrame mesh; Sandbox's ConfluenceVoice "viewer session 0000... not found", left for
-the voice work). Sandbox loaded ConfluenceVoice (WebRtcVoice) as intended. Welcome Center runs a
+old, repeating errors (Region F, Region D and Region B script assets that are missing from the grid;
+Region C's known-lost WindowFrame mesh; Region G's ConfluenceVoice "viewer session 0000... not found", left for
+the voice work). Region G loaded ConfluenceVoice (WebRtcVoice) as intended. Region B runs a
 third-party Vivox-compatible service (ThinkVox, thinkvox.cloud, configured in its own `[ThinkVox]` ini
 section); nothing in Confluence reads that section and voice there works.
 
-Found while checking: Sector_001 has `physics = ubODE` with `meshing = Meshmerizer` and ubODE logs "meshing
+Found while checking: Region_K1 has `physics = ubODE` with `meshing = Meshmerizer` and ubODE logs "meshing
 option must be set to ubODEMeshmerizer" at every start (34 times since 2026-09-12). The ini was left alone
 on purpose; see the roadmap entry on making physics engines and meshers interchangeable.
 
@@ -25628,7 +25628,7 @@ PostgreSQL backends added this pass).
 
 ## In-world map "Find" flash-then-vanish: root cause confirmed and fixed (2026-09-28)
 
-Operator reported the in-world World Map "Find" (typing a region name, e.g. "UFPGC", and clicking Find)
+Operator reported the in-world World Map "Find" (typing a region name, e.g. "Region D", and clicking Find)
 flashes the result then it vanishes - confirmed to happen for every region tried, on release, beta and
 nightly Firestorm alike, so not a client-version quirk.
 
@@ -25658,7 +25658,7 @@ own existing (but disabled) debug logging - safe, log-only, no behavior change -
 two regions the operator was testing from, and had them reproduce it again. The captured log showed exactly
 what was being sent for every search, e.g. searching "ufpgc":
 ```
-sending block Name='UFPGC' X=995 Y=1001 Access=13 MapImageId=00000000-0000-0000-0000-000000000000
+sending block Name='Region D' X=995 Y=1001 Access=13 MapImageId=00000000-0000-0000-0000-000000000000
 sending block Name='ufpgc' X=0 Y=0 Access=255 MapImageId=00000000-0000-0000-0000-000000000000
 ```
 `OnMapNameRequestHandler` calls `AddFinalBlock` unconditionally, even on a successful match - every search
@@ -25849,7 +25849,7 @@ hand-picked subset based on what a diff review believed changed. Deployed the co
 (281 top-level files + 7 `lib64/*.dll`, matching exactly the same file-pattern set `SyncRegionBinaries`
 itself already uses for regions) to the master root, verified every file byte-for-byte against the repo
 build via `md5sum`, relaunched Robust, and had the operator bring regions back up one at a time with a log
-check after each (`UFPGC` first, confirmed clean - `INITIALIZATION COMPLETE... LOGINS ENABLED`, a real
+check after each (`Region D` first, confirmed clean - `INITIALIZATION COMPLETE... LOGINS ENABLED`, a real
 resident logged in and completed movement - before the rest followed). **Real, hard-learned lesson,
 recorded here so it doesn't recur**: a git merge conflict list and a binary-deploy file list are different
 concepts entirely; a shared/base assembly changing means every assembly that touches it must move together,
@@ -25871,8 +25871,8 @@ ParcelImage-zero fallback - both entries above), the operator reported the deepe
 happening: searching Find for the exact name of the region you are *currently standing in* fails
 (flashes then reverts), while searching for that same region's name *from any other region* works
 correctly. Confirmed by the operator across a comprehensive, fresh test after a full grid restart:
-10 of 15 regions (SailorV Creations, Sandbox, Sector 001-004, Sol Sector, Starbase Andromeda, Tangle, UFPGC)
-fail on self-search; 5 (Farm, GFC, Ranchero, Section 31, Welcome Center) don't. Confirmed via direct
+10 of 15 regions (Region O, Region G, Regions K1-K4, Region J, Region A, Region F, Region D)
+fail on self-search; 5 (Region H, Region C, Region E, Region I, Region B) don't. Confirmed via direct
 comparison against real, unaltered `opensim-master` and via testing on Nightly/Beta/Release Firestorm
 alike that this is not a viewer-version quirk and not vanilla behavior - a genuine Confluence-side
 regression, per the operator's own repeated and ultimately correct insistence throughout.
@@ -25881,7 +25881,7 @@ regression, per the operator's own repeated and ultimately correct insistence th
 - **Server-side reply content and timing** - added temporary diagnostic logging at every relevant layer
   (`MapSearchModule.OnMapNameRequestHandler`, `LLClientView.SendMapBlock`'s Land-throttle queue depth,
   `RegionGridServiceConnector.GetRegionsByURI`'s local/remote merge) and captured live, real test data
-  multiple times, including a direct A/B comparison: Welcome Center (works) and Sandbox (fails) produced
+  multiple times, including a direct A/B comparison: Region B (works) and Region G (fails) produced
   **byte-identical-shaped, fully correct replies** through the exact same code paths - single block, correct
   name/coordinates, `Access=13`, a valid non-zero image UUID, zero throttle-queue delay. One genuinely
   worked, one didn't, with no observable difference in what the server did or sent in either case.
@@ -26469,7 +26469,7 @@ needed) is not just wired for a dev test - it is live, grid-wide, on all 15 of C
 directly, not assumed: every region's `OpenSim.ini` has `[WebRtcVoice] Enabled = true` pointing at a running
 ConfluenceVoice instance, `[VivoxVoice] enabled = false`, and a comment dated "ConfluenceVoice grid
 migration (2026-09-27)" with a `.pre-confluencevoice.bak` rollback file kept per region - a genuine cutover,
-not the Sandbox-only test the last PROJECT_LOG mention of this implied. `confluencevoice.exe` was confirmed
+not the Region G-only test the last PROJECT_LOG mention of this implied. `confluencevoice.exe` was confirmed
 actually running on the host via `Get-Process` (started 2026-09-29).
 
 **This migration was never logged here at all** - no PROJECT_LOG entry, and `FEATURES.md` never got a
@@ -26786,7 +26786,7 @@ Full solution build clean after the two `llGetEnv`/`GetScriptErrors` changes. Co
 ## Deploying #224 onto a partially-live grid
 
 Unlike every earlier deploy this session, the grid was not fully down when this one started: Robust and 7 of
-15 regions (Ranchero, Sandbox, Section_31, Starbase Andromeda, SVC, UFPGC, Welcome_Center) were up with real
+15 regions (Region E, Region G, Region_I, Region A, Region O, Region D, Region_B) were up with real
 residents online, 8 regions were already stopped. A full-tree diff against the deployed copy again showed
 ~200+ files differing (the same rebuild-MVID noise documented in the 2026-09-30 deploy-drift entry, not real
 content changes beyond the two touched files) - copied the whole set everywhere per the standing full-tree-diff
@@ -26811,11 +26811,11 @@ once. This means the plain console `shutdown` command (posted to each region's o
 `X-Console-Secret` header, same REST pattern established earlier this session) already satisfies the "warn
 residents first" rule on its own, with no separate `region restart <seconds>` countdown needed first.
 
-Restarted UFPGC and Sandbox this way (shutdown via consoleweb -> wait for the process to actually exit -> copy
+Restarted Region D and Region G this way (shutdown via consoleweb -> wait for the process to actually exit -> copy
 the now-unlocked files -> relaunch with the same `-inifile=Simulators\<region>\OpenSim.ini -background=true
 -console=rest` args captured from the running process's own command line -> wait for the port to listen again)
 - both came back clean, confirmed via `OpenSim.log`'s own "Startup complete, serving 1 region" line. The attempt
-on a third region (Section_31) was refused twice in a row by the Claude Code permission classifier ("Remote
+on a third region (Region_I) was refused twice in a row by the Claude Code permission classifier ("Remote
 Shell Writes") with no code-side explanation - the exact same intermittent live-process-action classifier
 inconsistency recorded in `casperia-live-process-stop-permission-inconsistency` from 2026-09-13. Stopped
 rather than retry or route around it, and asked the operator directly instead of guessing.
@@ -26827,15 +26827,15 @@ confirmed fully down (`Get-Process -Name Robust,OpenSim` empty), redid the same 
 and all 15 regions - "ALL VERIFIED MATCHING - ROOT + ALL 15 REGIONS". Operator restarted the grid themselves.
 
 **Post-restart check**: confirmed via `Get-CimInstance Win32_Process` that Robust + all 15 region processes
-were running (16 total, matched by `ExecutablePath` to each expected region). Spot-checked Starbase Andromeda's
-and Farm's `OpenSim.log` for a clean "Startup complete" line and a normally-reconnecting resident (Gloebit
+were running (16 total, matched by `ExecutablePath` to each expected region). Spot-checked Region A's
+and Region H's `OpenSim.log` for a clean "Startup complete" line and a normally-reconnecting resident (Gloebit
 module responded to the new client normally). Then scanned every region's `OpenSim.log` for ERROR/WARN lines
 after their own most-recent "Startup complete" marker, and `Robust.log` (13.7M lines - scanned with a
 line-streaming `Select-String`, not a full in-memory read) for ERROR/FATAL since the restart window: 13 of 15
-regions and Robust itself came back with zero errors. GFC (2) and Welcome_Center (1) logged pre-existing
-"Failed to decode mesh asset"/"invalid degenerated mesh" warnings for already-known broken content, and Tangle
+regions and Robust itself came back with zero errors. Region C (2) and Region_B (1) logged pre-existing
+"Failed to decode mesh asset"/"invalid degenerated mesh" warnings for already-known broken content, and Region F
 logged its already-known batch of "Couldn't start script ... asset ID could not be found" lines (same missing-
-asset pattern seen on UFPGC during an earlier test restart this session) - none of these are new, and none are
+asset pattern seen on Region D during an earlier test restart this session) - none of these are new, and none are
 caused by tonight's code changes.
 
 ## Log rotation: Robust.log had grown to 1.9GB, unbounded
@@ -27680,10 +27680,10 @@ Reinstalled git, gh, the .NET 8 SDK (8.0.425) and Python 3.12 via winget; prebui
 - **Claude's memory was rebuilt from this file**, which is exactly why this log is kept. The 12 memory notes
   this log cites by name (`[[casperia-...]]`) were recreated under the same names. They're now mirrored to
   `S:\ClaudeBackup\memory\OpenSim-Confluence`, so a future C: wipe can't take them.
-- **Real casualty found: the nightly live-database backup stopped.** `S:\Opensim\AutoBackup\Backup-CasperiaDB.ps1`
+- **Real casualty found: the nightly live-database backup stopped.** `<backup script>`
   is intact, but the Windows scheduled task that ran it at 03:30 was on C: and is gone. Last nightly run was
   2026-10-10 03:31; no run on 10-11. **Still needs re-creating.**
-- `S:\Opensim\Casperia-Dev` no longer exists, so there is no test grid: every deploy goes straight to live.
+- `<dev grid root>` no longer exists, so there is no test grid: every deploy goes straight to live.
 
 ## Deployed to live: Place Profile fix, #253 SitTargetActive, #258 PGSQL ban list (2026-10-11)
 
@@ -27695,7 +27695,7 @@ check both UTF-16 byte alignments, because string-heap entries can start at an o
 didn't do that falsely reported the Hypergrid fix as absent.
 
 Pre-checks: build exactly at HEAD `0e5a87457f`; no source changes; no `*.config`/`*.json`/sidecar file differs
-from live, only DLL/EXE/PDB. A manual dump was taken (`AutoBackup\casperia_pre-deploy_20261011.sql`, complete).
+from live, only DLL/EXE/PDB. A manual dump was taken (`AutoBackup\pre-deploy_20261011.sql`, complete).
 That isn't the usual practice; normally the nightly backup covers a deploy (see above).
 
 Deploy: the operator stopped Robust. The full build output (290 files, `SyncRegionBinaries`' own patterns +
@@ -27724,7 +27724,7 @@ Not yet live-tested in-world: Place Profile on a Confluence region, and a zero-o
 region restart.
 **Follow-up, same day: nightly backup restored.** Re-registered as Windows scheduled task "Casperia DB Backup"
 (daily 03:30, runs as the operator while signed in, hidden, StartWhenAvailable) running
-`S:\Opensim\AutoBackup\Backup-CasperiaDB.ps1`. Test-run through Task Scheduler: exit 0, 386.3 MB -> 240.8 MB gz,
+`<backup script>`. Test-run through Task Scheduler: exit 0, 386.3 MB -> 240.8 MB gz,
 status SUCCESS. Laragon's Cronical was deliberately not reused (the script exists because Cronical had silently
 stopped and produced a 0-byte dump). The task itself lives on C:, so it has to be re-registered after any future
 reinstall.
@@ -27800,7 +27800,7 @@ Not yet deployed. It touches Robust (`OpenSim.Server.Handlers` for picks; `OpenS
 the master root (0 failures, 0 md5 mismatches); the operator started Robust and ran Restart All. Verified: all
 15 regions on fresh processes started after Robust, every region `bin` md5-identical to the root, all
 "Startup complete", Robust 0 errors and no picks parse errors since restart. Error counts per region match the
-pre-deploy boot (pre-existing content issues). The only new type is WebRTC voice reconnect noise on Sandbox.
+pre-deploy boot (pre-existing content issues). The only new type is WebRTC voice reconnect noise on Region G.
 Restart All took about 12 minutes end to end: default regions first, each waiting until it's back, then the
 rest 30 s apart. Only 2 of 15 had cycled when it looked finished from the WebUI, so verify process start times
 before calling a deploy done.
@@ -27854,7 +27854,7 @@ the full routine: Robust stopped, full tree copied (290 files, 0 failures, 0 md5
 Restart All. Verified: all 15 regions on fresh processes with `bin` md5-identical to the root, all "Startup
 complete", **YEngine "Enabled for region" on every one** (the enum change passed its startup check live), Robust 0
 errors, no new error types. Bot behaviour itself is still to be tested in-world.
-**First in-world bot test (GFC, ~21:19): `botSetNavigationPoints` threw on every call.** The YEngine stack trace
+**First in-world bot test (Region C, ~21:19): `botSetNavigationPoints` threw on every call.** The YEngine stack trace
 reported `InvalidCastException: Unable to cast object of type 'LSLInteger' to type 'System.IConvertible'` at
 `OSSL_Api.botSetNavigationPoints`: `Convert.ToInt32(o)` on a list item, which arrives as `LSL_Integer`. So no
 bot path has ever started from YEngine since the 2026-08-17 wiring. (Before tonight that was hidden behind the
@@ -27863,7 +27863,7 @@ explicitly, as `ParseBotOptionsList` and the profile readers already did. Those 
 and are fine. Separately, the first in-world compile failure was a partial paste (the asset held only the last 65
 of 140 lines, fetched from the asset service to confirm). The script itself passes YEngine's own
 tokenizer/reducer, now usable as a local LSL syntax check (scratchpad `lslcheck`, reports 0-based line,col).
-**Second in-world bot test (GFC, ~21:52): creator auto-registration and multi-script delivery confirmed, then a
+**Second in-world bot test (Region C, ~21:52): creator auto-registration and multi-script delivery confirmed, then a
 crash inside `bot_update`.** The bot was created; box 1 (which never registered) and box 2 (registered) both
 received `bot_update`, which confirms #268's creator registration and multi-script fan-out. Both then threw
 `InvalidCastException: Unable to cast object of type 'System.Object[]' to type 'list'`, because BotManager passes the
@@ -27871,7 +27871,7 @@ list parameter as a raw `object[]`. Phlox accepts that; YEngine's event prologue
 int/string from either form but casts a list parameter straight to `LSL_List`. Fixed in YEngine's module-facing
 `PostScriptEvent`/`PostObjectEvent(UUID, string, object[])`: `object[]` arguments become `LSL_List`, with elements
 mapped to LSL types so `llList2Vector` etc. work. That also covers `path_update`. Local standalone boot clean.
-**Third in-world bot test (GFC, 22:18): PASS.** No exceptions in the region log. Local chat showed:
+**Third in-world bot test (Region C, 22:18): PASS.** No exceptions in the region log. Local chat showed:
 - `bot_update` delivered to YEngine with real LSL lists (`BOT_MOVE_UPDATE [node, <pos>]`, then `BOT_MOVE_COMPLETE [<pos>]`).
 - Delivered to the never-registered creator script **and** to a second registered script.
 - The `BOT_TRAVELMODE_WAIT` point held the bot **2.99 s** (asked for 3 s).
@@ -27885,7 +27885,7 @@ previous build until their next restart; the live root already has this one.
 
 ## WebUI restarts now load each region once (countdown, then process exit) (2026-10-11)
 
-The operator noticed GFC registering twice per restart. Cause: `RealRestartRegion` sent `region restart 120`, whose
+The operator noticed Region C registering twice per restart. Cause: `RealRestartRegion` sent `region restart 120`, whose
 countdown ends in RestartModule's **in-place scene reload** (the first deregister/register). It then waited for
 that reload, stopped the process, and relaunched it: a second full scene load. So every WebUI restart loaded each
 region twice, which is a large part of Restart All taking about 12 minutes for 15 regions.
@@ -27906,16 +27906,16 @@ restart still reloads in place and keeps running; 0 errors either way. **Rollout
 after deploying still sees old-build regions (they get the new build only *on* that restart), so it runs the
 fallback (double load). Restarts after that use the single-load path.
 **Single-load restart verified live (Restart All ~22:59-23:08 plus Start All).** For regions already on the new build
-(GFC, Section 31, Welcome Center), each old process logged "restart countdown finished - shutting the process
+(Region C, Region I, Region B), each old process logged "restart countdown finished - shutting the process
 down", with **no in-place reload**. The fresh process started about 7 s later and registered once (countdown end
-to re-registered about 15 s; GFC 23:01:50 to 23:02:05). No WebUI fallback warnings. An extra
+to re-registered about 15 s; Region C 23:01:50 to 23:02:05). No WebUI fallback warnings. An extra
 "registered" line seen about 30 s before some deregisters is the running region re-registering after publishing
 a new map tile (`MaptileGeneration`, then `AddMapTile` x4, then register), normal and unrelated to restarts.
 
-**Separately, same evening:** an internet outage made `casperia.ddns.net` fail to resolve. Sandbox's relaunch at
+**Separately, same evening:** an internet outage made `<grid address>` fail to resolve. Region G's relaunch at
 22:48 died with `[ACCOUNT CONNECTOR]: Could not resolve UserAccountServerURI`, because every region reaches Robust's
-*private* services via `PrivURL = http://casperia.ddns.net` and `OSHHTPHost(..., resolve: true)` does a DNS lookup
-at startup. Eight other regions (Farm, Ranchero, Sector_001-004, Sol_Sector, Tangle) were down from 21:17-21:24
+*private* services via `PrivURL = http://<grid address>` and `OSHHTPHost(..., resolve: true)` does a DNS lookup
+at startup. Eight other regions (Region H, Region E, Regions K1-K4, Region_J, Region F) were down from 21:17-21:24
 (clean shutdowns); the operator attributed it to the same outage. Restart All doesn't start stopped regions;
 **Start All** brought them back. All 15 running the new build by 23:08, all "Startup complete", YEngine on,
 0 FATAL. **Suggested, not applied (operator's call):** `PrivURL = http://127.0.0.1` for intra-host private
@@ -27926,9 +27926,9 @@ traffic, to remove the DNS dependency.
 (`${Const|PrivURL}:${Const|PrivatePort}`, port 8003: assets, inventory, grid, estate, avatar, presence, accounts,
 Experience, abuse reports, grid user, auth, friends, map-tile upload, mute list, groups), and no code reads it.
 Everything public (viewers, Hypergrid, map tile fetch, website) uses `BaseURL`/`BaseHostname`:8002, unchanged.
-Removes the startup DNS dependency that crashed Sandbox during tonight's outage, and keeps that traffic off the
+Removes the startup DNS dependency that crashed Region G during tonight's outage, and keeps that traffic off the
 router's NAT hairpin. Loopback is always trusted by ControlPlaneAccess. Takes effect per region on its next restart.
-Sandbox is the RegionOrderTemplateIniPath, so new regions inherit it.
+Region G is the RegionOrderTemplateIniPath, so new regions inherit it.
 ---
 
 ## Jolt review: what we run, jrouwe upstream, and Legion's `lane/jolt` (2026-10-11)

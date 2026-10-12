@@ -136,7 +136,7 @@ namespace osWebRtcVoice
         // on its own: one failed attempt permanently fails voice for that region until the
         // viewer relogs or teleports away and back (confirmed live, 2026-09-28 -- a single
         // "connection actively refused" against an otherwise healthy, 29-minutes-stable
-        // ConfluenceVoice was enough to leave a viewer with no voice in Sandbox while a second
+        // ConfluenceVoice was enough to leave a viewer with no voice in one region while a second
         // viewer connected normally seconds later). Retrying a genuine transport failure here,
         // cheaply and fast, means the viewer often never sees it happen at all.
         private const int MaxJsonRpcAttempts = 3;

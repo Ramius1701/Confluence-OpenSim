@@ -255,7 +255,7 @@ prim-capacity packs and self-service region orders.
   scales with size; Homestead and Openspace are single-size, fixed-
   capacity entry tiers. Only Full Region can grow further after
   purchase via packs. Mainland is reserved for grid-owned
-  infrastructure (Welcome Center, Sandbox) and isn't sold through the
+  infrastructure (Region B, Region G) and isn't sold through the
   Store's buyer-facing catalog.
 - Prim packs (3 flat tiers) add to whatever the region's current cap
   already is — every region can have a different baseline — and apply
@@ -682,7 +682,7 @@ hardcoded default:
   binding (Jolt Physics v5.6.0 since 2026-10-12), adapted from
   Legion-Grid-Code's own port. Requires
   `meshing = Meshmerizer` (same requirement as BulletSim). **Not
-  currently live** — pulled off Starbase Andromeda 2026-09-11 back to
+  currently live** — pulled off Region A 2026-09-11 back to
   BulletSim after real avatar-movement issues (run speed, unsit
   position, and a walking/ground-detection lag against real mesh
   content) kept resurfacing; see `PROJECT_LOG.md` for the fixes made

@@ -7,7 +7,7 @@ gap today. For what already exists, see `FEATURES.md`.
 
 - **Recurring "cloud" avatar on login/teleport - root cause not yet
   found (2026-09-13).** A resident reported getting stuck as a cloud
-  after teleporting into Starbase Andromeda, resolved by the client's
+  after teleporting into Region A, resolved by the client's
   own Rebake Texture - and confirmed this has happened to them before,
   more than once. Investigated two concrete server-side theories and
   ruled both out with direct evidence rather than guessing:
@@ -19,14 +19,14 @@ gap today. For what already exists, see `FEATURES.md`.
     every viewer already has and never needs to fetch from this grid.
   - **Not a cold asset cache from a region restart.** Suspected the
     region restart ~10 minutes before the login (deploying the ubODE
-    fix, same day) had left Starbase Andromeda's `FlotsamAssetCache`
+    fix, same day) had left Region A's `FlotsamAssetCache`
     disk cache cold. Checked directly: `FlotsamCache.ini`'s
     `CacheDirectory = ./assetcache` is a relative path, and since
     every region process actually runs with the **grid root** as its
     working directory (not its own `Simulators\<name>\bin\` folder -
-    confirmed from `CasperiaControl.bat`'s own `start /d "%BASE%"`
+    confirmed from `<grid control script>`'s own `start /d "%BASE%"`
     pattern, which this session's manual restarts replicated exactly),
-    all regions share ONE cache at `S:\Opensim\Casperia\assetcache\` -
+    all regions share ONE cache at `<grid root>\assetcache\` -
     142,745 files, clearly long-lived, untouched by any region-level
     binary sync or restart. Not cold, not the cause.
 
@@ -168,8 +168,8 @@ gap today. For what already exists, see `FEATURES.md`.
   Meshmerizer) boots clean and reaches RegionReady. **Deployed
   (checked 2026-09-26):** the live master `Meshing` and `ubOdeMeshing`
   assemblies are dated 2026-09-23, after these commits, and every region's
-  own copy matches. Affects the 3 regions running BulletSim (Ranchero,
-  Tangle, UFPGC) plus any future Jolt use.
+  own copy matches. Affects the 3 regions running BulletSim (Region E,
+  Region F, Region D) plus any future Jolt use.
 
   **One finding from the same list turned out NOT to be a real bug,
   on closer inspection**: the "corrupt prim guard logs but doesn't
@@ -201,20 +201,20 @@ gap today. For what already exists, see `FEATURES.md`.
 
   **Live check, 2026-09-26 (no code change).** Actual live config: grid
   default is `ubODE` + `ubODEMeshmerizer` (11 regions plus Andromeda);
-  Sector_001 runs ubODE with the generic `Meshmerizer` as its HQ-Arch
-  workaround; Ranchero, Tangle and UFPGC run BulletSim + `Meshmerizer`. So
+  Region_K1 runs ubODE with the generic `Meshmerizer` as its HQ-Arch
+  workaround; Region E, Region F and Region D run BulletSim + `Meshmerizer`. So
   the generic mesher's structural gaps below touch only 3 regions, and
   BulletSim there does not depend on the mesher's local hulls (it uses
   asset hulls, `ShouldUseAssetHulls = true`, then Bullet's own HACD).
-  Mesher log noise across all 15 regions is one content problem: on GFC,
-  `GFC WindowFrame` (~800 prims, mesh shape) points at asset
+  Mesher log noise across all 15 regions is one content problem: on Region C,
+  `Region C WindowFrame` (~800 prims, mesh shape) points at asset
   `6ea0c70b-919b-4261-a8d8-47101add4cdd`, which is a 600-byte JPEG2000
   *texture* (type 0, created 2026-06-07), not a mesh, so every boot logs
   `Error deserializing mesh asset header` about 800 times and those prims
-  fall back to no mesh collision. Older GFC `asset provider returned null
+  fall back to no mesh collision. Older Region C `asset provider returned null
   asset for mesh` floods (23k lines, 2026-09-12..14) came from missing
   mesh assets under ubODE and have not recurred except a handful on
-  Sol_Sector and Welcome_Center. Low-cost improvements available if wanted:
+  Region_J and Region_B. Low-cost improvements available if wanted:
   log once per bad asset instead of once per prim, and name the wrong asset
   type in the message.
 
@@ -411,7 +411,7 @@ Web & Admin UI section rather than here.)*
   alternative physics engine (Jolt) should work with either mesher (Meshmerizer, ubODEMeshmerizer), the same
   way it can already be paired with either database. A first pass fixed this by patching BulletSim, ubODE,
   Meshmerizer and ubODEMeshmerizer themselves - reverted: those are vanilla OpenSim's own code (the
-  ubODE-requires-ubODEMeshmerizer restriction Sector_001 hit is upstream's own long-standing design, not a
+  ubODE-requires-ubODEMeshmerizer restriction Region_K1 hit is upstream's own long-standing design, not a
   Confluence bug), and patching them would have permanently diverged from opensim-master. The plan had also
   named "Phlox" as a second alternative engine; checked directly, Phlox is entirely a script engine
   (Tranquillity's LSL/SLua work), not physics - there is no second engine in scope. See `PROJECT_LOG.md`'s
@@ -543,10 +543,10 @@ Web & Admin UI section rather than here.)*
   avatar/object contact smoothing, avatar-avatar social physics) -
   genuinely sound architecture, MIT-licensed, no known correctness gaps
   in its core raycast/collision fundamentals (confirmed via a 14,570-
-  prim live sweep on Starbase Andromeda: near-perfect on basic
+  prim live sweep on Region A: near-perfect on basic
   primitives).
 
-  Deployed to Starbase Andromeda as a real-content test case. Six
+  Deployed to Region A as a real-content test case. Six
   reported avatar-behavior problems surfaced there; two were confirmed
   bugs and fixed and live-verified (running felt like walking speed -
   missing walk/run velocity scaling; unsit always dropped to ground
@@ -563,7 +563,7 @@ Web & Admin UI section rather than here.)*
 
   Rather than keep tuning blindly against the third real avatar-
   behavior gap found on Jolt in one session, **the operator made the
-  call to pull it off Starbase Andromeda** rather than continuing to
+  call to pull it off Region A** rather than continuing to
   iterate on a live, resident-facing region. Andromeda has since moved
   on to `ubODE` (the grid default) as its settled engine. Jolt is not
   abandoned - it stays available as a selectable engine, off the live
