@@ -28214,3 +28214,12 @@ from SL and YEngine openly.
 marked changes to their files, their test suite run against the port. Then re-measure speed on real content (idle and
 event-driven scripts, not only tight loops), and add the 32 missing OSSL functions on the Phlox side. Not started; the
 operator decides.
+
+**SLua, two of them (same day).** Phlox's SLua (`//InWorldz.Phlox:slua`) is Tranquillity's own C# compiler front end
+emitting Phlox bytecode, checked for Second Life conformance by its `SluaProofRunner`; it is not Linden Lab's code.
+Linden Lab's SLua (`secondlife/slua`, MIT, actively developed) is now cloned beside this repository, as jrouwe's Jolt is:
+a C++ fork of Luau with Luau's JIT, serializable running state (its "Ares", even mid-function) and an LSL front end
+(`Tailslide`, `LSLBuiltins`), i.e. Second Life's server script VM, without the server-side function glue. Its conformance
+suite (`tests/conformance`, 180; `Tailslide/tests`, 202) is the reference for whatever SLua Confluence ships. Running it
+against Phlox's SLua is the first use; a native engine on Linden's VM (a C ABI plus P/Invoke, as with joltc) would be a
+separate, much larger project.
