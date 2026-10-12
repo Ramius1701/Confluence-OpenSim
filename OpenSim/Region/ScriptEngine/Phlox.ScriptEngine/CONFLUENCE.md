@@ -1,8 +1,10 @@
 # Phlox in Confluence: where it comes from and what differs
 
 Phlox, the second script engine (LSL, OSSL and SLua compiled to bytecode and run on a stack VM whose running state is
-saved), is Tranquillity's port of InWorldz Halcyon's Phlox, imported from `tranquillity/develop` at **`ab855c0009`**
-(2026-10-10). Their files keep their licence headers: Halcyon's Phlox core is Apache 2.0, the engine adapter BSD;
+saved), keeps its lineage: **InWorldz** (the original engine, hence `InWorldz.Phlox`) → **Halcyon** (InWorldz's
+open-source continuation) → **Legion Grid** (the port to modern OpenSim/.NET, adding SLua and the OSSL set) →
+**Tranquillity** (merged as #182, 2026-08-07) → **Confluence**, imported from `tranquillity/develop` at **`ab855c0009`**
+(2026-10-10). Its names and files keep that heritage, and their licence headers: Halcyon's Phlox core is Apache 2.0, the engine adapter BSD;
 Tranquillity's added files carry MPL-2.0 or no header (their repository's licence). The operator documentation is
 theirs, unchanged: `doc/PhloxSetup.md`, `doc/PhloxSLua.md`, `doc/PhloxKnownDefects.md`,
 `doc/PhloxYEngineConsolidation.md`, `doc/Phlox-compiler-correctness.md` (their `Source/` paths refer to the table below).
