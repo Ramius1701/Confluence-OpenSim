@@ -28141,3 +28141,37 @@ the live grid's layout, not a Confluence property. What holds for every grid own
 which all regions in a process step on one job pool, taking turns. That is safe with any number of regions per process,
 but not parallel. Parallel stepping would need a patched joltc rebuilt for 1.1.0 (lane/jolt's `native/joltc` recipe,
 not carried). The code comments and `Jolt/CONFLUENCE.md` now say this.
+
+## Build warnings: 22 to 0; a latent gzip bug; one region's mesher pairing; slow WebUI pages, open (2026-10-12)
+
+**All 22 solution build warnings fixed** (they also exist on opensim-master).
+- **CA2022 x19** (`Stream.Read` count ignored: `HttpRequest`, `Util`, `EstateManagementModule`, the TIFF terrain loader,
+  `DataSnapshotManager`, `WebStatsModule`, `AuthenticationServerPostHandler`). Each is now
+  `ReadAtLeast(..., throwOnEndOfStream: false)`, which fills the buffer when the data is there and stops at end of stream
+  as before, never throwing where the old call did not.
+- **SYSLIB0057 x3** (obsolete `X509Certificate2(path[, password])` in `BaseHttpServer` and the currency addon's
+  `NSLCertificateTools`): now `X509CertificateLoader`, picking PKCS#12 or a plain certificate by the file's content type,
+  as the old constructor did.
+- Proven with a scratch check against the built `OpenSim.Framework.dll`: `Util.GetOSDMap` over a stream that returns 7
+  bytes per `Read` now parses; the previous build **threw** on the same input (a short read left garbage JSON).
+- **Found along the way, also on opensim-master:** `Util.Compress` read its `MemoryStream` before closing the
+  `GZipStream`, so its output was truncated and `Util.Decompress` returned the right length with wrong content. Nothing
+  in Confluence calls them; fixed anyway (close the compressor first), and a 200,000-character round trip now matches.
+- Solution build: 0 warnings, 0 errors. The Jolt projects, outside the solution, have 18 warnings of their own in Legion's
+  code, not addressed here. A local standalone boots clean on the new build.
+
+**One region's mesher pairing fixed (live config, operator's request).** Region_K1 ran ubODE with
+`meshing = Meshmerizer`; ubODE logged "meshing option must be set to ubODEMeshmerizer" at every start and ran without
+the convex hulls ubODEMeshmerizer gives it. Its `OpenSim.ini` now has `meshing = ubODEMeshmerizer` (one line, with a dated
+backup beside it). After its restart: no mesher error, 0 errors, "Startup complete". The 2026-09-26 roadmap note called
+the old pairing an "HQ-Arch workaround"; nothing records what that worked around, so watch that region's
+architectural content.
+
+**Slow WebUI pages: investigated, not yet fixed.** Robust logged `GET /` at a steady ~3.5 s from outside and
+`/admin/simulators` at ~6.7 s, with three watchdog gaps since midnight (one of 23 s). Ruled out with measurements: the
+per-page region liveness probes (all 15 regions answer in 0-2 ms on loopback and the public address; the region table
+holds only the 15 live regions, no stale rows or Hypergrid links), and thread-pool starvation from those probes (a
+reproduction with Robust's default 16-worker pool and 8 page loads at once showed no stall). A probe rewrite made on
+that theory was reverted unshipped. What is measured: the front page's server time varies between about 20 ms and
+1 s on consecutive requests from the same machine, with an instant connect, so something inside the handler
+(a query, a lock or a refresh) is intermittently slow. Next: time the handler's steps from inside.

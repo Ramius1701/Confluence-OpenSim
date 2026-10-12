@@ -221,11 +221,20 @@ namespace OpenSim.Framework.Servers.HttpServer
         }
         private static readonly char[] LineSeparators = ['\n','\r'];
 
+        // X509CertificateLoader replaces the obsolete X509Certificate2(path, password) constructor (SYSLIB0057).
+        // That constructor took either a PKCS#12 bundle (.pfx/.p12) or a plain certificate; so does this.
+        internal static X509Certificate2 LoadCertificate(string path, string password)
+        {
+            if (X509Certificate2.GetCertContentType(path) == X509ContentType.Pkcs12)
+                return X509CertificateLoader.LoadPkcs12FromFile(path, password);
+            return X509CertificateLoader.LoadCertificateFromFile(path);
+        }
+
         private void load_cert(string CPath, string CPass)
         {
             try
             {
-                m_cert = new X509Certificate2(CPath, CPass);
+                m_cert = LoadCertificate(CPath, CPass);
                 X509Extension ext = m_cert.Extensions["2.5.29.17"];
                 if(ext != null)
                 {

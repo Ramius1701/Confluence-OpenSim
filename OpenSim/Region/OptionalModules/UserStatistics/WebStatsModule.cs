@@ -424,7 +424,7 @@ namespace OpenSim.Region.UserStatistics
             for (Int64 position = sizeOfChar; position < endPosition; position += sizeOfChar)
             {
                 fs.Seek(-position, SeekOrigin.End);
-                fs.Read(buffer, 0, buffer.Length);
+                fs.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
 
                 if (encoding.GetString(buffer) == "\n")
                 {
@@ -432,7 +432,7 @@ namespace OpenSim.Region.UserStatistics
                     if (tokenCount == amount)
                     {
                         byte[] returnBuffer = new byte[fs.Length - fs.Position];
-                        fs.Read(returnBuffer, 0, returnBuffer.Length);
+                        fs.ReadAtLeast(returnBuffer, returnBuffer.Length, throwOnEndOfStream: false);
                         fs.Close();
                         fs.Dispose();
                         return encoding.GetString(returnBuffer);
@@ -443,7 +443,7 @@ namespace OpenSim.Region.UserStatistics
             // handle case where number of tokens in file is less than numberOfTokens
             fs.Seek(0, SeekOrigin.Begin);
             buffer = new byte[fs.Length];
-            fs.Read(buffer, 0, buffer.Length);
+            fs.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
             fs.Close();
             fs.Dispose();
             return encoding.GetString(buffer);

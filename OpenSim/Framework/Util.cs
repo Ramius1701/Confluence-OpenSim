@@ -2549,14 +2549,14 @@ namespace OpenSim.Framework
         public static string Compress(string text)
         {
             using MemoryStream memory = new();
-            using GZipStream compressor = new(memory, CompressionMode.Compress, true);
 
             byte[] buffer = Util.UTF8.GetBytes(text);
-            compressor.Write(buffer, 0, buffer.Length);
+            // Closing the compressor writes its final block; reading the stream before that (as this did) gave
+            // truncated gzip data that Decompress could only partly rebuild.
+            using (GZipStream compressor = new(memory, CompressionMode.Compress, true))
+                compressor.Write(buffer, 0, buffer.Length);
 
-            memory.Position = 0;
-            byte[] compressed = new byte[memory.Length];
-            memory.Read(compressed, 0, compressed.Length);
+            byte[] compressed = memory.ToArray();
 
             byte[] compressedBuffer = new byte[compressed.Length + 4];
             Buffer.BlockCopy(compressed, 0, compressedBuffer, 4, compressed.Length);
@@ -2576,7 +2576,7 @@ namespace OpenSim.Framework
 
             memory.Position = 0;
             using GZipStream decompressor = new(memory, CompressionMode.Decompress);
-            decompressor.Read(buffer, 0, buffer.Length);
+            decompressor.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
 
             return Util.UTF8.GetString(buffer);
         }
@@ -2872,7 +2872,7 @@ namespace OpenSim.Framework
         public static OSDMap GetOSDMap(Stream stream, int length)
         {
             byte[] data = new byte[length];
-            stream.Read(data, 0, length);
+            stream.ReadAtLeast(data, length, throwOnEndOfStream: false);
             string strdata = Util.UTF8.GetString(data);
             OSDMap args;
             OSD buffer;

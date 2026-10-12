@@ -92,7 +92,7 @@ namespace OpenSim.Server.Handlers.Authentication
                     long length = request.Length;
                     if (length > 16384)
                         length = 16384;
-                    request.Read(buffer, 0, (int)length);
+                    request.ReadAtLeast(buffer.AsSpan(0, (int)length), (int)length, throwOnEndOfStream: false);
 
                     return DoEncryptedMethods(buffer);
                 }

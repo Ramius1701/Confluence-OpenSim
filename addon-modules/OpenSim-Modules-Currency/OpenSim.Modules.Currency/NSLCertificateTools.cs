@@ -64,6 +64,16 @@ namespace NSL.Certificate.Tools
         }
 
 
+        // X509CertificateLoader replaces the obsolete X509Certificate2(path[, password]) constructors (SYSLIB0057).
+        // Those took either a PKCS#12 bundle (.pfx/.p12) or a plain certificate; so does this.
+        private static X509Certificate2 LoadCertificate(string path, string password)
+        {
+            if (X509Certificate2.GetCertContentType(path) == X509ContentType.Pkcs12)
+                return X509CertificateLoader.LoadPkcs12FromFile(path, password);
+            return X509CertificateLoader.LoadCertificateFromFile(path);
+        }
+
+
         /// <summary>
         /// Set Private Certificate
         /// </summary>
@@ -73,7 +83,7 @@ namespace NSL.Certificate.Tools
         {
             try
             {
-                m_mycert = new X509Certificate2(certfile, passwd);
+                m_mycert = LoadCertificate(certfile, passwd);
             }
             catch (Exception ex)
             {
@@ -101,7 +111,7 @@ namespace NSL.Certificate.Tools
         {
             try
             {
-                m_cacert = new X509Certificate2(certfile);
+                m_cacert = LoadCertificate(certfile, null);
             }
             catch (Exception ex)
             {

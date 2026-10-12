@@ -416,7 +416,7 @@ namespace OpenSim.Region.DataSnapshot
                         using(reply = cli.Request(null))
                         {
                             byte[] response = new byte[1024];
-                            reply.Read(response, 0, 1024);
+                            reply.ReadAtLeast(response, response.Length, throwOnEndOfStream: false);
                         }
                     }
                     catch (HttpRequestException)
