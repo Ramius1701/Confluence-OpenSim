@@ -28175,3 +28175,11 @@ reproduction with Robust's default 16-worker pool and 8 page loads at once showe
 that theory was reverted unshipped. What is measured: the front page's server time varies between about 20 ms and
 1 s on consecutive requests from the same machine, with an instant connect, so something inside the handler
 (a query, a lock or a refresh) is intermittently slow. Next: time the handler's steps from inside.
+
+**Warning fixes deployed; old Jolt module removed from live (2026-10-12).** With Robust stopped, the full tree was copied
+(290 files, 206 changed, 0 failures, 0 md5 mismatches). The previous Jolt module's files (`OpenSim.Region.PhysicsModule.
+JoltPhysics.*`, `JoltPhysics.Core.*`, `JoltPhysics.Vehicles.*`) were moved, not deleted, from the live root and every
+region's `bin` into a dated backup folder (64 files). Running regions keep the copy they already loaded until their next
+restart; a loaded .NET assembly can be moved on the same volume though not deleted. From the next restart only the
+lane/jolt module (`OpenSim.Region.PhysicsModules.Jolt*`) is present, so a region can now be switched to `physics = Jolt`
+without two Jolt modules enabling.
