@@ -28183,3 +28183,34 @@ region's `bin` into a dated backup folder (64 files). Running regions keep the c
 restart; a loaded .NET assembly can be moved on the same volume though not deleted. From the next restart only the
 lane/jolt module (`OpenSim.Region.PhysicsModules.Jolt*`) is present, so a region can now be switched to `physics = Jolt`
 without two Jolt modules enabling.
+
+## Phlox review, renewed: Tranquillity's Phlox against the 2026-09-05 blockers (2026-10-12)
+
+The operator asked to pick up Phlox again; it had been reviewed (2026-09-05, against `HalcyonGrid/phlox`) and held twice.
+This review checks Tranquillity's current Phlox (`tranquillity/develop` `ab855c0009`, 2026-10-10; first merged as #182 on
+2026-08-07; 27 commits since 2026-09-05) against the three findings that shelved it.
+
+| 2026-09-05 finding | Now, in Tranquillity's Phlox |
+|---|---|
+| YEngine 100-190x faster (Phlox interprets bytecode; YEngine JIT-compiles to IL) | **Unchanged architecture**: still a stack-machine interpreter (`InWorldz.Phlox/VM/Interpreter.cs`), no IL generation. Not re-measured. Their own notes no longer sell it on speed |
+| OSSL: 0 functions (`GetApi` threw `NotImplementedException`) | **259 `os*` functions** in `Phlox.ScriptEngine/LSLSystemAPI.cs`, written against YEngine's `OSSL_Api` line by line; **537 `ll*`** (Confluence's YEngine API: 516 `ll*`, 291 `os*`); the 58 `bot*` functions match |
+| Saved-state format incompatible with OAR/IAR/HG | **Solved**: own SQLite state database for restarts (resumes mid-event: globals, state, queued events, timer phase, listens, grants), and state carried inside objects in YEngine's `<State Engine=...>` envelope for take/rez, attach, login, teleport and crossings, checked as untrusted input. Limits: a crossing's state is offered only to the destination region's default engine; OARs carry no script state for any engine (as YEngine) |
+
+**What Phlox is for now** (Tranquillity's `Docs/PhloxYEngineConsolidation.md`): not speed but serializable mid-execution
+state, and SLua (a second front end compiling to the same bytecode; `//InWorldz.Phlox:slua`). Both engines run side by
+side: `[Startup] DefaultScriptEngine` picks the default and a script's first line (`//YEngine:`, `//InWorldz.Phlox:`)
+picks its own, so existing content is untouched.
+
+**Gaps against Confluence:** 32 of Confluence's `os*` functions are missing in Phlox (Confluence additions: partnership,
+avatar freeze/thaw, viewer name, fly/walk flags, link inventory giving, extra NPC tag/follow/look/say), and 8 `ll*`. Core
+hooks Phlox expects that Confluence lacks (the Phlox backlog): `OnGroupBeginInTransit`/`OnGroupEndInTransit`,
+`OnScriptPermissionsRemoved`, all-or-nothing task inventory moves; #270 (constant force) is already ported. Size: about
+114,600 lines (`InWorldz.Phlox` 76,700, `Phlox.ScriptEngine` 36,300, tools 1,600) plus 248 test files; new packages
+ANTLR4 runtime, StringTemplate4, protobuf-net. Licence: Halcyon's Phlox core is Apache 2.0, the adapter BSD; Tranquillity's
+added files carry no header (the repository's licence) or MPL-2.0. Their `Docs/PhloxKnownDefects.md` lists differences
+from SL and YEngine openly.
+
+**Recommendation:** port it as Jolt was ported: a selectable second engine with YEngine staying the default, minimal
+marked changes to their files, their test suite run against the port. Then re-measure speed on real content (idle and
+event-driven scripts, not only tight loops), and add the 32 missing OSSL functions on the Phlox side. Not started; the
+operator decides.
