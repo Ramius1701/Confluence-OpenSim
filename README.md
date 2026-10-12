@@ -43,7 +43,17 @@ pieces where it matters.
 
 ## Project goals
 
-- Stay close enough to official OpenSimulator to accept continuing upstream work.
+- Give grid owners a complete starting point: a build like official
+  OpenSimulator, enhanced with what it lacks, so they can run their own grid
+  with everything they need. Casperia is the live grid where it runs in real
+  time, with real residents, regions and content.
+- Keep official OpenSimulator (`opensim/opensim` master) as the baseline and
+  keep merging its continuing work.
+- Draw on the other OpenSimulator-based projects (Tranquillity, Homeworldz,
+  Halcyon, Mobius, WhiteCore-Dev, Gunthar's fork, Legion and others) for what
+  master lacks. Where a ported feature has to diverge from master, that is a
+  deliberate choice, recorded in `PROJECT_LOG.md`, and upstream merges are
+  reconciled with it rather than dropped.
 - Preserve useful enhancements that are difficult to maintain as loose patches.
 - Keep optional functionality in `addon-modules` whenever practical.
 - Avoid grid-specific hardcoding.
