@@ -28287,3 +28287,24 @@ YEngine scripts got nothing for collision damage.
 
 Verified: solution and Phlox builds 0/0; local standalone boot with YEngine enabled and its events hooked, no errors.
 Not tested in-world (needs an avatar with a scripted attachment on a damage-enabled parcel). Not deployed.
+
+## Jolt and Phlox now build with the solution; Jolt's 18 hidden warnings fixed (2026-10-13)
+
+Jolt's and Phlox's projects are hand-maintained (prebuild does not generate them), so `OpenSim.sln` never contained
+them: the README had a separate build step for Jolt and none for Phlox. A grid owner following the README and setting
+`[InWorldz.Phlox] Enabled = true` got nothing, because Phlox was never built.
+
+- `runprebuild.bat` / `runprebuild.sh` now run `dotnet sln OpenSim.sln add --in-root` for the five projects (Jolt,
+  Jolt.Backend, Jolt.Vehicles, InWorldz.Phlox, Phlox.ScriptEngine) after prebuild. `--in-root` because the solution
+  folder `dotnet sln add` would create from the path ("OpenSim") clashes with the OpenSim project (MSB5004). Test
+  projects stay out of the solution. README's separate Jolt step removed.
+- Building Jolt inside the solution exposed 18 warnings it always had in its separate build: 11 nullable warnings in
+  Jolt.Backend (JoltPhysicsSharp 2.23 annotates `BodyLock*.Body` nullable; every use is under `if (lock.Succeeded)`,
+  so `Body!`; three allocator-site fields that start null made `string?`) and 7 CS9192 in Jolt.Vehicles
+  (`Normalize(in x)` for libomv's `ref readonly` parameters). Marked edits, no behaviour change.
+
+Verified: from a fresh clone, the `.bat` steps and the `.sh` script each produce a solution with the five projects, and
+`dotnet build OpenSim.sln -c Release` gives 0 warnings / 0 errors with Jolt (incl. `joltc.dll`) and Phlox in `bin\`.
+Main repo: same, 0/0. Jolt tests: 2099 passed, 8 skipped, 0 failed (unchanged).
+(Git Bash on Windows mangles prebuild's `/target` flag into a path; use `MSYS_NO_PATHCONV=1` there. Not an issue on
+Linux.)

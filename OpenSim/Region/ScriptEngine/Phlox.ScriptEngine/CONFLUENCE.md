@@ -28,7 +28,8 @@ theirs, unchanged: `doc/PhloxSetup.md`, `doc/PhloxSLua.md`, `doc/PhloxKnownDefec
 ## Confluence changes
 
 Confluence-only files: `Phlox.ScriptEngine/ConfluenceRegistration.cs`, `Phlox.ScriptEngine/CONFLUENCE.md`, and the five
-`.csproj` files (hand-maintained, outside `OpenSim.sln`, built into `bin\`; theirs rely on Tranquillity's
+`.csproj` files (hand-maintained and built into `bin\`; `runprebuild` adds the two engine projects to the generated
+`OpenSim.sln`, the test projects stay out of it; theirs rely on Tranquillity's
 `Directory.Build.props` and `Library\`). `InWorldz.Phlox.csproj` takes C5, log4net, Nini and libomv from `bin\`;
 `Phlox.ScriptEngine.csproj` leaves out `LinksetDataPhloxExtensions.cs` (see below).
 

@@ -20,7 +20,7 @@ Confluence-only files:
 - `Jolt/ConfluenceLogging.cs`: a `LoggerProvider` in the module's namespace that sends their `ILogger` calls to log4net.
 - `Jolt/JoltScene.MeshAssetRetry.cs`, `Jolt/JoltPrim.MeshAssetRetry.cs`: fetch an unfetched sculpt/mesh asset and
   re-cook the prim (lane/jolt leaves it a bounding box).
-- The three `.csproj` files (hand-maintained, outside `OpenSim.sln`; their projects rely on Tranquillity's
+- The three `.csproj` files (hand-maintained; `runprebuild` adds them to the generated `OpenSim.sln`; their projects rely on Tranquillity's
   `Directory.Build.props`).
 
 Edits inside their files, each marked `[Confluence: ...]`:
@@ -31,9 +31,13 @@ Edits inside their files, each marked `[Confluence: ...]`:
   - Teardown: after the system's native destroy, the three layer-filter wrappers are disowned (`Disown`) before
     `Dispose`. On 2.22+ they own their handles and the system destroy already deleted them (heap corruption otherwise).
   - No stick-to-floor for a flying avatar (`stick = !hovering && !rec.Flying && gz < 0f`).
+  - Build warnings (2026-10-13): `BodyLockRead/Write.Body!` where the lock `Succeeded` (2.23 annotates `Body` nullable),
+    and `string?` for the allocator-site fields that start null. No behaviour change.
 - `Jolt.Backend/JoltNative.cs`: `PackageVersion` 1.1.0 and the 1.1.0 stock hashes; their patched builds (made from
   1.0.4's joltc) are not listed.
 - `Jolt/JoltScene.cs`: two one-line hooks for the mesh-asset retry.
+- `Jolt.Vehicles/VehicleController.cs`: `Vector3`/`Quaternion.Normalize(in x)` (Confluence's libomv takes them as
+  `ref readonly`; a build warning otherwise).
 
 Confluence runs JoltPhysicsSharp **2.23.0** with JoltPhysics.Native **1.1.0** (Jolt Physics v5.6.0). lane/jolt pins
 2.19.1 / 1.0.4 for its patched joltc, which lets several regions in one process step in parallel. On Confluence's stock

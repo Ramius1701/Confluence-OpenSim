@@ -122,15 +122,10 @@ dotnet build OpenSim.sln --configuration Release
 dotnet build OpenSim.sln --configuration Release
 ```
 
-The Jolt physics engine (`physics = Jolt`) is not part of the generated solution. To use it, build it once
-more after the steps above (both platforms):
-
-```bash
-dotnet build OpenSim/Region/PhysicsModules/Jolt/OpenSim.Region.PhysicsModules.Jolt.csproj --configuration Release
-```
-
-Without it, selecting Jolt leaves a region with no physics engine. ubODE (the default) and BulletSim need no
-extra step, and either works with either mesher.
+`runprebuild` also adds the Jolt physics engine and the Phlox script engine to the solution (their project files
+are maintained by hand, not generated), so the build above builds them too. The first build downloads their NuGet
+packages (JoltPhysicsSharp and its native library; ANTLR4, StringTemplate4 and protobuf-net for Phlox). Both stay
+off until a region's ini selects them (`physics = Jolt`; `[InWorldz.Phlox] Enabled = true`).
 
 See `BUILDING.md` for the official base requirements.
 
