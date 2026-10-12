@@ -49,9 +49,10 @@ pieces where it matters.
   time, with real residents, regions and content.
 - Keep official OpenSimulator (`opensim/opensim` master) as the baseline and
   keep merging its continuing work.
-- Draw on the other OpenSimulator-based projects (Tranquillity, Homeworldz,
-  Halcyon, Mobius, WhiteCore-Dev, Gunthar's fork, Legion and others) for what
-  master lacks. Where a ported feature has to diverge from master, that is a
+- Draw on the other active OpenSimulator-based projects (Tranquillity,
+  including Legion's work on it, Homeworldz, and Gunthar's fork) for what
+  master lacks. Projects no longer in active development are not followed for
+  new work; what was already ported from them stays, credited below. Where a ported feature has to diverge from master, that is a
   deliberate choice, recorded in `PROJECT_LOG.md`, and upstream merges are
   reconciled with it rather than dropped.
 - Preserve useful enhancements that are difficult to maintain as loose patches.
