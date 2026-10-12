@@ -28223,3 +28223,28 @@ a C++ fork of Luau with Luau's JIT, serializable running state (its "Ares", even
 suite (`tests/conformance`, 180; `Tailslide/tests`, 202) is the reference for whatever SLua Confluence ships. Running it
 against Phlox's SLua is the first use; a native engine on Linden's VM (a C ABI plus P/Invoke, as with joltc) would be a
 separate, much larger project.
+
+## Phlox ported: a second script engine, off by default; 9 Tranquillity core hooks (2026-10-12)
+
+Tranquillity's Phlox (`tranquillity/develop` `ab855c0009`) is in: `OpenSim/Region/ScriptEngine/InWorldz.Phlox` (compiler
+and VM) and `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine` (the region engine), with their tests and docs. Port notes,
+every edit to their files and the hook list: `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`.
+
+- **Off by default**: `[InWorldz.Phlox] Enabled = false` in `OpenSimDefaults.ini`; `DefaultScriptEngine` stays YEngine.
+  Registered with Mono.Addins (`ConfluenceRegistration.cs`); `OpenSim.Framework.LoggerProvider` carries its logging to
+  log4net. Their files are unchanged apart from four marked edits (linkset-data limit and constructor, two float casts,
+  two test paths); their LinksetData adapter is not needed (Confluence's `LinksetData` is upstream's, already SL-shaped).
+- **Core hooks** (each marked `(Tranquillity #NNN)`): #183 Top Scripts across engines; #212 damage door
+  (`DamageEntry`, `ScenePresence.ApplyDamage`, `OnAvatarDamage`/`Applied`; collision damage now goes through it, same
+  amounts), `SitFlagsStored`, `SendPropertiesToAllClients`, scriptEvents bits 45-48 (44 is `bot_update` here),
+  `AdjustDamage`, cache-only account reads, owner-only object DEBUG_CHANNEL chat; #217 parcel tracking and
+  `IParcelScriptPolicyEngine` (`OnRunScriptWithEngine`); #218 script-controls release event; #224, #269, #272 (earlier
+  today); #243 Experience-block revocation event; `IHttpServiceRequest`. #221 and #279 were already in.
+- **Verified**: solution 0 warnings / 0 errors; Phlox projects 0 / 0. Their tests: 40 of 225 files build here,
+  **3035 passed, 2 skipped, 0 failed**; the other 185 need Tranquillity's `OpenSim.Tests.Common` scene harness, which is
+  out of Confluence's build (as upstream). SLua conformance runner: **60 PASS / 0 DIVERGENCE / 3 GAP**, as on
+  Tranquillity. Local standalone boot with Phlox enabled: both engines added to the region, YEngine's event-name check
+  passes, no errors. Not deployed.
+- **Found, open**: Confluence's YEngine damage events ("Combat2") and the core damage door do not see each other; and
+  YEngine has no event codes for on_damage/final_damage/on_death, so those events never reach YEngine scripts (FEATURES.md
+  corrected). Also open: speed re-measure, the 32 missing `os*`, the async asset-fetch check, Linden's SLua suite.

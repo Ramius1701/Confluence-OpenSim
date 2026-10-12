@@ -489,7 +489,10 @@ Treated as core, not an optional add-on:
 - Persisted object-health support.
 - `on_damage`, `final_damage`, `on_death` events, with a transaction
   window so `on_damage` can override the amount before the other two
-  events fire.
+  events fire. **Open (found 2026-10-12):** YEngine has no event codes
+  for these three, so a YEngine script cannot declare the handlers and
+  the posted events are dropped; see ROADMAP.md. Phlox scripts get them
+  from the core damage path (collisions, and Phlox's own `llDamage`).
 
 ### EEP environment scripting
 
@@ -601,6 +604,16 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
   object taken (or returned to Lost And Found) can be rezzed back at
   its exact last in-world position and rotation, rather than the usual
   near-avatar placement a normal rez uses.
+
+### Phlox script engine (optional, off by default)
+
+A second script engine beside YEngine, ported from Tranquillity (InWorldz Halcyon's Phlox, 2026-10-12):
+LSL, OSSL (259 `os*`) and SLua (`//InWorldz.Phlox:slua`, a Luau-flavoured language) compiled to bytecode
+on a VM whose running state is saved, so a script resumes mid-event after a region restart. A grid owner
+turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on the engine its first line names
+(`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`, which stays YEngine.
+Port notes, the core hooks it needs, and test results: `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`;
+setup: `doc/PhloxSetup.md`.
 
 ## World and Environment
 

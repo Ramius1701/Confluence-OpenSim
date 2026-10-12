@@ -138,6 +138,8 @@ namespace OpenSim.Region.ScriptEngine.Shared
         public double Damage;
         public double OriginalDamage;
         public int DamageType;
+        // Set only for Phlox's on_damage: how llAdjustDamage(n, v) rewrites the pending DamageEntry. (Tranquillity #212.)
+        public Action<float> AdjustDamage;
 
         private LSL_Types.Vector3 touchST;
         public LSL_Types.Vector3 TouchST { get { return touchST; } }

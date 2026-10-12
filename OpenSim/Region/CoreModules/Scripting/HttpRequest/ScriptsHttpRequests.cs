@@ -528,7 +528,7 @@ namespace OpenSim.Region.CoreModules.Scripting.HttpRequest
             }
         }
 
-        public IServiceRequest GetNextCompletedRequest()
+        public IHttpServiceRequest GetNextCompletedRequest()
         {
             if(m_CompletedRequests.TryDequeue(out HttpRequestClass req))
                 return req;
@@ -551,8 +551,12 @@ namespace OpenSim.Region.CoreModules.Scripting.HttpRequest
         #endregion
     }
 
-    public class HttpRequestClass : IServiceRequest
+    public class HttpRequestClass : IHttpServiceRequest
     {
+        // Read through the interface by engines that cannot see this class (Phlox; Tranquillity's IHttpServiceRequest).
+        int IHttpServiceRequest.Status => Status;
+        string IHttpServiceRequest.ResponseBody => ResponseBody;
+
         private static readonly string[] s_wellKnownContentHeaders = {
             "Content-Disposition",
             "Content-Encoding",

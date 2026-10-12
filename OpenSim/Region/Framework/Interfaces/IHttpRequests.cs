@@ -107,6 +107,16 @@ namespace OpenSim.Region.Framework.Interfaces
         DISALLOWED_BY_FILTER = 2
     }
 
+    /// <summary>
+    /// A completed HTTP request, as a script engine reads it without seeing the core module's request class.
+    /// (Tranquillity; used by Phlox.)
+    /// </summary>
+    public interface IHttpServiceRequest : IServiceRequest
+    {
+        int Status { get; }
+        string ResponseBody { get; }
+    }
+
     public interface IHttpRequestModule
     {
         UUID MakeHttpRequest(string url, string parameters, string body);
@@ -133,7 +143,7 @@ namespace OpenSim.Region.Framework.Interfaces
         /// </summary>
         /// <param name='id'></param>
         void StopHttpRequest(uint m_localID, UUID m_itemID);
-        IServiceRequest GetNextCompletedRequest();
+        IHttpServiceRequest GetNextCompletedRequest();
         void RemoveCompletedRequest(UUID id);
         bool CheckThrottle(uint localID, UUID onerID);
         bool CheckAllowed(Uri url);

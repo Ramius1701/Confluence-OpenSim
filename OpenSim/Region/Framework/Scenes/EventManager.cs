@@ -525,6 +525,35 @@ namespace OpenSim.Region.Framework.Scenes
         public event ScriptControlEvent OnScriptControlEvent;
 
         /// <summary>
+        /// Triggered when one or more scripts stop holding taken controls on an avatar: the script's own release
+        /// (llReleaseControls, llTakeControls with pass_on and not accept) and every release the core makes (the viewer's
+        /// release keys, ClearControls on a crossing, a stand-up, a permission revoke or script removal, the avatar
+        /// leaving the region, an incoming agent update that no longer carries the registration). (Tranquillity #218.)
+        /// </summary>
+        /// <remarks>
+        /// Raised only when a registration was actually removed, with exactly the removed script item ids, after
+        /// <see cref="ScenePresence"/> has released its registrations lock, so a handler may call
+        /// <see cref="ScenePresence.HasScriptControls"/>.
+        /// </remarks>
+        public delegate void ScriptControlsReleased(UUID agentId, UUID[] scriptItemIds);
+        public event ScriptControlsReleased OnScriptControlsReleased;
+
+        /// <summary>
+        /// Triggered when the core ends a script's permission grant because the avatar who gave it may no longer be
+        /// reached through the script's Experience: the avatar blocked the Experience (reason 4,
+        /// XP_ERROR_NOT_PERMITTED) or entered a parcel where it cannot run (reason 17, XP_ERROR_NOT_PERMITTED_LAND).
+        /// (Tranquillity #243.)
+        /// </summary>
+        /// <remarks>
+        /// Raised once per script item, after the item's PermsGranter and PermsMask have been cleared and
+        /// experience_permissions_denied has been posted to every script module. revokedMask is the mask the grant
+        /// had. Any script engine can subscribe and release what it keeps for the grant (taken controls, a saved
+        /// grant); an engine ignores items it does not run. Triggered from the ExperienceModule.
+        /// </remarks>
+        public delegate void ExperiencePermissionsRevoked(UUID partId, UUID itemId, UUID granterId, UUID experienceId, int revokedMask, int reason);
+        public event ExperiencePermissionsRevoked OnExperiencePermissionsRevoked;
+
+        /// <summary>
         /// TODO: Should be triggered when a physics object starts moving.
         /// </summary>
         public delegate void ScriptMovingStartEvent(uint localID);
@@ -717,6 +746,16 @@ namespace OpenSim.Region.Framework.Scenes
         public delegate void AvatarKillData(uint KillerLocalID, ScenePresence avatar);
         public event AvatarKillData OnAvatarKilled;
 
+        /// <summary>
+        /// Damage is about to be applied to a presence: the batch is mutable - a handler (a script engine's
+        /// on_damage) may rewrite each entry's Amount before it lands. Raised synchronously from
+        /// ScenePresence.ApplyDamage; handlers must return before the damage applies. (Tranquillity #212.)
+        /// </summary>
+        public delegate void AvatarDamageData(ScenePresence avatar, List<DamageEntry> batch);
+        public event AvatarDamageData OnAvatarDamage;
+        /// <summary>The batch has been applied; Amount is what landed (final_damage). (Tranquillity #212.)</summary>
+        public event AvatarDamageData OnAvatarDamageApplied;
+
         /*
         public delegate void ScriptTimerEvent(uint localID, double timerinterval);
         /// <summary>
@@ -806,6 +845,72 @@ namespace OpenSim.Region.Framework.Scenes
         /// </remarks>
         public delegate void ParcelPrimCountTainted();
         public event ParcelPrimCountTainted OnParcelPrimCountTainted;
+
+        /// <summary>
+        /// Triggered when a scene object's position lands on a different parcel than the last one recorded for it.
+        /// (Tranquillity #217.)
+        /// </summary>
+        /// <remarks>
+        /// Raised for every kind of move (position setter, physics, keyframed motion, edits) whether or not anyone
+        /// is in the region, and once when the object is added to the scene (rez, region start, arrival), with
+        /// <c>oldParcel</c> null. Not raised for attachments. <c>oldParcel</c> is the parcel object recorded at the
+        /// previous crossing, which may since have been joined away.
+        /// Triggered in <see cref="SceneObjectGroup.CheckParcelCrossing"/>.
+        /// </remarks>
+        public event GroupCrossedToNewParcel OnGroupCrossedToNewParcel;
+        public delegate void GroupCrossedToNewParcel(SceneObjectGroup group, ILandObject oldParcel, ILandObject newParcel);
+
+        /// <summary>
+        /// Triggered when the owner or the group of a scene object that is in the scene changes. (Tranquillity #217.)
+        /// </summary>
+        /// <remarks>
+        /// Raised from SceneObjectGroup.SetOwnerId, SetOwner and SetGroup, only when the root part's owner or
+        /// group actually changed.
+        /// </remarks>
+        public event ObjectOwnerOrGroupChanged OnObjectOwnerOrGroupChanged;
+        public delegate void ObjectOwnerOrGroupChanged(SceneObjectGroup group, UUID oldOwner, UUID newOwner, UUID oldGroup, UUID newGroup);
+
+        /// <summary>
+        /// Triggered when the core takes permissions away from a script item without the script asking: the avatar
+        /// stood up from the object, detached it, used Release Keys, or revoked animation permissions from the viewer
+        /// (SceneObjectPartInventory.RemoveScriptsPermissions).
+        /// SL llSetCameraParams: "The PERMISSION_CONTROL_CAMERA permission is automatically revoked when the avatar stands
+        /// up from or detaches the object".
+        /// </summary>
+        /// <remarks>
+        /// Raised once per script item whose grant changed, after the item's PermsMask (and PermsGranter, when nothing is
+        /// left) have been updated and any taken controls released. removedMask holds the bits the item lost; granterId
+        /// is the avatar who had granted them. No script event is posted, so an engine that keeps the grant in its own
+        /// saved state can subscribe and note the change; an engine ignores items it does not run. Triggered by
+        /// <see cref="TriggerScriptPermissionsRemoved"/>. (Tranquillity #269.)
+        /// </remarks>
+        public delegate void ScriptPermissionsRemoved(UUID partId, UUID itemId, UUID granterId, int removedMask);
+        public event ScriptPermissionsRemoved OnScriptPermissionsRemoved;
+
+        /// <summary>
+        /// Triggered when a scene object starts to leave this region by a region crossing or an object teleport to
+        /// another region (<see cref="SceneObjectGroup.inTransit"/> has just been set).
+        /// </summary>
+        /// <remarks>
+        /// Raised on the thread that started the crossing, before the transfer starts, so a script engine can hold the
+        /// object's scripts before their state is captured. Every begin is followed by exactly one
+        /// <see cref="OnGroupEndInTransit"/> for the same group. Not raised for attachments, or for a teleport inside the
+        /// region. Halcyon raised the same pair (SceneObjectGroup.StartTransit and EndTransit). (Tranquillity #272.)
+        /// </remarks>
+        public event GroupBeginInTransit OnGroupBeginInTransit;
+        public delegate void GroupBeginInTransit(SceneObjectGroup group);
+
+        /// <summary>
+        /// Triggered when a crossing that <see cref="OnGroupBeginInTransit"/> announced has ended.
+        /// </summary>
+        /// <remarks>
+        /// <c>crossed</c> is true when the object reached the other region: its copy here has been removed. When false the
+        /// object stays in this region: it has been put back inside the region and <see cref="SceneObjectGroup.inTransit"/>
+        /// is clear again, unless the crossing deleted or returned it (die or return at the region's edge), in which case
+        /// the group is deleted. Raised on the crossing's own thread.
+        /// </remarks>
+        public event GroupEndInTransit OnGroupEndInTransit;
+        public delegate void GroupEndInTransit(SceneObjectGroup group, bool crossed);
 
         public event GetScriptRunning OnGetScriptRunning;
 
@@ -1094,6 +1199,90 @@ namespace OpenSim.Region.Framework.Scenes
                     {
                         m_log.ErrorFormat(
                             "[EVENT MANAGER]: Delegate for TriggerGetScriptRunning failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerGroupCrossedToNewParcel(SceneObjectGroup group, ILandObject oldParcel, ILandObject newParcel)
+        {
+            GroupCrossedToNewParcel handler = OnGroupCrossedToNewParcel;
+            if (handler is not null)
+            {
+                foreach (GroupCrossedToNewParcel d in handler.GetInvocationList())
+                {
+                    try
+                    {
+                        d(group, oldParcel, newParcel);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerGroupCrossedToNewParcel failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerObjectOwnerOrGroupChanged(SceneObjectGroup group, UUID oldOwner, UUID newOwner, UUID oldGroup, UUID newGroup)
+        {
+            ObjectOwnerOrGroupChanged handler = OnObjectOwnerOrGroupChanged;
+            if (handler is not null)
+            {
+                foreach (ObjectOwnerOrGroupChanged d in handler.GetInvocationList())
+                {
+                    try
+                    {
+                        d(group, oldOwner, newOwner, oldGroup, newGroup);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerObjectOwnerOrGroupChanged failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerGroupBeginInTransit(SceneObjectGroup group)
+        {
+            GroupBeginInTransit handler = OnGroupBeginInTransit;
+            if (handler != null)
+            {
+                foreach (GroupBeginInTransit d in handler.GetInvocationList())
+                {
+                    try
+                    {
+                        d(group);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerGroupBeginInTransit failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerGroupEndInTransit(SceneObjectGroup group, bool crossed)
+        {
+            GroupEndInTransit handler = OnGroupEndInTransit;
+            if (handler != null)
+            {
+                foreach (GroupEndInTransit d in handler.GetInvocationList())
+                {
+                    try
+                    {
+                        d(group, crossed);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerGroupEndInTransit failed - continuing.  {0} {1}",
                             e.Message, e.StackTrace);
                     }
                 }
@@ -2376,6 +2565,34 @@ namespace OpenSim.Region.Framework.Scenes
             }
         }
 
+        public void TriggerAvatarDamage(ScenePresence avatar, List<DamageEntry> batch)
+        {
+            AvatarDamageData handler = OnAvatarDamage;
+            if (handler == null) return;
+            foreach (AvatarDamageData d in handler.GetInvocationList())
+            {
+                try { d(avatar, batch); }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("[EVENT MANAGER]: Delegate for TriggerAvatarDamage failed - continuing.  {0} {1}", e.Message, e.StackTrace);
+                }
+            }
+        }
+
+        public void TriggerAvatarDamageApplied(ScenePresence avatar, List<DamageEntry> batch)
+        {
+            AvatarDamageData handler = OnAvatarDamageApplied;
+            if (handler == null) return;
+            foreach (AvatarDamageData d in handler.GetInvocationList())
+            {
+                try { d(avatar, batch); }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("[EVENT MANAGER]: Delegate for TriggerAvatarDamageApplied failed - continuing.  {0} {1}", e.Message, e.StackTrace);
+                }
+            }
+        }
+
         public void TriggerAvatarKill(uint KillerObjectLocalID, ScenePresence DeadAvatar)
         {
             AvatarKillData handlerAvatarKill = OnAvatarKilled;
@@ -2496,6 +2713,69 @@ namespace OpenSim.Region.Framework.Scenes
                     {
                         m_log.ErrorFormat(
                             "[EVENT MANAGER]: Delegate for TriggerControlEvent failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerScriptPermissionsRemoved(UUID partId, UUID itemId, UUID granterId, int removedMask)
+        {
+            ScriptPermissionsRemoved handlerScriptPermissionsRemoved = OnScriptPermissionsRemoved;
+            if (handlerScriptPermissionsRemoved != null)
+            {
+                foreach (ScriptPermissionsRemoved d in handlerScriptPermissionsRemoved.GetInvocationList())
+                {
+                    try
+                    {
+                        d(partId, itemId, granterId, removedMask);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerScriptPermissionsRemoved failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerScriptControlsReleased(UUID agentId, UUID[] scriptItemIds)
+        {
+            ScriptControlsReleased handlerScriptControlsReleased = OnScriptControlsReleased;
+            if (handlerScriptControlsReleased != null)
+            {
+                foreach (ScriptControlsReleased d in handlerScriptControlsReleased.GetInvocationList())
+                {
+                    try
+                    {
+                        d(agentId, scriptItemIds);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerScriptControlsReleased failed - continuing.  {0} {1}",
+                            e.Message, e.StackTrace);
+                    }
+                }
+            }
+        }
+
+        public void TriggerExperiencePermissionsRevoked(UUID partId, UUID itemId, UUID granterId, UUID experienceId, int revokedMask, int reason)
+        {
+            ExperiencePermissionsRevoked handlerExperiencePermissionsRevoked = OnExperiencePermissionsRevoked;
+            if (handlerExperiencePermissionsRevoked != null)
+            {
+                foreach (ExperiencePermissionsRevoked d in handlerExperiencePermissionsRevoked.GetInvocationList())
+                {
+                    try
+                    {
+                        d(partId, itemId, granterId, experienceId, revokedMask, reason);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.ErrorFormat(
+                            "[EVENT MANAGER]: Delegate for TriggerExperiencePermissionsRevoked failed - continuing.  {0} {1}",
                             e.Message, e.StackTrace);
                     }
                 }

@@ -27,10 +27,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 using Nini.Config;
+using log4net;
 using Mono.Addins;
 
 using OpenMetaverse;
@@ -93,7 +95,7 @@ namespace OpenSim.Region.CoreModules.Scripting.WorldComm
     [Mono.Addins.Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "WorldCommModule")]
     public class WorldCommModule : IWorldComm, INonSharedRegionModule
     {
-        // private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         private const int DEBUG_CHANNEL = 0x7fffffff;
 
@@ -344,11 +346,45 @@ namespace OpenSim.Region.CoreModules.Scripting.WorldComm
             }
         }
 
+        public event Action<OSChatMessage> OnMessageDelivered;
+
+        // Tranquillity #224: offer the message to another script engine's listens (Phlox keeps its own).
+        private void RaiseMessageDelivered(ChatTypeEnum type, int channel, string name, UUID id, string msg, Vector3 position, UUID target)
+        {
+            Action<OSChatMessage> handler = OnMessageDelivered;
+            if (handler is null)
+                return;
+
+            OSChatMessage chat = new OSChatMessage
+            {
+                Type = type,
+                Channel = channel,
+                From = name,
+                SenderUUID = id,
+                Message = msg,
+                Position = position,
+                Destination = target,
+                Scene = m_scene
+            };
+            foreach (Action<OSChatMessage> d in handler.GetInvocationList())
+            {
+                try
+                {
+                    d(chat);
+                }
+                catch (Exception e)
+                {
+                    m_log.ErrorFormat("[WorldComm]: OnMessageDelivered handler failed - continuing. {0} {1}", e.Message, e.StackTrace);
+                }
+            }
+        }
+
         public void DeliverMessage(ChatTypeEnum type, int channel, string name, UUID id, string msg)
         {
             if (type == ChatTypeEnum.Region)
             {
                 TryEnqueueMessage(channel, name, id, msg);
+                RaiseMessageDelivered(type, channel, name, id, msg, Vector3.Zero, UUID.Zero);
                 return;
             }
 
@@ -397,6 +433,7 @@ namespace OpenSim.Region.CoreModules.Scripting.WorldComm
 
                 case ChatTypeEnum.Region:
                     TryEnqueueMessage(channel, name, id, msg);
+                    RaiseMessageDelivered(type, channel, name, id, msg, position, UUID.Zero);
                     return;
 
                 default:
@@ -404,6 +441,7 @@ namespace OpenSim.Region.CoreModules.Scripting.WorldComm
             }
 
             TryEnqueueMessage(channel, position, maxDistanceSQ, name, id, msg);
+            RaiseMessageDelivered(type, channel, name, id, msg, position, UUID.Zero);
         }
 
         /// <summary>
@@ -466,6 +504,7 @@ namespace OpenSim.Region.CoreModules.Scripting.WorldComm
                 }
 
                 TryEnqueueMessage(channel, targets, name, id, msg);
+                RaiseMessageDelivered(ChatTypeEnum.Direct, channel, name, id, msg, pos, target);
                 return;
             }
 
@@ -474,6 +513,7 @@ namespace OpenSim.Region.CoreModules.Scripting.WorldComm
                 return; // No error
 
             TryEnqueueMessage(channel, target, name, id, msg);
+            RaiseMessageDelivered(ChatTypeEnum.Direct, channel, name, id, msg, pos, target);
         }
 
         #endregion

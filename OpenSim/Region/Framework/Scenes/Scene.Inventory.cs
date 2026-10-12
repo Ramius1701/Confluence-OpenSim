@@ -85,6 +85,59 @@ namespace OpenSim.Region.Framework.Scenes
         }
 
         /// <summary>
+        /// True if any loaded script engine enforces the parcel script rules itself (see IParcelScriptPolicyEngine).
+        /// (Tranquillity #217.)
+        /// </summary>
+        public bool AnyScriptEngineEnforcesParcelRules()
+        {
+            foreach (IScriptModule engine in RequestModuleInterfaces<IScriptModule>())
+            {
+                if (engine is IParcelScriptPolicyEngine policy && policy.EnforcesParcelScriptRules)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The script engine that will run a script: the engine named on the script's first line
+        /// ("//engine:language") if that engine is loaded, otherwise the default engine; null if neither is loaded.
+        /// (Tranquillity #217.)
+        /// </summary>
+        /// <param name="defaultEngine">the engine name the caller passes to CreateScriptInstance (DefaultScriptEngine)</param>
+        /// <param name="scriptSource">the script source, or null if not known</param>
+        public IScriptModule ResolveScriptEngine(string defaultEngine, string scriptSource)
+        {
+            IScriptModule[] engines = RequestModuleInterfaces<IScriptModule>();
+
+            // the same first-line parse YEngine uses to pick its engine
+            if (scriptSource is not null && scriptSource.StartsWith("//"))
+            {
+                int lineEnd = scriptSource.IndexOf('\n');
+                if (lineEnd > 5)
+                {
+                    string firstline = scriptSource[2..lineEnd].Trim();
+                    int colon = firstline.IndexOf(':');
+                    if (colon >= 3)
+                    {
+                        string named = firstline[..colon].TrimEnd();
+                        foreach (IScriptModule engine in engines)
+                        {
+                            if (engine.ScriptEngineName == named)
+                                return engine;
+                        }
+                    }
+                }
+            }
+
+            foreach (IScriptModule engine in engines)
+            {
+                if (engine.ScriptEngineName == defaultEngine)
+                    return engine;
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Lets the script engines start processing scripts.
         /// </summary>
         public void StartScripts()
@@ -1719,6 +1772,54 @@ namespace OpenSim.Region.Framework.Scenes
                 SendInventoryUpdate(remoteClient, newFolder, false, true);
             }
 
+            return newFolderID;
+        }
+
+        /// <summary>
+        /// Give an avatar every listed item from a prim's inventory, in a new folder named <paramref name="category"/>,
+        /// or give nothing. MoveTaskInventoryItems gives what it can and alerts per item; a caller that must give a list
+        /// whole cannot check the items first, since the prim's inventory may change between that check and the move.
+        /// Here every item is checked and its inventory copy made before anything is added, so a change made while the
+        /// items are being added does not leave the folder part-filled. The avatar need not be in this region.
+        /// (Tranquillity #269.)
+        /// </summary>
+        /// <returns>The new folder's ID, or UUID.Zero with <paramref name="message"/> saying why nothing was given.</returns>
+        public UUID MoveTaskInventoryItemsAllOrNone(UUID destID, string category, SceneObjectPart host, List<UUID> items, out string message)
+        {
+            List<InventoryItemBase> agentItems = new(items.Count);
+            foreach (UUID itemID in items)
+            {
+                InventoryItemBase agentItem = CreateAgentInventoryItemFromTask(destID, host, itemID, out message);
+                if (agentItem is null)
+                    return UUID.Zero;
+                agentItems.Add(agentItem);
+            }
+
+            InventoryFolderBase rootFolder = InventoryService.GetRootFolder(destID);
+            if (rootFolder is null)
+            {
+                message = "Inventory root folder not found";
+                return UUID.Zero;
+            }
+
+            UUID newFolderID = UUID.Random();
+            InventoryFolderBase newFolder = new(newFolderID, category, destID, -1, rootFolder.ID, rootFolder.Version);
+            InventoryService.AddFolder(newFolder);
+
+            for (int i = 0; i < agentItems.Count; i++)
+            {
+                agentItems[i].Folder = newFolderID;
+                AddInventoryItem(agentItems[i]);
+                RemoveNonCopyTaskItemFromPrim(host, items[i]);
+            }
+
+            if (TryGetScenePresence(destID, out ScenePresence avatar) && avatar.ControllingClient is not null)
+            {
+                SendInventoryUpdate(avatar.ControllingClient, rootFolder, true, false);
+                SendInventoryUpdate(avatar.ControllingClient, newFolder, false, true);
+            }
+
+            message = null;
             return newFolderID;
         }
 

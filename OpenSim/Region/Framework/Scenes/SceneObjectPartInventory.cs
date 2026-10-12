@@ -458,7 +458,28 @@ namespace OpenSim.Region.Framework.Scenes
             //m_log.DebugFormat("[PRIM INVENTORY]: Starting script {0} {1} in prim {2} {3} in {4}",
             //    item.Name, item.ItemID, m_part.Name, m_part.UUID, m_part.ParentGroup.Scene.RegionInfo.RegionName);
 
-            if (!m_part.ParentGroup.Scene.Permissions.CanRunScript(item, m_part))
+            Scene scene = m_part.ParentGroup.Scene;
+
+            // Only when a loaded engine enforces the parcel script rules itself do we need to know which engine will
+            // run this script, and for that the script's first line. Otherwise this is the same check as before.
+            // (Tranquillity #217.)
+            bool engineEnforcesParcelRules = false;
+            AssetBase asset = null;
+            string script = null;
+            if (scene.AnyScriptEngineEnforcesParcelRules())
+            {
+                // a trusted-binaries crossing hands the engines no source, so they use the default engine
+                if (!(stateSource == 2 && scene.m_trustBinaries))
+                {
+                    asset = scene.AssetService.Get(item.AssetID.ToString());
+                    if (asset is not null)
+                        script = Utils.BytesToString(asset.Data);
+                }
+                engineEnforcesParcelRules = scene.ResolveScriptEngine(engine, script) is IParcelScriptPolicyEngine policy
+                        && policy.EnforcesParcelScriptRules;
+            }
+
+            if (!scene.Permissions.CanRunScript(item, m_part, engineEnforcesParcelRules))
             {
                 StoreScriptError(item.ItemID, "no permission");
                 return false;
@@ -501,7 +522,7 @@ namespace OpenSim.Region.Framework.Scenes
                 return true;
             }
 
-            AssetBase asset = m_part.ParentGroup.Scene.AssetService.Get(item.AssetID.ToString());
+            asset ??= m_part.ParentGroup.Scene.AssetService.Get(item.AssetID.ToString());
             if (asset == null)
             {
                 StoreScriptError(itemID, String.Format("asset ID {0} could not be found", item.AssetID));
@@ -522,7 +543,7 @@ namespace OpenSim.Region.Framework.Scenes
             it.PermsGranter = UUID.Zero;
             m_items.LockItemsForWrite(false);
 
-            string script = Utils.BytesToString(asset.Data);
+            script ??= Utils.BytesToString(asset.Data);
             m_part.ParentGroup.Scene.EventManager.TriggerRezScript(
                 m_part.LocalId, itemID, script, startParam, postOnRez, engine, stateSource);
             StoreScriptErrors(itemID, null);
@@ -860,6 +881,7 @@ namespace OpenSim.Region.Framework.Scenes
             bool removeControl = ((permissions & 4) != 0); //takecontrol
             List<UUID> grants = new List<UUID>();
             List<UUID> items = new List<UUID>();
+            List<(UUID item, UUID granter, int removed)> removedGrants = new();
 
             permissions = ~permissions;
             foreach (TaskInventoryItem item in m_scripts.Values)
@@ -871,10 +893,13 @@ namespace OpenSim.Region.Framework.Scenes
                     grants.Add(curGrant);
                     items.Add(item.ItemID);
                 }
+                int oldmask = curmask;
                 curmask &= permissions;
                 item.PermsMask = curmask;
                 if(curmask == 0)
                     item.PermsGranter = UUID.Zero;
+                if (curmask != oldmask)
+                    removedGrants.Add((item.ItemID, curGrant, oldmask & ~curmask));
             }
             m_items.LockItemsForWrite(false);
 
@@ -887,6 +912,8 @@ namespace OpenSim.Region.Framework.Scenes
                         presence.UnRegisterControlEventsToScript(m_part.LocalId, items[i]);
                 }
             }
+
+            TriggerScriptPermissionsRemoved(removedGrants);
         }
 
         public void RemoveScriptsPermissions(ScenePresence sp, int permissions)
@@ -903,6 +930,7 @@ namespace OpenSim.Region.Framework.Scenes
             List<UUID> items = new List<UUID>();
 
             permissions = ~permissions;
+            List<(UUID item, UUID granter, int removed)> removedGrants = new();
             foreach (TaskInventoryItem item in m_scripts.Values)
             {
                     if(grant != item.PermsGranter)
@@ -910,10 +938,13 @@ namespace OpenSim.Region.Framework.Scenes
                     int curmask = item.PermsMask;
                     if (removeControl && ((curmask & 4) != 0))
                         items.Add(item.ItemID);
+                    int oldmask = curmask;
                     curmask &= permissions;
                     item.PermsMask = curmask;
                     if(curmask == 0)
                         item.PermsGranter = UUID.Zero;
+                    if (curmask != oldmask)
+                        removedGrants.Add((item.ItemID, grant, oldmask & ~curmask));
             }
             m_items.LockItemsForWrite(false);
 
@@ -925,6 +956,23 @@ namespace OpenSim.Region.Framework.Scenes
                         sp.UnRegisterControlEventsToScript(m_part.LocalId, items[i]);
                 }
             }
+
+            TriggerScriptPermissionsRemoved(removedGrants);
+        }
+
+        /// <summary>
+        /// Tell script engines which items lost which permissions (EventManager.OnScriptPermissionsRemoved). Called with
+        /// the inventory lock released. (Tranquillity #269.)
+        /// </summary>
+        private void TriggerScriptPermissionsRemoved(List<(UUID item, UUID granter, int removed)> removedGrants)
+        {
+            if (removedGrants.Count == 0)
+                return;
+            EventManager events = m_part.ParentGroup?.Scene?.EventManager;
+            if (events is null)
+                return;
+            foreach ((UUID item, UUID granter, int removed) in removedGrants)
+                events.TriggerScriptPermissionsRemoved(m_part.UUID, item, granter, removed);
         }
 
         /// <summary>

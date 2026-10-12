@@ -524,6 +524,10 @@ namespace OpenSim.Region.Framework.Scenes
             if (attachToBackup)
                 sceneObject.AttachToBackup();
 
+            // record the first parcel (raises OnGroupCrossedToNewParcel with no old parcel); every add path,
+            // including region start, comes here before its scripts are started (Tranquillity #217)
+            sceneObject.StartParcelTracking();
+
             return true;
         }
 
@@ -2252,6 +2256,9 @@ namespace OpenSim.Region.Framework.Scenes
 
                     // required for physics to update it's position
                     copy.ResetChildPrimPhysicsPositions();
+
+                    // a duplicate is added here, not through AddSceneObject: record its first parcel before its scripts start
+                    copy.StartParcelTracking();
 
                     copy.CreateScriptInstances(0, false, m_parentScene.DefaultScriptEngine, 1);
                     copy.ResumeScripts();

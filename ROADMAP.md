@@ -385,11 +385,9 @@ Web & Admin UI section rather than here.)*
   across 10 files including a new `ScenePresenceSitTests`-style test suite. Its real motivating use case in
   Tranquillity is deferring the parcel-script-rules check to a Phlox-aware engine
   (`IParcelScriptPolicyEngine`, letting an engine that enforces the rule itself opt out of the default
-  check) - doesn't apply here, no Phlox in Confluence - and it changes the `OnRunScript` permission
-  delegate's own signature to `OnRunScriptWithEngine`, a real interface change rather than a narrow fix.
-  The two new events themselves could have standalone value (a region module wanting to react to an object
-  crossing parcel lines, or an ownership/group change, without polling) independent of the Phlox angle -
-  not scoped in detail, available on request.
+  check) and it changes the `OnRunScript` permission delegate's own signature to `OnRunScriptWithEngine`.
+  **Ported 2026-10-12 with Phlox** (see `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`); the
+  old `OnRunScript` stays for other handlers, and with Phlox disabled the check is unchanged.
 - **Offline IM-to-email forwarding (found 2026-10-02, reviewing GuduleLapointe/opensim-helpers).** That
   project (a mature, actively-maintained PHP helper toolkit, formerly "Flexible Helper Scripts") offers an
   opt-in "forward offline IMs to email" feature. Confirmed by code, not assumed: Confluence's own native
@@ -695,6 +693,25 @@ Web & Admin UI section rather than here.)*
   retries/rebuilds after an async asset fetch completes, or silently
   accepts a failed/empty state, before calling any future Phlox
   integration done.
+
+  **Ported, 2026-10-12** (Tranquillity's Phlox at `ab855c0009`; review in
+  `PROJECT_LOG.md`, port notes in
+  `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`). A
+  selectable second engine, off by default; YEngine stays the default.
+  Open from here:
+  - Re-measure speed on real content (idle and event-driven scripts,
+    not only tight loops) before recommending it as a default.
+  - The async asset-fetch check above is still to do.
+  - Add the 32 Confluence `os*` functions Phlox lacks.
+  - 185 of its 225 test files need a test-scene harness
+    (`OpenSim.Tests.Common` is out of the build here, as upstream).
+  - Two damage paths: YEngine's llDamage (LSL_Api "Combat2") and the
+    core `ScenePresence.ApplyDamage` Phlox uses do not see each other;
+    unify them. Also found: YEngine has no event codes for
+    on_damage/final_damage/on_death, so its own Combat2 events are
+    dropped before they reach YEngine scripts.
+  - Run Linden's SLua conformance suite (`secondlife/slua`) against
+    Phlox's SLua.
 - **`osPlaySoundURL`** (play audio from an arbitrary external URL,
   ported from Legion-Grid-Code). Built, deployed, and tested live on
   2026-08-30/31 - reproducibly hung the calling script's execution

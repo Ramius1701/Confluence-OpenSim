@@ -102,6 +102,7 @@
       <Reference name="XMLRPC" path ="../../bin"/>
       <Reference name="Nini" path ="../../bin"/>
       <Reference name="log4net" path ="../../bin"/>
+      <Reference name="Microsoft.Extensions.Logging.Abstractions" path ="../../bin"/>
       <Reference name="Mono.Addins" path ="../../bin"/>
       <Reference name="Mono.Addins.Setup" path ="../../bin"/>
       <Reference name="LukeSkywalker.IPNetwork" path ="../../bin"/>

@@ -281,11 +281,23 @@ namespace OpenSim.Region.CoreModules.Avatar.Chat
                 }
             }
 
+            // Object chat on DEBUG_CHANNEL (script errors, "no permission" lines) is for the object's owner. Not every
+            // viewer filters others' DEBUG_CHANNEL chat, so a bystander could get the script-warning box for someone
+            // else's prim; the sim filters instead. Avatar-sourced DEBUG_CHANNEL chat and scripted listens are
+            // unaffected. (Tranquillity #212.)
+            UUID debugOwnerOnly = UUID.Zero;
+            if (c.Type == ChatTypeEnum.DebugChannel && sourceType == ChatSourceType.Object
+                && c.SenderObject is SceneObjectPart debugPart)
+                debugOwnerOnly = debugPart.ParentGroup.OwnerID;
+
             Vector3 regionPos = new Vector3(scene.RegionInfo.WorldLocX, scene.RegionInfo.WorldLocY, 0);
             scene.ForEachScenePresence(
                 delegate(ScenePresence presence)
                 {
                     if (destination.IsNotZero() && presence.UUID.NotEqual(destination))
+                        return;
+
+                    if (debugOwnerOnly.IsNotZero() && presence.UUID.NotEqual(debugOwnerOnly))
                         return;
 
                     if(presence.IsChildAgent)

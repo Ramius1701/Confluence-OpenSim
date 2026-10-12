@@ -1554,6 +1554,23 @@ namespace OpenSim.Region.CoreModules.Avatar.UserProfiles
         }
 
         /// <summary>
+        /// A user's preferences from this grid's profiles service. A foreign user's home grid is not
+        /// asked, so their preferences read as null. (Tranquillity #224.)
+        /// </summary>
+        public UserPreferences GetUserPreferences(UUID userID)
+        {
+            if (!Enabled || m_userManagementModule is null)
+                return null;
+            if (GetUserProfileServerURI(userID, out string serverURI) || string.IsNullOrWhiteSpace(serverURI))
+                return null;
+
+            object Pref = new UserPreferences() { UserId = userID };
+            if (!rpc.JsonRpcRequest(ref Pref, "user_preferences_request", serverURI, UUID.Random().ToString()))
+                return null;
+            return (UserPreferences)Pref;
+        }
+
+        /// <summary>
         /// The partner on a user's profile, from this grid's profiles service. A foreign user's home grid is
         /// not asked, so their partner cannot be read.
         /// </summary>

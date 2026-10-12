@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Phlox compiler and VM (LSL, OSSL and SLua to bytecode, run on a stack-machine VM with serializable state),
+    from Tranquillity (Source/InWorldz.Phlox; Halcyon's Phlox core, Apache 2.0). See doc/PhloxSetup.md and
+    Phlox.ScriptEngine/CONFLUENCE.md. Confluence project file: hand-maintained and outside OpenSim.sln (like Jolt);
+    builds into the shared bin\ and references Confluence's own DLLs there.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>InWorldz.Phlox</AssemblyName>
+    <RootNamespace>InWorldz.Phlox</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Deterministic>true</Deterministic>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <PreserveCompilationContext>false</PreserveCompilationContext>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <OutputPath>..\..\..\..\bin\</OutputPath>
+    <!-- Copies the package assemblies (protobuf-net, ANTLR4 runtime, StringTemplate4) into bin\. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <TieredCompilationQuickJit>false</TieredCompilationQuickJit>
+    <NoWarn>CA1416,SYSLIB0011,SYSLIB0014,SYSLIB0039</NoWarn>
+  </PropertyGroup>
+
+  <!-- As in Tranquillity: ANTLR3-generated sources and the duplicate grammar/generated/ copies are superseded by the
+       ANTLR4 visitors compiled from Compiler/ and ByteCompiler/. -->
+  <ItemGroup>
+    <Compile Remove="grammar\generated\**\*.cs" />
+    <Compile Remove="Compiler\Def.cs" />
+    <Compile Remove="Compiler\Types.cs" />
+    <Compile Remove="Compiler\Analyze.cs" />
+    <Compile Remove="Compiler\Gen.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="protobuf-net" Version="3.2.56" />
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
+    <PackageReference Include="StringTemplate4" Version="4.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Framework\OpenSim.Framework.csproj"><Private>False</Private></ProjectReference>
+    <ProjectReference Include="..\..\Framework\OpenSim.Region.Framework.csproj"><Private>False</Private></ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="C5"><HintPath>..\..\..\..\bin\C5.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="log4net"><HintPath>..\..\..\..\bin\log4net.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="Nini"><HintPath>..\..\..\..\bin\Nini.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="OpenMetaverse"><HintPath>..\..\..\..\bin\OpenMetaverse.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="OpenMetaverseTypes"><HintPath>..\..\..\..\bin\OpenMetaverseTypes.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="OpenMetaverse.StructuredData"><HintPath>..\..\..\..\bin\OpenMetaverse.StructuredData.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath><Private>False</Private></Reference>
+  </ItemGroup>
+
+</Project>

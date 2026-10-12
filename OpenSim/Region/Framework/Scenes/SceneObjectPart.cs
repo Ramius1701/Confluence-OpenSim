@@ -1699,6 +1699,14 @@ namespace OpenSim.Region.Framework.Scenes
             }
         }
 
+        /// <summary>
+        /// The two SIT_FLAG_* bits the sit path cannot act on yet - SIT_FLAG_NO_COLLIDE (0x10) and
+        /// SIT_FLAG_NO_DAMAGE (0x20) - stored so llGetLinkSitFlags reads back what llSetLinkSitFlags set.
+        /// Not persisted, like its siblings. (Tranquillity #212, used by Phlox.)
+        /// </summary>
+        [XmlIgnore]
+        public int SitFlagsStored { get; set; }
+
         [XmlIgnore]
         public bool ScriptedSitOnly
         {
@@ -2345,6 +2353,24 @@ namespace OpenSim.Region.Framework.Scenes
         public void SendPropertiesToClient(IClientAPI client)
         {
             client.SendObjectPropertiesReply(this);
+        }
+
+        /// <summary>
+        /// Push full ObjectProperties to everyone in the region. The touch and sit labels a viewer shows come
+        /// from the full ObjectProperties reply, which the region otherwise sends only on select, so a script
+        /// that changes them needs this to be seen. (Tranquillity #212, used by Phlox.)
+        /// </summary>
+        public void SendPropertiesToAllClients()
+        {
+            SceneObjectGroup group = ParentGroup;
+            if (group is null || group.IsDeleted || group.Scene is null)
+                return;
+
+            group.Scene.ForEachClient(delegate (IClientAPI client)
+            {
+                try { client.SendObjectPropertiesReply(this); }
+                catch { /* one client's failure must not stop the rest */ }
+            });
         }
 
         // TODO: unused:
@@ -3419,6 +3445,11 @@ namespace OpenSim.Region.Framework.Scenes
                     return;
                 }
                 //ParentGroup.RootPart.m_groupPosition = newpos;
+
+                // physics moves the body without the position setter; the group's parcel follows the root
+                // (Tranquillity #217)
+                if (_parentID == 0)
+                    ParentGroup.CheckParcelCrossing();
             }
 
             ScheduleTerseUpdate();

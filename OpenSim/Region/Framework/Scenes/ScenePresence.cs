@@ -1275,7 +1275,9 @@ namespace OpenSim.Region.Framework.Scenes
                     m_attachments = null;
                 }
                 */
-                scriptedcontrols.Clear();
+                UUID[] releasedControls = TakeAllScriptControls();
+                if (releasedControls != null)
+                    m_scene.EventManager.TriggerScriptControlsReleased(UUID, releasedControls);
                 // gc gets confused with this cycling
                 ControllingClient = null;
                 GodController = null; // gc gets confused with this cycling
@@ -5275,10 +5277,17 @@ namespace OpenSim.Region.Framework.Scenes
             if (IsDeleted)
                 return;
 
+            List<UUID> replacedControls = null;
             try
             {
                 lock (scriptedcontrols)
                 {
+                    // registrations the incoming set does not carry are released (Tranquillity #218)
+                    foreach (UUID id in scriptedcontrols.Keys)
+                    {
+                        if (cAgent.Controllers == null || Array.FindIndex(cAgent.Controllers, c => c.ItemID.Equals(id)) < 0)
+                            (replacedControls ??= new List<UUID>()).Add(id);
+                    }
                     scriptedcontrols.Clear();
                     IgnoredControls = ScriptControlled.CONTROL_ZERO;
 
@@ -5301,6 +5310,8 @@ namespace OpenSim.Region.Framework.Scenes
                 }
             }
             catch { }
+            if (replacedControls != null)
+                m_scene.EventManager.TriggerScriptControlsReleased(UUID, replacedControls.ToArray());
 
             // we are losing animator somewhere
             if (Animator == null)
@@ -5527,12 +5538,12 @@ namespace OpenSim.Region.Framework.Scenes
             if (Invulnerable || IsViewerUIGod)
                 return;
 
-            // The following may be better in the ICombatModule
-            // probably tweaking of the values for ground and normal prim collisions will be needed
-            float startHealth = Health;
-            if(coldata.Count > 0)
+            // The physics frame's collisions become one damage batch through ApplyDamage, the one door for
+            // damage events (Tranquillity #212). The amounts are the ones this block always computed; the Health
+            // arithmetic and the kill live in ApplyDamage. A Damage-bearing prim still dies on contact.
+            if (coldata.Count > 0)
             {
-                uint killerObj = 0;
+                List<DamageEntry> batch = null;
                 SceneObjectPart part;
                 float rvel; // relative velocity, negative on approch
                 foreach (uint localid in coldata.Keys)
@@ -5541,60 +5552,95 @@ namespace OpenSim.Region.Framework.Scenes
                     {
                         // 0 is the ground
                         rvel = coldata[0].RelativeSpeed;
-                        if(rvel < -5.0f)
-                            Health -= 0.01f * rvel * rvel;
+                        if (rvel < -5.0f)
+                            (batch ??= new List<DamageEntry>()).Add(
+                                new DamageEntry(UUID.Zero, UUID.Zero, 0, 0.01f * rvel * rvel, DamageEntry.TYPE_IMPACT));
                     }
                     else
                     {
                         part = Scene.GetSceneObjectPart(localid);
 
-                        if(part != null && !part.ParentGroup.IsVolumeDetect)
+                        if (part != null && !part.ParentGroup.IsVolumeDetect)
                         {
                             if (part.ParentGroup.Damage > 0.0f)
                             {
                                 // Something with damage...
-                                Health -= part.ParentGroup.Damage;
+                                (batch ??= new List<DamageEntry>()).Add(new DamageEntry(
+                                    part.UUID, part.OwnerID, localid, part.ParentGroup.Damage, DamageEntry.TYPE_IMPACT));
                                 part.ParentGroup.Scene.DeleteSceneObject(part.ParentGroup, false);
                             }
                             else
                             {
                                 // An ordinary prim
                                 rvel = coldata[localid].RelativeSpeed;
-                                if(rvel < -5.0f)
-                                {
-                                    Health -=  0.005f * rvel * rvel;
-                                }
+                                if (rvel < -5.0f)
+                                    (batch ??= new List<DamageEntry>()).Add(new DamageEntry(
+                                        part.UUID, part.OwnerID, localid, 0.005f * rvel * rvel, DamageEntry.TYPE_IMPACT));
                             }
                         }
-                        else
-                        {
-
-                        }
-                    }
-
-                    if (Health <= 0.0f)
-                    {
-                        if (localid != 0)
-                            killerObj = localid;
                     }
                 }
 
-                if (Health <= 0)
-                {
-                    ControllingClient.SendHealth(Health);
-                    m_scene.EventManager.TriggerAvatarKill(killerObj, this);
-                    return;
-                }
+                if (batch != null)
+                    ApplyDamage(batch, false);
             }
-
-            if(Math.Abs(Health - startHealth) > 1.0)
-                ControllingClient.SendHealth(Health);
         }
 
         public void setHealthWithUpdate(float health)
         {
             Health = health;
             ControllingClient.SendHealth(Health);
+        }
+
+        /// <summary>
+        /// The one door for damage events on this avatar (Tranquillity #212): a batch of <see cref="DamageEntry"/>
+        /// is offered to EventManager.OnAvatarDamage (a script engine's on_damage, which may rewrite each Amount),
+        /// applied, then offered to OnAvatarDamageApplied (final_damage). Gods and the invulnerable take nothing.
+        /// Health is clamped to 0..100; at 0 the client is told and TriggerAvatarKill fires with the last killing
+        /// entry's local id, once. YEngine's llDamage keeps its own path (LSL_Api Combat2) for now.
+        /// </summary>
+        /// <param name="announce">true: always tell the client (scripted damage); false: only when the
+        /// change is more than 1.0, the collision path's rule against per-frame spam.</param>
+        public void ApplyDamage(UUID sourceObject, UUID sourceOwner, uint sourceLocalId, float amount, int damageType, bool announce)
+            => ApplyDamage(new List<DamageEntry> { new DamageEntry(sourceObject, sourceOwner, sourceLocalId, amount, damageType) }, announce);
+
+        public void ApplyDamage(List<DamageEntry> batch, bool announce)
+        {
+            if (batch == null || batch.Count == 0)
+                return;
+            if (Invulnerable || IsViewerUIGod)
+                return;
+
+            // SL order: on_damage sees the batch and may adjust it; the adjusted amounts land;
+            // final_damage sees what landed; then death, if Health reached 0.
+            m_scene.EventManager.TriggerAvatarDamage(this, batch);
+
+            float startHealth = Health;
+            uint killerObj = 0;
+            foreach (DamageEntry d in batch)
+            {
+                Health -= d.Amount;
+                if (Health <= 0.0f && d.SourceLocalId != 0)
+                    killerObj = d.SourceLocalId;
+            }
+
+            if (Health > 100.0f)
+                Health = 100.0f;
+            bool dead = Health <= 0.0f;
+            if (dead)
+                Health = 0.0f;
+
+            m_scene.EventManager.TriggerAvatarDamageApplied(this, batch);
+
+            if (dead)
+            {
+                ControllingClient.SendHealth(Health);
+                m_scene.EventManager.TriggerAvatarKill(killerObj, this);
+                return;
+            }
+
+            if (announce || Math.Abs(Health - startHealth) > 1.0)
+                ControllingClient.SendHealth(Health);
         }
 
 
@@ -6131,13 +6177,17 @@ namespace OpenSim.Region.Framework.Scenes
                 obj.ignoreControls = ScriptControlled.CONTROL_ZERO;
             }
 
+            bool released = false;
             lock (scriptedcontrols)
             {
                 if (pass_on == 1 && accept == 0)
                 {
                     IgnoredControls &= ~(ScriptControlled)controls;
                     if (scriptedcontrols.ContainsKey(Script_item_UUID))
+                    {
                         RemoveScriptFromControlNotifications(Script_item_UUID, part);
+                        released = true;
+                    }
                 }
                 else
                 {
@@ -6146,6 +6196,9 @@ namespace OpenSim.Region.Framework.Scenes
             }
 
             ControllingClient.SendTakeControls(controls, pass_on == 1, true);
+
+            if (released)
+                m_scene.EventManager.TriggerScriptControlsReleased(UUID, new UUID[] { Script_item_UUID });
         }
 
         private void AddScriptToControlNotifications(OpenMetaverse.UUID Script_item_UUID, SceneObjectPart part, ref ScriptControllers obj)
@@ -6188,6 +6241,7 @@ namespace OpenSim.Region.Framework.Scenes
         public void HandleForceReleaseControls(IClientAPI remoteClient, UUID agentID)
         {
             List<SceneObjectGroup> holders = new();
+            UUID[] released;
             lock (scriptedcontrols)
             {
                 foreach (ScriptControllers c in scriptedcontrols.Values)
@@ -6202,9 +6256,12 @@ namespace OpenSim.Region.Framework.Scenes
                 }
 
                 IgnoredControls = ScriptControlled.CONTROL_ZERO;
-                scriptedcontrols.Clear();
+                released = TakeAllScriptControls();
             }
             ControllingClient.SendTakeControls(int.MaxValue, false, false);
+
+            if (released != null)
+                m_scene.EventManager.TriggerScriptControlsReleased(UUID, released);
 
             // SL llTakeControls: PERMISSION_TAKE_CONTROLS "can be revoked ... if the user chooses Release Keys
             // from the viewer".
@@ -6239,9 +6296,39 @@ namespace OpenSim.Region.Framework.Scenes
         public void ClearControls()
         {
             IgnoredControls = ScriptControlled.CONTROL_ZERO;
+            UUID[] released = TakeAllScriptControls();
+            if (released != null)
+                m_scene.EventManager.TriggerScriptControlsReleased(UUID, released);
+        }
+
+        /// <summary>
+        /// Does this script item hold taken controls on this avatar right now (llTakeControls registered it and nothing
+        /// has released it since)? Read under the same lock the registrations are changed under. (Tranquillity #218.)
+        /// </summary>
+        /// <remarks>
+        /// Whenever a registration is removed, by the script itself or by the core (the viewer's release keys,
+        /// ClearControls on a crossing, a stand-up, a permission revoke, the avatar leaving the region), the scene raises
+        /// <see cref="EventManager.OnScriptControlsReleased"/> with the item ids removed.
+        /// </remarks>
+        public bool HasScriptControls(UUID scriptItemId)
+        {
             lock (scriptedcontrols)
             {
+                return scriptedcontrols.ContainsKey(scriptItemId);
+            }
+        }
+
+        /// <summary>Removes every registration; returns the item ids removed, or null when there were none.</summary>
+        private UUID[] TakeAllScriptControls()
+        {
+            lock (scriptedcontrols)
+            {
+                if (scriptedcontrols.Count == 0)
+                    return null;
+                UUID[] released = new UUID[scriptedcontrols.Count];
+                scriptedcontrols.Keys.CopyTo(released, 0);
                 scriptedcontrols.Clear();
+                return released;
             }
         }
 
@@ -6264,6 +6351,7 @@ namespace OpenSim.Region.Framework.Scenes
         {
             SceneObjectPart part = m_scene.GetSceneObjectPart(Obj_localID);
 
+            bool released = false;
             lock (scriptedcontrols)
             {
                 if (scriptedcontrols.TryGetValue(Script_item_UUID, out ScriptControllers takecontrols))
@@ -6274,6 +6362,7 @@ namespace OpenSim.Region.Framework.Scenes
                     ControllingClient.SendTakeControls((int)sctc, true, false);
 
                     RemoveScriptFromControlNotifications(Script_item_UUID, part);
+                    released = true;
                     IgnoredControls = ScriptControlled.CONTROL_ZERO;
                     foreach (ScriptControllers scData in scriptedcontrols.Values)
                     {
@@ -6281,6 +6370,9 @@ namespace OpenSim.Region.Framework.Scenes
                     }
                 }
             }
+
+            if (released)
+                m_scene.EventManager.TriggerScriptControlsReleased(UUID, new UUID[] { Script_item_UUID });
         }
 
         private void SendControlsToScripts(uint flags)

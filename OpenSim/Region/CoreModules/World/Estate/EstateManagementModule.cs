@@ -1985,15 +1985,36 @@ namespace OpenSim.Region.CoreModules.World.Estate
                 return;
             }
 
-            IScriptModule scriptModule = Scene.RequestModuleInterface<IScriptModule>();
-            if (scriptModule == null)
+            // A region can run more than one script engine (YEngine and Phlox): the singular
+            // RequestModuleInterface returns only the first, so ask every engine and merge per object,
+            // as a linkset can hold scripts of both. (Tranquillity #183.)
+            IScriptModule[] scriptModules = Scene.RequestModuleInterfaces<IScriptModule>();
+            if (scriptModules == null || scriptModules.Length == 0)
             {
                 remoteClient.SendLandStatReply(reportType, requestFlags, 0, new LandStatReportItem[0]);
                 return;
             }
 
-            ICollection<ScriptTopStatsData>  sceneData = scriptModule.GetTopObjectStats(
-                    0.001f, 1024, out float totaltime, out float totalmemory);
+            Dictionary<uint, ScriptTopStatsData> mergedData = new Dictionary<uint, ScriptTopStatsData>();
+            foreach (IScriptModule sm in scriptModules)
+            {
+                ICollection<ScriptTopStatsData> part = sm?.GetTopObjectStats(0.001f, 1024, out _, out _);
+                if (part == null)
+                    continue;
+
+                foreach (ScriptTopStatsData d in part)
+                {
+                    if (mergedData.TryGetValue(d.localID, out ScriptTopStatsData acc))
+                    {
+                        acc.time += d.time;
+                        acc.memory += d.memory;
+                    }
+                    else
+                        mergedData[d.localID] = new ScriptTopStatsData { localID = d.localID, time = d.time, memory = d.memory };
+                }
+            }
+
+            ICollection<ScriptTopStatsData> sceneData = mergedData.Values;
 
             if(sceneData == null || sceneData.Count == 0)
             {
