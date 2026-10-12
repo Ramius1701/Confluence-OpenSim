@@ -95,9 +95,14 @@ namespace OpenSim.Region.Framework.Scenes
         // InWorldz/Halcyon bot event, raised by BotManager. YEngine checks at startup
         // that its ScriptEventCode names match these, so keep the three enums in step.
         bot_update = 44,
+        // SL combat events. Confluence's llDamage (LSL_Api "Combat2") posts them; Phlox raises them from
+        // ScenePresence.ApplyDamage. Same numbers as the scriptEvents bits below.
+        on_damage = 45,
+        final_damage = 46,
+        on_death = 47,
 
         // marks highest numbered event
-        Size = 45
+        Size = 48
     }
 
     // this is not the right place for this
@@ -152,9 +157,9 @@ namespace OpenSim.Region.Framework.Scenes
         experience_permissions = 1UL << 42,
         experience_permissions_denied = 1UL << 43,
         bot_update = 1UL << 44,
-        // Phlox's on_damage / final_damage / on_death / game_control handlers, so they show in the part's
-        // aggregated mask (Tranquillity #212, which has them at 44-47; bot_update holds 44 here). Above
-        // YEngine's ScriptEventCode.Size, so its startup name check does not see them.
+        // on_damage / final_damage / on_death are YEngine events too (ScriptEventCode 45-47, matched by
+        // name at YEngine's startup). game_control is Phlox-only, above YEngine's ScriptEventCode.Size.
+        // (Tranquillity #212 has these at 44-47; bot_update holds 44 here.)
         on_damage = 1UL << 45,
         final_damage = 1UL << 46,
         on_death = 1UL << 47,

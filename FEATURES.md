@@ -489,10 +489,12 @@ Treated as core, not an optional add-on:
 - Persisted object-health support.
 - `on_damage`, `final_damage`, `on_death` events, with a transaction
   window so `on_damage` can override the amount before the other two
-  events fire. **Open (found 2026-10-12):** YEngine has no event codes
-  for these three, so a YEngine script cannot declare the handlers and
-  the posted events are dropped; see ROADMAP.md. Phlox scripts get them
-  from the core damage path (collisions, and Phlox's own `llDamage`).
+  events fire. Real YEngine events since 2026-10-13: `on_damage(integer
+  num_detected)`, `final_damage(integer num_detected)`, `on_death()`
+  (before that YEngine had no event codes for them, so a script
+  declaring one could not compile and the posted events were dropped).
+  Phlox scripts get them from the core damage path (collisions, and
+  Phlox's own `llDamage`); the two paths are not yet joined.
 
 ### EEP environment scripting
 

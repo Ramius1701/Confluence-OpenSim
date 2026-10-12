@@ -28248,3 +28248,21 @@ every edit to their files and the hook list: `OpenSim/Region/ScriptEngine/Phlox.
 - **Found, open**: Confluence's YEngine damage events ("Combat2") and the core damage door do not see each other; and
   YEngine has no event codes for on_damage/final_damage/on_death, so those events never reach YEngine scripts (FEATURES.md
   corrected). Also open: speed re-measure, the 32 missing `os*`, the async asset-fetch check, Linden's SLua suite.
+## YEngine damage events made real: on_damage, final_damage, on_death (2026-10-13)
+
+Found during the Phlox port: Confluence's Combat2 (`LSL_Api` llDamage/llAdjustDamage) posts on_damage, final_damage and
+on_death, but YEngine had no event codes for them. A YEngine script declaring one of these handlers failed to compile
+("unknown event handler"), and the posted events were dropped. FEATURES.md had listed them as working.
+
+Fixed as `bot_update` was: `ScriptEventCode` on_damage = 45, final_damage = 46, on_death = 47 (Size 48), the
+`IEventHandlers` signatures (`on_damage(integer)`, `final_damage(integer)`, `on_death()`), the event-name map in
+`XMRInstMain`, and the scene's numbered `scriptEventCode` enum (Size 48). The `scriptEvents` flag bits 45-47 already
+existed from the Phlox port. Old compiled scripts load unchanged (handler tables are sized at load).
+
+Verified: solution and Phlox builds 0/0. YEngine's compiler (tokenize, reduce and code generation) run on test
+scripts: with the live grid's YEngine DLLs, all three handlers fail with "unknown event handler"; with the new build they
+compile, and `on_damage(string)` is still rejected. A local standalone boot passes YEngine's startup enum-name check
+(YEngine enabled, no mismatch). Not tested in-world; not deployed.
+
+Still open: YEngine's llDamage path and the core `ScenePresence.ApplyDamage` path (collision damage, Phlox) are
+separate, so YEngine scripts get no on_damage for collision damage (ROADMAP.md).

@@ -89,8 +89,13 @@ namespace OpenSim.Region.ScriptEngine.Yengine
         experience_permissions_denied = 43,
         // InWorldz/Halcyon bot_update(string botID, integer flag, list params), from BotManager
         bot_update = 44,
+        // SL combat events: on_damage(integer num_detected), final_damage(integer num_detected), on_death().
+        // Posted by LSL_Api's llDamage (Combat2) to the target's attachments, or to the object.
+        on_damage = 45,
+        final_damage = 46,
+        on_death = 47,
 
         // marks highest numbered event
-        Size = 45
+        Size = 48
     }
 }

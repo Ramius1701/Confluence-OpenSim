@@ -707,9 +707,10 @@ Web & Admin UI section rather than here.)*
     (`OpenSim.Tests.Common` is out of the build here, as upstream).
   - Two damage paths: YEngine's llDamage (LSL_Api "Combat2") and the
     core `ScenePresence.ApplyDamage` Phlox uses do not see each other;
-    unify them. Also found: YEngine has no event codes for
-    on_damage/final_damage/on_death, so its own Combat2 events are
-    dropped before they reach YEngine scripts.
+    unify them (YEngine scripts get no on_damage for collision damage,
+    Phlox scripts none for YEngine's llDamage). The YEngine event codes
+    for on_damage/final_damage/on_death were missing and are fixed
+    (2026-10-13).
   - Run Linden's SLua conformance suite (`secondlife/slua`) against
     Phlox's SLua.
 - **`osPlaySoundURL`** (play audio from an arbitrary external URL,

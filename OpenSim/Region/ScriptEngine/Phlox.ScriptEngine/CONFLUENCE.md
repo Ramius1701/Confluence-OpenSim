@@ -49,7 +49,7 @@ they change nothing a script or user can see, except the DEBUG_CHANNEL filter in
 | PR | What |
 |---|---|
 | #183 | Top Scripts (estate tools) asks every script engine of the region and merges per object |
-| #212 | `DamageEntry`, `ScenePresence.ApplyDamage` with `OnAvatarDamage`/`OnAvatarDamageApplied` (collision damage goes through it; same amounts); `SitFlagsStored`; `SendPropertiesToAllClients`; `scriptEvents` bits for on_damage/final_damage/on_death/game_control (45-48 here: `bot_update` holds 44); `DetectParams.AdjustDamage`; cache-only `IUserAccountCacheModule.Get`; object DEBUG_CHANNEL chat goes to the object's owner only |
+| #212 | `DamageEntry`, `ScenePresence.ApplyDamage` with `OnAvatarDamage`/`OnAvatarDamageApplied` (collision damage goes through it; same amounts); `SitFlagsStored`; `SendPropertiesToAllClients`; `scriptEvents` bits for on_damage/final_damage/on_death/game_control (45-48 here: `bot_update` holds 44; 45-47 are YEngine events too); `DetectParams.AdjustDamage`; cache-only `IUserAccountCacheModule.Get`; object DEBUG_CHANNEL chat goes to the object's owner only |
 | #217 | `IParcelScriptPolicyEngine`; parcel tracking of objects with `OnGroupCrossedToNewParcel` and `OnObjectOwnerOrGroupChanged`; `CanRunScript` told whether the script's engine enforces parcel rules (`OnRunScriptWithEngine`) |
 | #218 | `ScenePresence.HasScriptControls`, `OnScriptControlsReleased` |
 | #224 | `IWorldComm.OnMessageDelivered`, `IFriendsModule.IsFriendInService`, `IProfileModule.GetUserPreferences` |
@@ -64,8 +64,9 @@ VectorRender changes do not apply (Confluence's renderer differs).
 **Two damage paths.** Confluence's YEngine has its own damage events (`LSL_Api` "Combat2": llDamage posts on_damage,
 waits for llAdjustDamage, then final_damage/on_death). Phlox uses the core's `ApplyDamage`. Collision damage now goes
 through `ApplyDamage`, so Phlox scripts see it; YEngine's llDamage does not, so Phlox scripts do not see YEngine's
-scripted damage, nor YEngine scripts Phlox's. Unifying them is open work. (Note: YEngine has no event codes for
-on_damage/final_damage/on_death, so it drops the events Combat2 posts to its own scripts; separate, open.)
+scripted damage, nor YEngine scripts Phlox's. Unifying them is open work. (YEngine's own event codes for
+on_damage/final_damage/on_death were missing until 2026-10-13; they are now 45-47, the same numbers as the scene's
+`scriptEvents` bits.)
 
 ## Tests
 
