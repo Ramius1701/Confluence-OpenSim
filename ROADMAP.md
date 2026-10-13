@@ -88,8 +88,8 @@ gap today. For what already exists, see `FEATURES.md`.
   Full writeup, including the complete ruled-out list and the two real
   remaining next steps, in `PROJECT_LOG.md` (2026-09-29).
 - **1,536 texture assets stored with zero bytes of data - cause found and
-  fixed in code 2026-09-26, awaiting deploy; the existing rows stay
-  broken.** Two writers, both storing whatever bytes arrived: (1) the mesh
+  fixed 2026-09-26 (`8f93eab0fa`), live since 2026-09-27; the existing rows
+  stay broken.** Two writers, both storing whatever bytes arrived: (1) the mesh
   upload (`BunchOfCaps`, ~800 rows): Firestorm sends an *empty* binary in
   `texture_list` for a texture it could not or did not include
   (`llmeshrepository.cpp:2993`, "empty binary to indicate texture is not
@@ -105,8 +105,9 @@ gap today. For what already exists, see `FEATURES.md`.
   empty-data hash. The 1,536 existing rows have no data anywhere on the
   grid - the affected meshes need their textures re-applied, or the IAR
   re-imported from a good source (the replace-empty fix makes a re-import
-  work). Not exercised live yet: needs a mesh upload with textures and an
-  IAR load after the deploy.
+  work). Not yet confirmed in-world: a mesh upload with textures (no new
+  empty-hash rows should appear) and an IAR load containing an empty file
+  (skipped with a warning).
   **To actually catch this next time**: reproduce live - when it
   happens again, tail the affected region's log and check CAPS/circuit
   registration state in real time, before rebaking clears the
@@ -224,155 +225,15 @@ gap today. For what already exists, see `FEATURES.md`.
   findings above) is now fixed and pushed; only the local-convex-hull/
   cache-eviction architectural work remains genuinely open.
 
-- **Marketplace end-to-end purchase - now live-verified (2026-09-13),
-  see `FEATURES.md`.** Found and fixed a real bug along the way: a
-  genuine purchase charged and delivered correctly, but neither
-  party's already-connected viewer found out until a relog -
-  `WebInterfaceServiceConnector`'s purchase handlers bypassed the real
-  notification mechanism entirely. Fixed (`eb778a634c`) by reusing
-  `CurrencyServerConnector`'s own proven region-callback pattern for
-  currency, and building the equivalent for inventory delivery (which
-  had no equivalent at all before). See `PROJECT_LOG.md` for the full
-  trace.
-
-  **Real, load-bearing finding, not just a caveat:** Firestorm/AyaneStorm
-  hard-block the viewer's own "Marketplace Listings" floater outside real
-  Second Life (`LLSLMMenuUpdater::checkMerchantStatus` returns before ever
-  asking the region, regardless of caps - confirmed against source, no
-  known bypass). `DirectDeliveryModule` is protocol-correct and left in
-  place, dormant, for if a non-blocking viewer is ever used - but for now,
-  merchants associate inventory through `/marketplace/manage` on the web
-  instead (the same `SnapshotListingItem` call the floater would have
-  triggered, just invoked from Robust). No in-world UI was added to
-  replace it; the folder-organizing step it depends on (`Inventory >
-  Marketplace Listings`, item dropped directly inside — a deliberate
-  flattening from real SL's per-listing subfolders, so one item is one
-  listing) is itself completely ordinary, ungated inventory management on
-  every viewer.
-
-  Supersedes `addon-modules/OpenSimMarketplace`'s old v2 HTTP API (a
-  service-to-service protocol for an external website, unrelated to the
-  real viewer floater), which keeps working unchanged as a legacy/
-  external-integration path.
-- **Vehicle and prim region crossings — real scoping done, not just a
-  guess (2026-09-07).** **Deprioritised by the owner, 2026-09-26:** grid
-  owners who want smooth vehicles normally choose a var (large) region,
-  which removes crossings altogether, so a crossing fix would help few of
-  them, and the freeze is a deliberate server safety measure, so changing
-  it carries real risk. Not scheduled; the scoping below stays for if that
-  changes. Avatar crossings are already smooth (see
-  `FEATURES.md`). Vehicles and other physical objects still freeze in
-  place for the duration of a crossing — a deliberate server-side
-  safety measure, not a bug, but one that's noticeable on a moving
-  vehicle. Traced the actual freeze mechanism directly rather than
-  assuming: `SceneObjectGroup.cs`'s border-crossing path calls
-  `root.PhysActor?.CrossingStart()` (ubODE's `ODEPrim.CrossingStart()`
-  sets `m_outbounds = true` and zeroes the physics body's velocity) the
-  moment a real destination is confirmed, then blocks synchronously on
-  `EntityTransferModule.CrossPrimGroupIntoNewRegion()` - a full HTTP
-  `CreateObject` POST (serializes and rezzes the whole object on the
-  destination) followed by deleting the source copy only on success.
-  The freeze lasts exactly as long as that synchronous round trip;
-  `ODEPrim.CrossingFailure()` is the existing unfreeze/rollback path,
-  restoring position and velocity if a crossing attempt needs to be
-  aborted outright.
-
-  **Why the "remove object" RPC alone doesn't fix the freeze.** It
-  only lets a *failed* destination copy be cleaned up after the fact -
-  the freeze itself comes from doing create-then-delete synchronously
-  and serially. Making the crossing non-freezing needs the destination
-  copy to already exist and be ready *before* the source stops
-  simulating the object - a predictive, staged handoff (informed by a
-  sibling project's own crossing design, see "Design research from
-  other projects" below) - and the new RPC's real job is the safety
-  valve for that: rolling back a staged copy if the prediction turns
-  out wrong or the final handoff fails, not the primary mechanism.
-
-  **Buildable in phases, not one large change:**
-  - **Phase 0 - the RPC itself - built and deployed (2026-09-07).**
-    Added `RemoveObject(GridRegion destination, UUID
-    objectID)` to `ISimulationService`, mirroring the existing
-    `CloseAgent` pattern end to end: an HTTP `DELETE` client method in
-    `SimulationServiceConnector.cs`, the local-then-remote dispatch in
-    `RemoteSimulationConnectorModule`, a direct in-process scene call
-    in `LocalSimulationConnectorModule`, and a server-side handler in
-    `ObjectHandlers.cs`'s `ObjectSimpleHandler` - whose `DELETE` case
-    was a hardcoded 405 and whose URL-path parsing for
-    `/object/{objectID}/{regionID}/` was written but disabled ("this
-    things are ignored") since `CreateObject`'s POST path never needed
-    it; both are live now. Dropped the `authToken` parameter originally
-    sketched here: unlike `CloseAgent`, which checks a real per-session
-    secret established at `CreateAgent` time, `CreateObject` never
-    established an equivalent secret for `RemoveObject` to check -
-    adding a parameter nothing actually validates would be dead code,
-    not real security, so `RemoveObject` sits at the same trust level
-    `CreateObject` already does rather than a fabricated stronger one.
-    Also wired into its first real caller: `CrossPrimGroupIntoNewRegion`
-    (the duplication-bug fix already live, 2026-09-05) now attempts a
-    `RemoveObject` rollback of the destination copy when the source-side
-    delete exhausts all 3 retries, before falling back to the existing
-    log-and-alert path - if the rollback succeeds, the object simply
-    stays on the source with no duplicate anywhere and no owner alert
-    needed; the alert now only fires if the rollback also fails. Build
-    confirmed clean (0 Warning(s), 0 Error(s)).
-  - **A separate, real, small fix - built same day the Jolt evaluation
-    resumed the Legion-Grid-Code review (2026-09-08).** Not part of
-    the freeze/staged-handoff work above - a genuine bug in the entry-
-    position clamp itself, found by sampling Legion's own commit
-    history and confirmed present in this codebase before porting
-    anything: `EntityTransferModule.GetObjectDestination()` used a
-    flat `0.2f` entry-distance clamp regardless of the crossing
-    object's velocity, which (per Legion's own measured repro on their
-    grid) can place a >2m vehicle's root ON the region seam and cause
-    a near-stationary vehicle to ping-pong between regions - 16
-    crossings observed in 90 seconds. Fixed with a velocity-
-    proportional entry offset (`|velocity| * 0.25s`, floored at the
-    old `0.2f` for slow objects, capped at `4.0f`), small and
-    orthogonal to the freeze redesign below. Build confirmed clean.
-    See PROJECT_LOG.md for the full trace.
-  - **Phase 1 - a staged/pending object on the destination.** A copy
-    exists in the destination scene's memory but isn't added to the
-    spatial index, isn't sent to any viewer, and isn't in the physics
-    scene - held in a pending-objects table keyed by object UUID rather
-    than a new `SceneObjectGroup` state, plus a lightweight "activate"
-    call to promote it to fully live. Moderate complexity, genuinely
-    new.
-  - **Phase 2 - predictive trigger on the source, the hardest and
-    riskiest part.** Today, crossing only starts once the object's
-    position has actually crossed the border - confirmed by tracing
-    `GetObjectDestination()`'s call site directly. A non-freezing
-    design needs staging to begin *before* the border is crossed
-    (velocity + distance lookahead), which is new logic with real edge
-    cases: direction reversal after staging has started (needs the
-    Phase 0 rollback), and the sitting-avatar crossing path - already
-    far more heavily special-cased in `SceneObjectGroup.cs`
-    (`avtocrossInfo`, per-avatar `m_crossingFlags`, far-crossing
-    handling) than the empty-vehicle fast path - that any staged
-    redesign has to not break.
-  - **Phase 3 - matching physics-engine support.** ubODE (confirmed
-    the actual live engine on Casperia via direct profiling, see
-    PROJECT_LOG.md) is the only one that needs to be correct for this
-    grid, but `CrossingStart`/`CrossingFailure` are implemented across
-    BulletS/POS/BasicPhysics too and would silently regress for anyone
-    using a different engine if ignored outright.
-
-  **Estimated cost**: Phase 0 alone is small and worth doing on its
-  own regardless of the rest. The full non-freezing redesign (Phases
-  1-3) is a genuine multi-week effort - realistically 3-5 weeks, larger
-  than the navmesh estimate above, because a wrong predictive trigger
-  risks the exact visible-duplicate failure mode this feature exists to
-  prevent, on a live grid with real vehicles and real residents sitting
-  on them, and this kind of timing-sensitive crossing behavior can't be
-  meaningfully verified without live-grid testing (a real moving
-  vehicle, both the empty and sitting-avatar paths, plus a forced-
-  rollback test). Recommendation: build Phase 0 now, hold Phases 1-3
-  pending a priority call, since the freeze is a working safety measure
-  today, not a correctness bug - this is a comfort/polish improvement,
-  not a fix.
-
 *(The WhiteCore-Dev WebUI parity audit and the avatar-selection
 starter-look carousel both finished and shipped - see `FEATURES.md`'s
-Web & Admin UI section rather than here.)*
+Web & Admin UI section rather than here. Tranquillity #217's
+object-crossed-parcel and owner/group-changed events were ported with
+Phlox on 2026-10-12 - see
+`OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`. The
+Marketplace and `RegionHGService` PostgreSQL (and SQLite) backends, once
+listed as known limitations, were added 2026-09-27 (`43ca36d8ec`) and are
+checked by `Tools/data-backend-check`.)*
 
 ## Planned, not started
 
@@ -385,18 +246,6 @@ Web & Admin UI section rather than here.)*
     paths, not scripts); the other script-reachable ones were fixed.
   - `osCauseDamage` / `osCauseHealing` / `osSetHealth` (upstream) set health directly, outside the damage door,
     so they raise no on_damage / final_damage.
-- **Object-crossed-parcel and owner/group-changed `EventManager` events (found 2026-10-02/03, reviewing
-  Tranquillity's #217).** Raises `OnGroupCrossedToNewParcel` whenever an object's position lands on a
-  different parcel than last recorded (checked in the `AbsolutePosition` setter, on physics terse updates,
-  after a failed crossing clamps the object back, and on `AddSceneObject`/`DuplicateObject`), and
-  `OnObjectOwnerOrGroupChanged` whenever `SceneObjectGroup.SetOwnerId`/`SetOwner`/`SetGroup` actually
-  changes something (god set owner, deed, set group, buy original, `llAttachToAvatarTemp`). Real, 920 lines
-  across 10 files including a new `ScenePresenceSitTests`-style test suite. Its real motivating use case in
-  Tranquillity is deferring the parcel-script-rules check to a Phlox-aware engine
-  (`IParcelScriptPolicyEngine`, letting an engine that enforces the rule itself opt out of the default
-  check) and it changes the `OnRunScript` permission delegate's own signature to `OnRunScriptWithEngine`.
-  **Ported 2026-10-12 with Phlox** (see `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`); the
-  old `OnRunScript` stays for other handlers, and with Phlox disabled the check is unchanged.
 - **Offline IM-to-email forwarding (found 2026-10-02, reviewing GuduleLapointe/opensim-helpers).** That
   project (a mature, actively-maintained PHP helper toolkit, formerly "Flexible Helper Scripts") offers an
   opt-in "forward offline IMs to email" feature. Confirmed by code, not assumed: Confluence's own native
@@ -611,13 +460,130 @@ Web & Admin UI section rather than here.)*
   is). Superseded for now by Tranquillity's own bot framework, which
   Confluence has already adopted — revisit only if a real gap shows up
   that the current framework doesn't cover.
-- A handful of smaller Halcyon-sourced candidates remain unported and
-  low-priority: `llReturnObjectsByOwner`/`llReturnObjectsByID` (LSL
-  versions — the OSSL equivalents already exist), roughly 80 `iw*`
-  inventory/string/list/agent/group utility functions, Euler-rotation
-  LSL functions, and a small JWT auth module.
+- A handful of smaller Halcyon-sourced candidates: since the Phlox port
+  (2026-10-12), Phlox scripts have `llReturnObjectsByOwner`/
+  `llReturnObjectsByID` and 79 `iw*` utility functions. **YEngine still
+  lacks the two `llReturnObjects` functions** (SL functions; the OSSL
+  equivalents exist), an SL-parity gap worth closing. Still unported:
+  Euler-rotation LSL functions and a small JWT auth module.
 
 ## Explicitly out of scope for now
+
+- **Vehicle and prim region crossings — real scoping done, not just a
+  guess (2026-09-07).** **Deprioritised by the owner, 2026-09-26:** grid
+  owners who want smooth vehicles normally choose a var (large) region,
+  which removes crossings altogether, so a crossing fix would help few of
+  them, and the freeze is a deliberate server safety measure, so changing
+  it carries real risk. Not scheduled; the scoping below stays for if that
+  changes. Avatar crossings are already smooth (see
+  `FEATURES.md`). Vehicles and other physical objects still freeze in
+  place for the duration of a crossing — a deliberate server-side
+  safety measure, not a bug, but one that's noticeable on a moving
+  vehicle. Traced the actual freeze mechanism directly rather than
+  assuming: `SceneObjectGroup.cs`'s border-crossing path calls
+  `root.PhysActor?.CrossingStart()` (ubODE's `ODEPrim.CrossingStart()`
+  sets `m_outbounds = true` and zeroes the physics body's velocity) the
+  moment a real destination is confirmed, then blocks synchronously on
+  `EntityTransferModule.CrossPrimGroupIntoNewRegion()` - a full HTTP
+  `CreateObject` POST (serializes and rezzes the whole object on the
+  destination) followed by deleting the source copy only on success.
+  The freeze lasts exactly as long as that synchronous round trip;
+  `ODEPrim.CrossingFailure()` is the existing unfreeze/rollback path,
+  restoring position and velocity if a crossing attempt needs to be
+  aborted outright.
+
+  **Why the "remove object" RPC alone doesn't fix the freeze.** It
+  only lets a *failed* destination copy be cleaned up after the fact -
+  the freeze itself comes from doing create-then-delete synchronously
+  and serially. Making the crossing non-freezing needs the destination
+  copy to already exist and be ready *before* the source stops
+  simulating the object - a predictive, staged handoff (informed by a
+  sibling project's own crossing design, see "Design research from
+  other projects" below) - and the new RPC's real job is the safety
+  valve for that: rolling back a staged copy if the prediction turns
+  out wrong or the final handoff fails, not the primary mechanism.
+
+  **Buildable in phases, not one large change:**
+  - **Phase 0 - the RPC itself - built and deployed (2026-09-07).**
+    Added `RemoveObject(GridRegion destination, UUID
+    objectID)` to `ISimulationService`, mirroring the existing
+    `CloseAgent` pattern end to end: an HTTP `DELETE` client method in
+    `SimulationServiceConnector.cs`, the local-then-remote dispatch in
+    `RemoteSimulationConnectorModule`, a direct in-process scene call
+    in `LocalSimulationConnectorModule`, and a server-side handler in
+    `ObjectHandlers.cs`'s `ObjectSimpleHandler` - whose `DELETE` case
+    was a hardcoded 405 and whose URL-path parsing for
+    `/object/{objectID}/{regionID}/` was written but disabled ("this
+    things are ignored") since `CreateObject`'s POST path never needed
+    it; both are live now. Dropped the `authToken` parameter originally
+    sketched here: unlike `CloseAgent`, which checks a real per-session
+    secret established at `CreateAgent` time, `CreateObject` never
+    established an equivalent secret for `RemoveObject` to check -
+    adding a parameter nothing actually validates would be dead code,
+    not real security, so `RemoveObject` sits at the same trust level
+    `CreateObject` already does rather than a fabricated stronger one.
+    Also wired into its first real caller: `CrossPrimGroupIntoNewRegion`
+    (the duplication-bug fix already live, 2026-09-05) now attempts a
+    `RemoveObject` rollback of the destination copy when the source-side
+    delete exhausts all 3 retries, before falling back to the existing
+    log-and-alert path - if the rollback succeeds, the object simply
+    stays on the source with no duplicate anywhere and no owner alert
+    needed; the alert now only fires if the rollback also fails. Build
+    confirmed clean (0 Warning(s), 0 Error(s)).
+  - **A separate, real, small fix - built same day the Jolt evaluation
+    resumed the Legion-Grid-Code review (2026-09-08).** Not part of
+    the freeze/staged-handoff work above - a genuine bug in the entry-
+    position clamp itself, found by sampling Legion's own commit
+    history and confirmed present in this codebase before porting
+    anything: `EntityTransferModule.GetObjectDestination()` used a
+    flat `0.2f` entry-distance clamp regardless of the crossing
+    object's velocity, which (per Legion's own measured repro on their
+    grid) can place a >2m vehicle's root ON the region seam and cause
+    a near-stationary vehicle to ping-pong between regions - 16
+    crossings observed in 90 seconds. Fixed with a velocity-
+    proportional entry offset (`|velocity| * 0.25s`, floored at the
+    old `0.2f` for slow objects, capped at `4.0f`), small and
+    orthogonal to the freeze redesign below. Build confirmed clean.
+    See PROJECT_LOG.md for the full trace.
+  - **Phase 1 - a staged/pending object on the destination.** A copy
+    exists in the destination scene's memory but isn't added to the
+    spatial index, isn't sent to any viewer, and isn't in the physics
+    scene - held in a pending-objects table keyed by object UUID rather
+    than a new `SceneObjectGroup` state, plus a lightweight "activate"
+    call to promote it to fully live. Moderate complexity, genuinely
+    new.
+  - **Phase 2 - predictive trigger on the source, the hardest and
+    riskiest part.** Today, crossing only starts once the object's
+    position has actually crossed the border - confirmed by tracing
+    `GetObjectDestination()`'s call site directly. A non-freezing
+    design needs staging to begin *before* the border is crossed
+    (velocity + distance lookahead), which is new logic with real edge
+    cases: direction reversal after staging has started (needs the
+    Phase 0 rollback), and the sitting-avatar crossing path - already
+    far more heavily special-cased in `SceneObjectGroup.cs`
+    (`avtocrossInfo`, per-avatar `m_crossingFlags`, far-crossing
+    handling) than the empty-vehicle fast path - that any staged
+    redesign has to not break.
+  - **Phase 3 - matching physics-engine support.** ubODE (confirmed
+    the actual live engine on Casperia via direct profiling, see
+    PROJECT_LOG.md) is the only one that needs to be correct for this
+    grid, but `CrossingStart`/`CrossingFailure` are implemented across
+    BulletS/POS/BasicPhysics too and would silently regress for anyone
+    using a different engine if ignored outright.
+
+  **Estimated cost**: Phase 0 alone is small and worth doing on its
+  own regardless of the rest. The full non-freezing redesign (Phases
+  1-3) is a genuine multi-week effort - realistically 3-5 weeks, larger
+  than the navmesh estimate above, because a wrong predictive trigger
+  risks the exact visible-duplicate failure mode this feature exists to
+  prevent, on a live grid with real vehicles and real residents sitting
+  on them, and this kind of timing-sensitive crossing behavior can't be
+  meaningfully verified without live-grid testing (a real moving
+  vehicle, both the empty and sitting-avatar paths, plus a forced-
+  rollback test). Recommendation: build Phase 0 now, hold Phases 1-3
+  pending a priority call, since the freeze is a working safety measure
+  today, not a correctness bug - this is a comfort/polish improvement,
+  not a fix.
 
 - **`wolfvoice` (`wolfsoftwaresystemsltd/wolfvoice`) — excluded by
   direct operator decision (2026-09-09), not revisited.** Was under
@@ -948,23 +914,37 @@ forgotten:
 
 ## Known limitations
 
-- **Two features have no PostgreSQL backend at all**, found via a real
-  fresh-clone PostgreSQL test (both grid and standalone mode,
-  2026-09-13): the native Marketplace (`MySqlMarketplaceListingsData`
-  is the only `IMarketplaceListingsService`/`IDeliveryLedger`
-  implementation - SQLite has one, PostgreSQL doesn't) and
-  `RegionHGService` (backs Hypergrid inter-grid travel-record state -
-  `MySQLRegionHGData.cs` exists, no PGSQL equivalent does). Both fail
-  non-fatally on Postgres (a clear "could not find a storage interface"
-  log line at startup, everything else keeps running) rather than
-  crashing, but Marketplace checkout and HG travel-record persistence
-  simply don't work on a PostgreSQL-backed deployment until someone
-  writes the missing data classes. Everything else in the currency/
-  search/events/auction/user-profiles/abuse-reports/store/web-account/
-  starter-look/static-page/support-ticket/suggestion/recovery-code
-  family has a real, now-verified-working PostgreSQL implementation -
-  these two are genuinely the only gaps, not a sign the rest are
-  unreliable.
+- **Marketplace: end-to-end purchase live-verified (2026-09-13); the viewer's own Listings floater is blocked outside SL,
+  see `FEATURES.md`.** Found and fixed a real bug along the way: a
+  genuine purchase charged and delivered correctly, but neither
+  party's already-connected viewer found out until a relog -
+  `WebInterfaceServiceConnector`'s purchase handlers bypassed the real
+  notification mechanism entirely. Fixed (`eb778a634c`) by reusing
+  `CurrencyServerConnector`'s own proven region-callback pattern for
+  currency, and building the equivalent for inventory delivery (which
+  had no equivalent at all before). See `PROJECT_LOG.md` for the full
+  trace.
+
+  **Real, load-bearing finding, not just a caveat:** Firestorm/AyaneStorm
+  hard-block the viewer's own "Marketplace Listings" floater outside real
+  Second Life (`LLSLMMenuUpdater::checkMerchantStatus` returns before ever
+  asking the region, regardless of caps - confirmed against source, no
+  known bypass). `DirectDeliveryModule` is protocol-correct and left in
+  place, dormant, for if a non-blocking viewer is ever used - but for now,
+  merchants associate inventory through `/marketplace/manage` on the web
+  instead (the same `SnapshotListingItem` call the floater would have
+  triggered, just invoked from Robust). No in-world UI was added to
+  replace it; the folder-organizing step it depends on (`Inventory >
+  Marketplace Listings`, item dropped directly inside — a deliberate
+  flattening from real SL's per-listing subfolders, so one item is one
+  listing) is itself completely ordinary, ungated inventory management on
+  every viewer.
+
+  Supersedes `addon-modules/OpenSimMarketplace`'s old v2 HTTP API (a
+  service-to-service protocol for an external website, unrelated to the
+  real viewer floater), which keeps working unchanged as a legacy/
+  external-integration path.
+
 - **WebRTC voice** (`OpenSim/Addons/os-webrtc-janus`) is real, merged
   code (5,471 lines, builds into the solution, has a real
   `.ini.example`) — not documented in `FEATURES.md` as a working
