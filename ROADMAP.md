@@ -376,6 +376,15 @@ Web & Admin UI section rather than here.)*
 
 ## Planned, not started
 
+- **Follow-ups from 2026-10-13** (Phlox test suite, damage paths, service-outage fix):
+  - YEngine still reports any non-script exception as "Script must be Reset to re-enable", although it only drops
+    the event; make the message say what happens, and consider treating infrastructure exceptions (connection
+    refused, timeout) from any service call as a failed call rather than a script error.
+  - Report upstream: `llRezObjectWithParams`' `REZ_LOCK_AXES` tests X twice, so Z never locks (fixed here).
+  - The Authentication and Freeswitch-config connectors still throw on an unreachable service (login and voice
+    paths, not scripts); the other script-reachable ones were fixed.
+  - `osCauseDamage` / `osCauseHealing` / `osSetHealth` (upstream) set health directly, outside the damage door,
+    so they raise no on_damage / final_damage.
 - **Object-crossed-parcel and owner/group-changed `EventManager` events (found 2026-10-02/03, reviewing
   Tranquillity's #217).** Raises `OnGroupCrossedToNewParcel` whenever an object's position lands on a
   different parcel than last recorded (checked in the `AbsolutePosition` setter, on physics terse updates,
@@ -412,7 +421,8 @@ Web & Admin UI section rather than here.)*
   ubODE-requires-ubODEMeshmerizer restriction Region_K1 hit is upstream's own long-standing design, not a
   Confluence bug), and patching them would have permanently diverged from opensim-master. The plan had also
   named "Phlox" as a second alternative engine; checked directly, Phlox is entirely a script engine
-  (Tranquillity's LSL/SLua work), not physics - there is no second engine in scope. See `PROJECT_LOG.md`'s
+  (Tranquillity's LSL/SLua work), not physics - there is no second engine in scope. (Written against the old
+  JoltPhysics module, replaced by Legion's `lane/jolt` on 2026-10-12, which still requires Meshmerizer.) See `PROJECT_LOG.md`'s
   2026-09-27 entry for the real findings (which mesher internals block which engines) to start from. Paused
   because Jolt itself is still described below as unproven on a live region with real content/vehicles -
   revisit once that's no longer true, and scope any fix to Jolt's own files only (reading whichever mesher
@@ -534,7 +544,13 @@ Web & Admin UI section rather than here.)*
   build pipeline for a self-compiled patch becomes worth setting up.
 - **"JoltPhysics" — a real, working third physics engine option, but
   currently off the live grid pending avatar-controller tuning
-  (status as of 2026-09-11).** Ported from Legion-Grid-Code, integrated
+  (status as of 2026-09-11).** **Superseded 2026-10-12:** this module
+  was replaced by Legion's `lane/jolt` module on Jolt v5.6 (FEATURES.md
+  "Physics"; `OpenSim/Region/PhysicsModules/Jolt/CONFLUENCE.md`); its
+  2,099 tests pass. What follows is the old module's history. Still open
+  from it: the "mesh registers late while walking" report, to be
+  reproduced on the new module with real content (an OAR) before Jolt
+  goes back on a live region. Ported from Legion-Grid-Code, integrated
   as a selectable engine alongside ubODE/BulletSim (`[Startup] physics
   = Jolt`), and brought to full feature parity with both (buoyancy,
   boat wave response, material/friction tuning, rolling resistance,
@@ -643,8 +659,9 @@ Web & Admin UI section rather than here.)*
   revisited unless CSJ2K's own layer-boundary path is ever shown to
   regress, or the dominant workload shape changes.
 
-- **Phlox script engine / SLua support — investigated and shelved
-  (2026-09-05).** The licensing/provenance chain genuinely checks out
+- **Phlox script engine / SLua support — ported 2026-10-12** (investigated
+  and shelved 2026-09-05, reopened 2026-09-09; the history follows, and
+  the open follow-ups are at the end of this entry). The licensing/provenance chain genuinely checks out
   (Halcyon's real engine, `HalcyonGrid/phlox`, Apache 2.0; the
   OpenSim-integration adapter, `HalcyonGrid/halcyon`, BSD; a namespace-
   rename branch, `halcyon/iw_to_hal_scripting`, that lines up cleanly

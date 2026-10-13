@@ -7,9 +7,9 @@ moderation stack, not a thin patch set on top of something else. It
 began from OpenSim Continuum's codebase and has continued to absorb
 selected grid, identity, scripting, environment, simulator, and
 reliability enhancements cherry-picked and hand-ported from the wider
-OpenSim ecosystem (Gunthar's fork, Tranquillity, Mobius, and
-WhiteCore-Dev). Official OpenSimulator remains the authoritative
-upstream baseline.
+OpenSim ecosystem (Tranquillity, including Legion's work on it, Gunthar's
+fork and Homeworldz, and earlier Mobius and WhiteCore-Dev). Official
+OpenSimulator remains the authoritative upstream baseline.
 
 **Where Confluence and Continuum parted ways:** they share the same
 starting lineage, but the two are now independent, parallel efforts.
@@ -27,7 +27,10 @@ a later phase.
 | GitHub home | [Ramius1701/OpenSim-Confluence](https://github.com/Ramius1701/OpenSim-Confluence) |
 | Upstream baseline | `origin/master` (`opensim/opensim`), merged in as of the latest commit |
 | Active integration branch | `merge-experiment` (also the repo's default branch) |
-| Windows build | Successful — full solution build verified clean |
+| Windows build | Successful — full solution build, 0 warnings / 0 errors, including Jolt and Phlox |
+| Script engines | YEngine (default); Phlox (LSL, OSSL and SLua with saved running state) optional, off by default |
+| Physics engines | ubODE (default), BulletSim, and Jolt (Jolt Physics v5.6), selectable per region |
+| Automated tests | Jolt: 2,099 passed, 0 failed. Phlox, including the core and YEngine behaviour it exercises: 5,467 passed, 0 failed |
 | Web/Admin UI | Live-verified against a running Robust instance (real HTTP sessions, admin actions, database writes) |
 | In-world/viewer testing | Live-verified with a real viewer (Firestorm): login, region crossing, weather, a full currency/land-purchase transaction, and spatial WebRTC voice with two real, separately-located participants |
 
@@ -43,6 +46,18 @@ pieces where it matters.
 
 ## Project goals
 
+- Be as close to Second Life as possible while staying OpenSimulator. Residents
+  will not move from Second Life to an OpenSimulator grid that lacks the features
+  and functions they expect. Second Life is closed source, so its behaviour is
+  worked out from the best evidence: Linden Lab's open-source SLua for its script
+  VM, the viewers (Firestorm and others) for what a viewer sends and expects, the
+  Second Life wiki, and how the other OpenSimulator projects have interpreted it.
+  What makes OpenSimulator itself (open grids, Hypergrid, OSSL, grid-owner
+  control) is kept.
+- Go beyond what the other OpenSimulator distributions offer a grid owner: match
+  their core work (Tranquillity's Phlox and Jolt work among it) and build in what
+  they leave to separate add-ons (the Web/Admin UI, Store, Marketplace, economy,
+  Search and Abuse Reports).
 - Give grid owners a complete starting point: a build like official
   OpenSimulator, enhanced with what it lacks, so they can run their own grid
   with everything they need. Casperia is the live grid where it runs in real
@@ -90,8 +105,9 @@ not an afterthought bolted on later.
 
 Confluence includes a native Web/Admin UI, in-world economy and search
 services, a full moderation and access-control stack, expanded LSL/OSSL
-scripting, and a range of physics/environment/reliability improvements
-over stock OpenSimulator. See [`FEATURES.md`](FEATURES.md) for the full,
+scripting with a choice of two script engines (YEngine and Phlox), three
+physics engines (ubODE, BulletSim and Jolt), and a range of
+environment/reliability improvements over stock OpenSimulator. See [`FEATURES.md`](FEATURES.md) for the full,
 categorized list. A native, viewer-integrated DirectDelivery Marketplace
 is also included — see [`MARKETPLACE.md`](MARKETPLACE.md) for setup and
 usage.
@@ -126,6 +142,22 @@ dotnet build OpenSim.sln --configuration Release
 are maintained by hand, not generated), so the build above builds them too. The first build downloads their NuGet
 packages (JoltPhysicsSharp and its native library; ANTLR4, StringTemplate4 and protobuf-net for Phlox). Both stay
 off until a region's ini selects them (`physics = Jolt`; `[InWorldz.Phlox] Enabled = true`).
+
+### Running the tests
+
+The test suites are separate projects under `Tests/`, built against the `bin/` output of the steps above (build
+the solution first). The first run downloads xUnit from NuGet.
+
+```bash
+dotnet test Tests/OpenSim.Region.PhysicsModules.Jolt.Tests -c Release
+dotnet test Tests/InWorldz.Phlox.Tests -c Release
+```
+
+The Jolt suite (2,099 tests, about 3 minutes) drives real Jolt worlds. The Phlox suite (5,467 tests, about
+11 minutes) covers Phlox's compiler and VM, and runs scenes through upstream OpenSim's test helpers
+(`OpenSim/Tests/Common`, built by `Tests/OpenSim.Tests.Common`), so it also exercises the core: damage, parcels,
+crossings, permissions, Experiences, and YEngine's side of shared behaviour. `Tests/SluaProofRunner`
+(`dotnet run -c Release` there) checks Phlox's SLua against Second Life's published behaviour.
 
 See `BUILDING.md` for the official base requirements.
 
@@ -289,6 +321,13 @@ feature described in this README, not just a demo.
 | `INWORLD_COMMANDS.md` | Every in-world chat command available to avatars/estate managers |
 | `SETUP.md` | Step-by-step setup for every database (SQLite, MySQL/MariaDB, PostgreSQL) in standalone and grid mode - each step tested from a fresh clone |
 | `BUILDING.md` | Official base build requirements |
+| `MARKETPLACE.md` | Setting up and using the DirectDelivery Marketplace |
+| `HARDENING.md` | Control-plane security hardening |
+| `ExperienceSetup.md` | Setting up Experience Tools |
+| `doc/JoltPhysics.md` | Running the Jolt physics engine (operator notes) |
+| `doc/PhloxSetup.md` | Turning on the Phlox script engine; `doc/PhloxSLua.md` for SLua; `doc/PhloxKnownDefects.md` for its known differences from SL |
+| `OpenSim/Region/PhysicsModules/Jolt/CONFLUENCE.md` | Where Jolt comes from and what Confluence changed |
+| `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md` | Where Phlox comes from, the core hooks it needs, and its tests |
 | `PROJECT_LOG.md` | Full narrative development history — every change, why, and how it was verified |
 
 ## Attribution and support
@@ -299,7 +338,10 @@ improvements have been cherry-picked and, where architecturally
 incompatible with a straight cherry-pick, hand-ported from:
 
 - [Gunthar's OpenSim fork](https://github.com/GuntharDeNiro/opensim)
-- [Tranquillity](https://github.com/OpenSim-NGC/OpenSim-Tranquillity)
+- [Tranquillity](https://github.com/OpenSim-NGC/OpenSim-Tranquillity),
+  including Legion's work on it: the Jolt physics module (his `lane/jolt`)
+  and the Phlox port with the core hooks it needs
+- [Homeworldz](https://github.com/homeworldz/server)
 - [Mobius](https://github.com/Mobius-Team/Mobius)
 - [WhiteCore-Dev](https://github.com/WhiteCoreSim/WhiteCore-Dev) — also
   the primary reference for the native Web/Admin UI's page structure
@@ -307,10 +349,22 @@ incompatible with a straight cherry-pick, hand-ported from:
 - opensim-lickx — origin of Confluence's MoneyServer and OpenSimSearch
   modules; its original GitHub repository has since been deleted, so
   the only remaining copy is archived locally
-- [Halcyon/InWorldz](https://github.com/HalcyonGrid/halcyon) and
-  [Homeworldz](https://github.com/homeworldz/server) — audited as a
-  preservation effort for design ideas and code from projects that have
-  fallen by the wayside
+- [Halcyon/InWorldz](https://github.com/HalcyonGrid/halcyon) — audited as a
+  preservation effort for design ideas and code from a project that has
+  fallen by the wayside; also where Phlox comes from
+
+Engines and references:
+
+- **Phlox** keeps its lineage: InWorldz (the original engine) → Halcyon
+  ([phlox](https://github.com/HalcyonGrid/phlox) core, Apache 2.0; engine
+  adapter, BSD) → Legion Grid → Tranquillity → Confluence
+- [Jolt Physics](https://github.com/jrouwe/JoltPhysics) by Jorrit Rouwe (MIT)
+  and the [JoltPhysicsSharp](https://github.com/amerkoleci/JoltPhysicsSharp)
+  binding by Amer Koleci (MIT), with Legion's OpenSim module (MPL-2.0)
+- Linden Lab's [SLua](https://github.com/secondlife/slua) (MIT) — the
+  reference for Second Life's script VM; not part of the build
+- The viewers, Firestorm and others — the reference for what a viewer
+  sends and expects
 - OpenSim-Grid-Interface (ManfredAabye's `oswebinterface` fork, a
   separate PHP project — not Confluence's own code, not ported from,
   and not distributed with this repository) — referenced for the
@@ -330,4 +384,6 @@ reported to the official OpenSimulator project.
 ## License
 
 Confluence is distributed under the same BSD-style license as
-OpenSimulator. See `LICENSE.txt`.
+OpenSimulator. See `LICENSE.txt`. Imported components keep their own
+licence headers: Phlox's core is Apache 2.0, and Legion's Jolt module and
+some Tranquillity files are MPL-2.0.

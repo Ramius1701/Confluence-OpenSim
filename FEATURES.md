@@ -581,6 +581,8 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
 
 - Enforcement of scripted-only sit targets.
 - Storage and lookup for LSL sit flags.
+- A sit target made active at a zero offset (`[PRIM_SIT_TARGET, TRUE, ZERO_VECTOR, ...]`; `llSitTarget` with a zero offset removes one, as in SL) is kept
+  through region crossings, take and rez, and OARs (2026-10-13).
 - Configurable male and female walk-animation overrides.
 - Movement-animation resend protection.
 
@@ -620,13 +622,14 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
 
 ### Phlox script engine (optional, off by default)
 
-A second script engine beside YEngine, ported from Tranquillity (InWorldz Halcyon's Phlox, 2026-10-12):
-LSL, OSSL (259 `os*`) and SLua (`//InWorldz.Phlox:slua`, a Luau-flavoured language) compiled to bytecode
-on a VM whose running state is saved, so a script resumes mid-event after a region restart. A grid owner
-turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on the engine its first line names
-(`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`, which stays YEngine.
-Port notes, the core hooks it needs, and test results: `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`;
-setup: `doc/PhloxSetup.md`.
+A second script engine beside YEngine (2026-10-12). Its lineage is kept: InWorldz (the original engine) →
+Halcyon → Legion Grid → Tranquillity → Confluence. LSL, OSSL (259 `os*`) and SLua (`//InWorldz.Phlox:slua`, a
+Luau-flavoured language) compile to bytecode on a VM whose running state is saved, so a script resumes mid-event
+after a region restart. A grid owner turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on
+the engine its first line names (`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`,
+which stays YEngine. Built with the solution; its test suite runs 5,467 tests with none failing, and its SLua
+conformance runner gives 60 pass / 0 divergent / 3 gaps. Port notes, the core hooks it needs and test details:
+`OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`; setup: `doc/PhloxSetup.md`.
 
 ## World and Environment
 
@@ -701,23 +704,21 @@ hardcoded default:
 - **BulletSim** — the other long-standing OpenSim physics engine, not
   a stock unmodified copy: shares some of the same absorbed water/
   wave-response tuning ubODE has above (see `PROJECT_LOG.md`).
-- **Jolt** (module `JoltPhysics`, renamed from `LegionJolt` 2026-09-10)
-  — a third option built on the real
-  [Jolt Physics](https://github.com/jrouwe/JoltPhysics) engine (MIT,
-  used in shipped commercial titles) via the `JoltPhysicsSharp` .NET
-  binding (Jolt Physics v5.6.0 since 2026-10-12), adapted from
-  Legion-Grid-Code's own port. Requires
-  `meshing = Meshmerizer` (same requirement as BulletSim). **Not
-  currently live** — pulled off Region A 2026-09-11 back to
-  BulletSim after real avatar-movement issues (run speed, unsit
-  position, and a walking/ground-detection lag against real mesh
-  content) kept resurfacing; see `PROJECT_LOG.md` for the fixes made
-  and the open issue that triggered the reversion. Static/raycast
-  collision fundamentals checked out solid in a live sweep, but the
-  avatar-controller layer isn't yet at BulletSim/ubODE's maturity, so
-  it stays an experimental branch until that's worked out. The
-  `/features` page's Platform Overview lists which engines are
-  actually present on a given deployment.
+- **Jolt** (`physics = Jolt`, with `meshing = Meshmerizer`) - the
+  [Jolt Physics](https://github.com/jrouwe/JoltPhysics) engine (v5.6.0,
+  MIT, used in shipped commercial titles) through the `JoltPhysicsSharp`
+  2.23 binding, with Legion's OpenSim module from his Tranquillity work
+  (backend, vehicles, character controller) adopted 2026-10-12 and made
+  Confluence-compatible: Mono.Addins registration, late-arriving mesh and
+  sculpt assets rebuilt instead of left as boxes, flying avatars not held
+  to the floor, and fixes for the Jolt 5.6 API (reversed avatar contact
+  normals, a teardown heap corruption). Built with the solution; its
+  2,099 tests pass. Off by default: no region selects it until its ini
+  does. Settings: `[Jolt]` in `OpenSimDefaults.ini`; operator notes:
+  `doc/JoltPhysics.md`; what differs from Legion's:
+  `OpenSim/Region/PhysicsModules/Jolt/CONFLUENCE.md`. The
+  `/features` page's Platform Overview lists which engines are actually
+  present on a given deployment.
 
 ### Concierge (region greeter)
 
@@ -766,6 +767,16 @@ the whole grid or for one region. A region's own text always wins.
 Sim FPS auto-mitigation and stuck-region auto-restart (`SimProtection`)
 is enabled on the live grid. Physics inputs are sanitized against
 NaN/Infinity before being applied.
+
+- **A grid-service outage no longer aborts scripts** (2026-10-13). When Robust is restarting or
+  unreachable, the Groups, Offline IM, Experience and mute-list connectors answer "no reply" (as the
+  service would for nothing found) instead of throwing into the calling script; as in Second Life, a
+  backend hiccup makes a call fail, it doesn't stop the script.
+- **The region process survives a failed avatar setup**: `ScenePresence`'s finalizer no longer touches
+  other objects, so a presence whose construction failed can no longer take the whole region down when
+  it is collected (2026-10-13).
+- **Thread-safe Null data stores** (Tranquillity #222): the in-memory presence, authentication and
+  avatar stores a standalone shares across its regions are locked.
 
 ## Database
 
