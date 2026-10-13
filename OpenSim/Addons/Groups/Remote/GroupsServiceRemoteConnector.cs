@@ -738,11 +738,21 @@ namespace OpenSim.Groups
             sendData["METHOD"] = method;
 
             string reply = string.Empty;
-            lock (m_Lock)
-                reply = SynchronousRestFormsRequester.MakeRequest("POST",
-                         m_ServerURI + "groups",
-                         ServerUtils.BuildQueryString(sendData),
-                         m_Auth);
+            try
+            {
+                lock (m_Lock)
+                    reply = SynchronousRestFormsRequester.MakeRequest("POST",
+                             m_ServerURI + "groups",
+                             ServerUtils.BuildQueryString(sendData),
+                             m_Auth);
+            }
+            catch (Exception e)
+            {
+                // unreachable (refused, timed out): handled as no reply, which every caller expects, rather than
+                // an exception into a script or a client handler [Confluence]
+                m_log.WarnFormat("[GROUPS SERVICE REMOTE CONNECTOR]: {0} unreachable: {1}", m_ServerURI + "groups", e.Message);
+                reply = string.Empty;
+            }
 
             if (reply.Length == 0)
                 return null;

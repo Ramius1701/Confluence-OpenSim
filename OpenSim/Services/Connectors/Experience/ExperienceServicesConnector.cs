@@ -21,6 +21,23 @@ namespace OpenSim.Services.Connectors
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        /// <summary>
+        /// The service's reply, or "" when it cannot be reached (refused, timed out): the empty reply every caller here
+        /// already handles. A service outage must not throw into a script's llReadKeyValue / Experience call. [Confluence]
+        /// </summary>
+        private string Post(string body)
+        {
+            try
+            {
+                return SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, body, m_Auth);
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[EXPERIENCE SERVICE CONNECTOR]: {0} unreachable: {1}", m_ServerURI, e.Message);
+                return string.Empty;
+            }
+        }
+
         private string m_ServerURI = String.Empty;
 
         public ExperienceServicesConnector()
@@ -72,7 +89,7 @@ namespace OpenSim.Services.Connectors
 
             Dictionary<UUID, bool> experiences = new Dictionary<UUID, bool>();
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -132,7 +149,7 @@ namespace OpenSim.Services.Connectors
 
             List<ExperienceInfo> infos = new List<ExperienceInfo>();
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
 
             //m_log.InfoFormat("[EXPERIENCE SERVICE CONNECTOR]: Reply: {0}", reply);
 
@@ -161,7 +178,7 @@ namespace OpenSim.Services.Connectors
         {
             try
             {
-                string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, reqString, m_Auth);
+                string reply = Post(reqString);
                 if (reply != string.Empty)
                 {
                     Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -197,7 +214,7 @@ namespace OpenSim.Services.Connectors
 
             List<ExperienceInfo> infos = new List<ExperienceInfo>();
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
 
             //m_log.InfoFormat("[EXPERIENCE SERVICE CONNECTOR]: Reply: {0}", reply);
 
@@ -223,7 +240,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
 
             //m_log.InfoFormat("[EXPERIENCE SERVICE CONNECTOR]: UpdateExperienceInfo Reply: {0}", reply);
 
@@ -248,7 +265,7 @@ namespace OpenSim.Services.Connectors
 
             List<ExperienceInfo> infos = new List<ExperienceInfo>();
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -278,7 +295,7 @@ namespace OpenSim.Services.Connectors
 
             List<ExperienceInfo> infos = new List<ExperienceInfo>();
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -307,7 +324,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -332,7 +349,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -365,7 +382,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -394,7 +411,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -420,7 +437,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -445,7 +462,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
@@ -478,7 +495,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
 
             if (reply != string.Empty)
             {
@@ -503,7 +520,7 @@ namespace OpenSim.Services.Connectors
 
             string request_str = ServerUtils.BuildQueryString(sendData);
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI, request_str, m_Auth);
+            string reply = Post(request_str);
             if (reply != string.Empty)
             {
                 Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);

@@ -28337,3 +28337,18 @@ Phlox's tests were 40 of 225 files (3035 tests): the rest drive a test scene thr
   uses the outbound Except list (upstream's rule; Tranquillity dropped it).
 
 Core changes (`ScenePresence`, the serializer, Null stores, YEngine API) need a deploy to reach the live grid.
+
+## A grid-service outage no longer aborts scripts (2026-10-13)
+
+Found on the live grid during a deploy: while Robust was still loading its services, a script's `llHTTPRequest` failed
+with "connection refused" and YEngine aborted the event ("Script must be Reset to re-enable"). The request builds its
+`X-SecondLife-Owner-Name` header via `resolveName`, which asks the Groups service; the Groups connector let the
+`HttpRequestException` from `SynchronousRestFormsRequester` (which rethrows by design) escape into the script.
+
+An audit of all 86 synchronous service calls found 21 with no handler. The script-reachable ones now treat an unreachable
+service as an empty reply, which every caller already handles as "no answer": the Groups and Offline IM connectors'
+`MakeRequest`, all 15 Experience connector calls (one `Post` helper), and `MuteListRequest`. Each logs a warning.
+Left as upstream: the Authentication and Freeswitch config calls (login and voice paths, not reachable from scripts).
+
+SL parity: in SL a backend hiccup makes a call fail or return empty; it does not kill the script.
+Verified: solution 0 warnings / 0 errors. Not testable without taking a service down; deployed with the next restart.

@@ -212,11 +212,21 @@ namespace OpenSim.OfflineIM
             sendData["METHOD"] = method;
 
             string reply = string.Empty;
-            lock (m_Lock)
-                reply = SynchronousRestFormsRequester.MakeRequest("POST",
-                         m_ServerURI + "/offlineim",
-                         ServerUtils.BuildQueryString(sendData),
-                         m_Auth);
+            try
+            {
+                lock (m_Lock)
+                    reply = SynchronousRestFormsRequester.MakeRequest("POST",
+                             m_ServerURI + "/offlineim",
+                             ServerUtils.BuildQueryString(sendData),
+                             m_Auth);
+            }
+            catch (Exception e)
+            {
+                // unreachable (refused, timed out): handled as no reply, which every caller expects, rather than
+                // an exception into a script or a client handler [Confluence]
+                m_log.WarnFormat("[OfflineIM]: {0} unreachable: {1}", m_ServerURI + "/offlineim", e.Message);
+                reply = string.Empty;
+            }
 
             Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
 

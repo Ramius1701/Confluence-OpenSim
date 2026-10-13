@@ -94,8 +94,18 @@ namespace OpenSim.Services.Connectors
             sendData["agentid"] = agentID.ToString();
             sendData["mutecrc"] = crc.ToString();
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI,
+            string reply;
+            try
+            {
+                reply = SynchronousRestFormsRequester.MakeRequest("POST", m_ServerURI,
                                 ServerUtils.BuildQueryString(sendData), timeoutSeconds, m_Auth);
+            }
+            catch (Exception e)
+            {
+                // unreachable: as an empty reply, not an exception into the caller (a script, a login) [Confluence]
+                m_log.WarnFormat("[MUTELIST CONNECTOR]: {0} unreachable: {1}", m_ServerURI, e.Message);
+                return null;
+            }
             if (reply == string.Empty)
                 return null;
             Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
