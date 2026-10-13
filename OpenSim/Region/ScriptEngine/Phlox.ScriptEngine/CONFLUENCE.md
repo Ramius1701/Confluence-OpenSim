@@ -73,8 +73,13 @@ YEngine's event codes for on_damage/final_damage/on_death are 45-47, the same nu
 
 ## Tests
 
-`dotnet test Tests\InWorldz.Phlox.Tests -c Release`: 40 of their 225 test files build here; **3035 passed, 2 skipped,
-0 failed** (2026-10-12). The other 185 drive a test scene through Tranquillity's `OpenSim.Tests.Common`; Confluence's
-`OpenSim/Tests/Common` is commented out of `prebuild.xml`, as upstream, so they are left out of the build (listed in the
-csproj) until that harness exists. `Tests\SluaProofRunner` (`dotnet run -c Release` there): **60 PASS, 0 DIVERGENCE,
+`dotnet test Tests\InWorldz.Phlox.Tests -c Release`: **5467 passed, 2 skipped, 0 failed** (2026-10-13; about 11
+minutes). 223 of their 225 test files run; the two left out test Tranquillity modules Confluence does not have (its
+SkiaSharp/CoreJ2K vector renderer, its server-side baking). The scene tests use upstream's `OpenSim/Tests/Common`
+(commented out of `prebuild.xml`, as upstream), built by the hand-maintained `Tests/OpenSim.Tests.Common`, with its
+mocks brought up to Confluence's interfaces and Tranquillity's `TestClient` recorders (`ObjectPropertiesSent`,
+`ScriptQuestions`, `FireScriptAnswer`). Test edits are marked `[Confluence: ...]`: the BasicPhysics namespace,
+`IMuteListService.IsMuted` on the fakes, the bot reload on the region's ready transition, and one deliberate divergence:
+a scripted request to an `/lslhttp/` URL never uses the Except list (upstream's carve-out, which Tranquillity dropped).
+`YEngineCombatParamsTests.cs` is Confluence's own (YEngine's SL combat parameters). `Tests\SluaProofRunner` (`dotnet run -c Release` there): **60 PASS, 0 DIVERGENCE,
 3 GAP**, as on Tranquillity.

@@ -703,8 +703,9 @@ Web & Admin UI section rather than here.)*
     not only tight loops) before recommending it as a default.
   - The async asset-fetch check above is still to do.
   - Add the 32 Confluence `os*` functions Phlox lacks.
-  - 185 of its 225 test files need a test-scene harness
-    (`OpenSim.Tests.Common` is out of the build here, as upstream).
+  - Test suite: done 2026-10-13, 223 of 225 files run (5467 passed,
+    0 failed) on upstream's test helpers, built as
+    `Tests/OpenSim.Tests.Common`.
   - Damage paths joined (2026-10-13): avatar damage from collisions and
     from either engine's llDamage goes through `ScenePresence.ApplyDamage`,
     and both engines deliver on_damage/final_damage/on_death from it.

@@ -289,7 +289,7 @@ public class SlConstantsTests
     }
 
     /// <summary>A physics scene whose raycast reports five terrain hits, each with an up normal.</summary>
-    private sealed class RayScene : OpenSim.Region.PhysicsModules.BasicPhysics.BasicScene
+    private sealed class RayScene : OpenSim.Region.PhysicsModule.BasicPhysics.BasicScene /* [Confluence: upstream namespace] */
     {
         public override List<ContactResult> RaycastWorld(Vector3 position, Vector3 direction, float length, int Count)
             => Enumerable.Range(1, 5).Select(i => new ContactResult { ConsumerID = 0, Depth = i, Pos = new Vector3(10, 10, 50 - i), Normal = Vector3.UnitZ }).ToList();

@@ -25,6 +25,16 @@
     <Compile Remove="Golden\**" />
     <!-- OpenSim resolves its natives from bin\lib64 at start; the bare test host needs SQLite's beside it. -->
     <None Include="..\..\bin\lib64\e_sqlite3.dll" Link="e_sqlite3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- and OpenJPEG's, which the vector renderer encodes dynamic textures with, under the name libomv imports
+         (OpenSim maps that name to the lib64 file at start) -->
+    <None Include="..\..\bin\lib64\openjpeg-dotnet-x86_64.dll" Link="openjpeg-dotnet.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Tests of Tranquillity modules Confluence does not have: its SkiaSharp/CoreJ2K VectorRender (Confluence's renders
+       differently) and its server-side baking module. -->
+  <ItemGroup>
+    <Compile Remove="OsslDrawPixelTests.cs" />
+    <Compile Remove="SsbNpcAppearanceTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,10 +52,14 @@
     <ProjectReference Include="..\..\OpenSim\Region\ScriptEngine\YEngine\OpenSim.Region.ScriptEngine.YEngine.csproj" />
     <!-- The compile-limit child process (NestingLimitTests). -->
     <ProjectReference Include="..\PhloxCompileProbe\PhloxCompileProbe.csproj" />
+    <!-- Scene, client and inventory helpers: upstream's OpenSim/Tests/Common, built by Tests/OpenSim.Tests.Common. -->
+    <ProjectReference Include="..\OpenSim.Tests.Common\OpenSim.Tests.Common.csproj" />
   </ItemGroup>
 
   <!-- The modules take these from bin\ without copying them; the test host needs them beside it. -->
   <ItemGroup>
+    <!-- The scene tests reach CoreModules, OptionalModules and the rest of Confluence. -->
+    <Reference Include="..\..\bin\OpenSim*.dll" Exclude="..\..\bin\OpenSim.Tests*.dll;..\..\bin\OpenSim.Region.ScriptEngine.YEngine.dll" />
     <Reference Include="C5"><HintPath>..\..\bin\C5.dll</HintPath></Reference>
     <Reference Include="XMLRPC"><HintPath>..\..\bin\XMLRPC.dll</HintPath></Reference>
     <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
@@ -54,198 +68,10 @@
     <Reference Include="OpenMetaverse"><HintPath>..\..\bin\OpenMetaverse.dll</HintPath></Reference>
     <Reference Include="OpenMetaverseTypes"><HintPath>..\..\bin\OpenMetaverseTypes.dll</HintPath></Reference>
     <Reference Include="OpenMetaverse.StructuredData"><HintPath>..\..\bin\OpenMetaverse.StructuredData.dll</HintPath></Reference>
+    <!-- The vector renderer (osSetDynamicTextureData) draws with System.Drawing, bin\s copy (runprebuild picks the OS one). -->
+    <Reference Include="System.Drawing.Common"><HintPath>..\..\bin\System.Drawing.Common.dll</HintPath></Reference>
     <Reference Include="System.Data.SQLite"><HintPath>..\..\bin\System.Data.SQLite.dll</HintPath></Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath></Reference>
-  </ItemGroup>
-
-  <!-- These drive a test scene through Tranquillity's OpenSim.Tests.Common (SceneHelpers and friends). Confluence's
-       OpenSim/Tests/Common is commented out of prebuild.xml, as upstream; they wait for that harness. -->
-  <ItemGroup>
-    <Compile Remove="AgentDataRowsTests.cs" />
-    <Compile Remove="AgentInfoQueryTests.cs" />
-    <Compile Remove="AnimationAttachRulesTests.cs" />
-    <Compile Remove="AntiAbuseSlowdownTests.cs" />
-    <Compile Remove="ApiCallRig.cs" />
-    <Compile Remove="ArrivalChangedTests.cs" />
-    <Compile Remove="ArrivalWaitsForRidersTests.cs" />
-    <Compile Remove="AsyncReturnGuardTests.cs" />
-    <Compile Remove="AttachCarriedStateTests.cs" />
-    <Compile Remove="AttachedListTests.cs" />
-    <Compile Remove="AvatarName2KeyTests.cs" />
-    <Compile Remove="AverageScriptTimeTests.cs" />
-    <Compile Remove="BlockedOwnerRezTests.cs" />
-    <Compile Remove="BotDetectTests.cs" />
-    <Compile Remove="BotFollowTests.cs" />
-    <Compile Remove="BotNavigationArgsTests.cs" />
-    <Compile Remove="BotNavigationTimeoutTests.cs" />
-    <Compile Remove="BotNavigationWaitTests.cs" />
-    <Compile Remove="BotProfileParamsTests.cs" />
-    <Compile Remove="BotRespawnKeyTests.cs" />
-    <Compile Remove="BotUpdateEventTests.cs" />
-    <Compile Remove="BotWanderUpdateTests.cs" />
-    <Compile Remove="CacheSchemaBumpTests.cs" />
-    <Compile Remove="CarriedStateFitTests.cs" />
-    <Compile Remove="CarriedStateGrantTests.cs" />
-    <Compile Remove="CarriedStateTests.cs" />
-    <Compile Remove="CarriedValueSizeTests.cs" />
-    <Compile Remove="CastRayRefusedLogTests.cs" />
-    <Compile Remove="ChatLengthCapTests.cs" />
-    <Compile Remove="ChatMessageRowTests.cs" />
-    <Compile Remove="ChatRangeTests.cs" />
-    <Compile Remove="CheckRezErrorTests.cs" />
-    <Compile Remove="CompileErrorsToEditorTests.cs" />
-    <Compile Remove="CompileOffSchedulerTests.cs" />
-    <Compile Remove="ContentProtectionTests.cs" />
-    <Compile Remove="CrossEngineChatTests.cs" />
-    <Compile Remove="CrossEngineEventsTests.cs" />
-    <Compile Remove="CrossingHoldTests.cs" />
-    <Compile Remove="CrossRegionStateOrderTests.cs" />
-    <Compile Remove="DamageDoorTests.cs" />
-    <Compile Remove="DamageEventsTests.cs" />
-    <Compile Remove="DataOnlinePrivacyTests.cs" />
-    <Compile Remove="DataserverQueryKeyTests.cs" />
-    <Compile Remove="DataserverToPrimTests.cs" />
-    <Compile Remove="DebugChannelDistanceTests.cs" />
-    <Compile Remove="DetectDataSourceTests.cs" />
-    <Compile Remove="DroppedChecksTests.cs" />
-    <Compile Remove="EditorErrorsWithYEngineTests.cs" />
-    <Compile Remove="EngineHeaderLanguageTests.cs" />
-    <Compile Remove="EngineHeaderTests.cs" />
-    <Compile Remove="EngineSwitchStateTests.cs" />
-    <Compile Remove="ErrorPauseTests.cs" />
-    <Compile Remove="EstateAccessTests.cs" />
-    <Compile Remove="EstateChangeSpreadTests.cs" />
-    <Compile Remove="EstatePartnerGuardTests.cs" />
-    <Compile Remove="EventMaskRegistrationTests.cs" />
-    <Compile Remove="EventQueueDropLogTests.cs" />
-    <Compile Remove="EventQueueRoutingTests.cs" />
-    <Compile Remove="ExperienceBlockedByAvatarTests.cs" />
-    <Compile Remove="ExperienceDetailsOfTheScriptTests.cs" />
-    <Compile Remove="ExperienceGrantRestoreTests.cs" />
-    <Compile Remove="ExperienceStateAtRestartTests.cs" />
-    <Compile Remove="ExperienceStateReadTests.cs" />
-    <Compile Remove="ExperienceStateReadTimingTests.cs" />
-    <Compile Remove="ExperienceStateTests.cs" />
-    <Compile Remove="ExperienceWithdrawnTests.cs" />
-    <Compile Remove="FreshInstanceExecutionTests.cs" />
-    <Compile Remove="GetEnvProductKeysTests.cs" />
-    <Compile Remove="GiveDelaysAndNoticesTests.cs" />
-    <Compile Remove="GiveListAllOrNoneTests.cs" />
-    <Compile Remove="GiveToAbsentAvatarTests.cs" />
-    <Compile Remove="GrantRestoreTests.cs" />
-    <Compile Remove="GroupLandPowersTests.cs" />
-    <Compile Remove="HalcyonChecksTests.cs" />
-    <Compile Remove="HarnessIdleWaitsForCompileTests.cs" />
-    <Compile Remove="HttpRequestLimitsTests.cs" />
-    <Compile Remove="InstantMessageCapTests.cs" />
-    <Compile Remove="InventoryGivesRig.cs" />
-    <Compile Remove="InventorySelfReadTests.cs" />
-    <Compile Remove="IwReverseStringTests.cs" />
-    <Compile Remove="IwStringCodecGoldenTests.cs" />
-    <Compile Remove="IwStringCodecTests.cs" />
-    <Compile Remove="KeyValueSlFormTests.cs" />
-    <Compile Remove="LinkInventoryOrderTests.cs" />
-    <Compile Remove="LinkMessageCrossEngineTests.cs" />
-    <Compile Remove="LinkSelectorTests.cs" />
-    <Compile Remove="LinksetNameNumberBreakTests.cs" />
-    <Compile Remove="ListenCapConfigTests.cs" />
-    <Compile Remove="ListenCapLogTests.cs" />
-    <Compile Remove="ListenHandleAndRateTests.cs" />
-    <Compile Remove="ListenLimitTests.cs" />
-    <Compile Remove="ListenNameCaseTests.cs" />
-    <Compile Remove="ListenRegexTimeoutTests.cs" />
-    <Compile Remove="ListenSaveTests.cs" />
-    <Compile Remove="LlSetPosSharesPrimPositionTests.cs" />
-    <Compile Remove="LoaderOrderAndAssetTypeTests.cs" />
-    <Compile Remove="MassScopeTests.cs" />
-    <Compile Remove="MoneyTransferTests.cs" />
-    <Compile Remove="MuteListGiveTests.cs" />
-    <Compile Remove="NoScriptParcelTests.cs" />
-    <Compile Remove="NotecardFloodTests.cs" />
-    <Compile Remove="NotecardReadersSharingAPrimTests.cs" />
-    <Compile Remove="NotecardReaderTests.cs" />
-    <Compile Remove="NotecardReadRulesTests.cs" />
-    <Compile Remove="NumbersFormattingTests.cs" />
-    <Compile Remove="ObjectCaptureWaitTests.cs" />
-    <Compile Remove="ObjectRegionQueryTests.cs" />
-    <Compile Remove="OsMakeNotecardTests.cs" />
-    <Compile Remove="OsslAgentTests.cs" />
-    <Compile Remove="OsslDrawPixelTests.cs" />
-    <Compile Remove="OsslDrawTests.cs" />
-    <Compile Remove="OsslInfoFunctionsTests.cs" />
-    <Compile Remove="OsslMiscRowTests.cs" />
-    <Compile Remove="OsslNpcTests.cs" />
-    <Compile Remove="OsslPureHelpersTests.cs" />
-    <Compile Remove="OsslReadOnlyTests.cs" />
-    <Compile Remove="OsslSideEffectTests.cs" />
-    <Compile Remove="OsslWorldTests.cs" />
-    <Compile Remove="OverloadByTypeTests.cs" />
-    <Compile Remove="PendingPermissionRequestTests.cs" />
-    <Compile Remove="PermissionLifecycleTests.cs" />
-    <Compile Remove="PermissionsTests.cs" />
-    <Compile Remove="PhloxCrossEngineHttpResponseTests.cs" />
-    <Compile Remove="PhloxHttpHeaderTests.cs" />
-    <Compile Remove="PhloxMimeTypeYEngineTests.cs" />
-    <Compile Remove="PhloxOutboundFilterTests.cs" />
-    <Compile Remove="PhysicsStatusAndReadoutTests.cs" />
-    <Compile Remove="PositionRotationForceTests.cs" />
-    <Compile Remove="PrimParamsFaceAndValidationTests.cs" />
-    <Compile Remove="PrimParamsOmegaClickSitShapeTests.cs" />
-    <Compile Remove="PrimParamsPositionRotationFlagsTests.cs" />
-    <Compile Remove="PrimParamsProjectorSliceProbeTests.cs" />
-    <Compile Remove="PrimParamsRuleWalkTests.cs" />
-    <Compile Remove="PrimParamsSitCombatSoundTests.cs" />
-    <Compile Remove="PrimParamsSurfaceMaterialTests.cs" />
-    <Compile Remove="PrimParamsTextPositionRotationTests.cs" />
-    <Compile Remove="PushObjectTests.cs" />
-    <Compile Remove="RemainingStubTests.cs" />
-    <Compile Remove="RemoteLoadPinTests.cs" />
-    <Compile Remove="ResaveWhileLoadingTests.cs" />
-    <Compile Remove="RestoreBookkeepingTests.cs" />
-    <Compile Remove="RestoredScriptResumeTests.cs" />
-    <Compile Remove="ReturnObjectsTests.cs" />
-    <Compile Remove="RezObjectWithParamsKeyTests.cs" />
-    <Compile Remove="RobustnessTests.cs" />
-    <Compile Remove="SavedStateCompatTests.cs" />
-    <Compile Remove="SavedStateRig.cs" />
-    <Compile Remove="SchedulerHarness.cs" />
-    <Compile Remove="SchedulerThreadPriorityTests.cs" />
-    <Compile Remove="ScriptCleanupTests.cs" />
-    <Compile Remove="ScriptDataFixesTests.cs" />
-    <Compile Remove="ScriptDelayRowTests.cs" />
-    <Compile Remove="SeatedAvatarLinkTests.cs" />
-    <Compile Remove="ServiceCallDeferralTests.cs" />
-    <Compile Remove="ServiceCallGoldenTests.cs" />
-    <Compile Remove="SetRegionPosTests.cs" />
-    <Compile Remove="ShutdownCaptureTests.cs" />
-    <Compile Remove="SimulatorHostnameTests.cs" />
-    <Compile Remove="SlConstantsTests.cs" />
-    <Compile Remove="SlEventRecognitionTests.cs" />
-    <Compile Remove="SlParityLeftoverTests.cs" />
-    <Compile Remove="SmallCorrectnessTests.cs" />
-    <Compile Remove="SoundMissingTests.cs" />
-    <Compile Remove="SsbNpcAppearanceTests.cs" />
-    <Compile Remove="StateLoadFailedHoldTests.cs" />
-    <Compile Remove="StateSaveThreadingTests.cs" />
-    <Compile Remove="StringListRowTests.cs" />
-    <Compile Remove="SyscallCompletionTests.cs" />
-    <Compile Remove="SyscallResumeTests.cs" />
-    <Compile Remove="SyscallSingleReturnTests.cs" />
-    <Compile Remove="SyscallSleepRaceTests.cs" />
-    <Compile Remove="TeleportPowersTests.cs" />
-    <Compile Remove="TerminatedScriptStaysStoppedTests.cs" />
-    <Compile Remove="TerrainWindMediaBoxTests.cs" />
-    <Compile Remove="TextureKeyPrivacyTests.cs" />
-    <Compile Remove="ThrownSyscallStaysDeadTests.cs" />
-    <Compile Remove="TimerCadenceTests.cs" />
-    <Compile Remove="TimerFloorTests.cs" />
-    <Compile Remove="TimerLifecycleTests.cs" />
-    <Compile Remove="TouchLabelToViewerTests.cs" />
-    <Compile Remove="TouchRoutingTests.cs" />
-    <Compile Remove="UpstreamPortedStubTests.cs" />
-    <Compile Remove="UserKeyRequestDelayTests.cs" />
-    <Compile Remove="VehicleCrossingStateTests.cs" />
-    <Compile Remove="VehicleMassKeyframeTests.cs" />
   </ItemGroup>
 
 </Project>

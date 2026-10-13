@@ -117,6 +117,12 @@ namespace OpenSim.Tests.Common.Mock
             return null;
         }
 
+        // Group bans (IGroupsData members added since this mock was last updated); not kept
+        public bool StoreBan(BanData data) { return true; }
+        public BanData RetrieveBan(UUID groupID, string bannedID) { return null; }
+        public BanData[] RetrieveBans(UUID groupID) { return new BanData[0]; }
+        public bool DeleteBan(UUID groupID, string bannedID) { return false; }
+
         public MembershipData[] RetrieveMembers(UUID groupID)
         {
             IEnumerable<CompositeKey> keys = m_Membership.Keys.Where(k => k.Key.StartsWith(groupID.ToString()));

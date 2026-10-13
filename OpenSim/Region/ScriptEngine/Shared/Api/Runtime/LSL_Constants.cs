@@ -469,6 +469,10 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         public const int PRIM_GLTF_METALLIC_ROUGHNESS = 47;
         public const int PRIM_GLTF_BASE_COLOR = 48;
         public const int PRIM_RENDER_MATERIAL = 49;
+        // SL sit flags, object damage and object health as prim params (wiki: llSetPrimitiveParams)
+        public const int PRIM_SIT_FLAGS = 50;
+        public const int PRIM_DAMAGE = 51;
+        public const int PRIM_HEALTH = 52;
 
         public const int OVERRIDE_GLTF_BASE_COLOR_FACTOR = 1;
         public const int OVERRIDE_GLTF_BASE_ALPHA = 2;
@@ -1270,6 +1274,25 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         public const int REZ_LOCK_AXES = 11;
         public const int REZ_DAMAGE_TYPE = 12;
         public const int REZ_PARAM_STRING = 13;
+
+        // llDamage / PRIM_DAMAGE / REZ_DAMAGE_TYPE damage types (wiki: llDamage)
+        public const int DAMAGE_TYPE_IMPACT = -1;
+        public const int DAMAGE_TYPE_GENERIC = 0;
+        public const int DAMAGE_TYPE_ACID = 1;
+        public const int DAMAGE_TYPE_BLUDGEONING = 2;
+        public const int DAMAGE_TYPE_COLD = 3;
+        public const int DAMAGE_TYPE_ELECTRIC = 4;
+        public const int DAMAGE_TYPE_FIRE = 5;
+        public const int DAMAGE_TYPE_FORCE = 6;
+        public const int DAMAGE_TYPE_NECROTIC = 7;
+        public const int DAMAGE_TYPE_PIERCING = 8;
+        public const int DAMAGE_TYPE_POISON = 9;
+        public const int DAMAGE_TYPE_PSYCHIC = 10;
+        public const int DAMAGE_TYPE_RADIANT = 11;
+        public const int DAMAGE_TYPE_SLASHING = 12;
+        public const int DAMAGE_TYPE_SONIC = 13;
+        public const int DAMAGE_TYPE_EMOTIONAL = 14;
+
 
         public const int SIT_FLAG_SIT_TARGET    = 0x01;
         public const int SIT_FLAG_ALLOW_UNSIT   = 0x02;

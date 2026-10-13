@@ -277,10 +277,14 @@ public class PhloxOutboundFilterTests
             r.Request(url, expectSent: false);
             AssertRefused(r, url);
         }
+        // [Confluence: a scripted request to an /lslhttp/ URL never uses the Except list (upstream's carve-out,
+        // kept in OutboundUrlFilter.CheckAllowed and at connect time), so an Except entry does not open it here.
+        // Tranquillity dropped that carve-out; this is a deliberate divergence.]
         using (var r = new Rig(except: port => "localhost:" + port))
         {
-            r.Request(ownUrl(r), expectSent: true);
-            AssertSent(r);
+            string url = ownUrl(r);
+            r.Request(url, expectSent: false);
+            AssertRefused(r, url);
         }
     }
 

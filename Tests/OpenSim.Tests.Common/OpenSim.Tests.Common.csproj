@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Upstream OpenSim's test helpers (SceneHelpers, TaskInventoryHelpers, TestScene, mocks), compiled in place from
+    OpenSim/Tests/Common, which prebuild.xml leaves commented out (as upstream). Used by the xUnit suites under Tests\
+    (InWorldz.Phlox.Tests). Hand-maintained, outside OpenSim.sln; takes Confluence's assemblies from bin\.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AssemblyName>OpenSim.Tests.Common</AssemblyName>
+    <RootNamespace>OpenSim.Tests.Common</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CA1416;SYSLIB0014</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\OpenSim\Tests\Common\**\*.cs" Exclude="..\..\OpenSim\Tests\Common\obj\**;..\..\OpenSim\Tests\Common\bin\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- DefaultAvatarAnimations loads "data/avataranimations.xml" relative to the working directory; every test
+         project that builds scenes gets it beside its output. -->
+    <None Include="..\..\bin\data\avataranimations.xml" Link="data\avataranimations.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="..\..\bin\OpenSim*.dll" Exclude="..\..\bin\OpenSim.Tests*.dll" />
+    <Reference Include="..\..\bin\log4net.dll" />
+    <Reference Include="..\..\bin\Nini.dll" />
+    <Reference Include="..\..\bin\nunit.framework.dll" />
+    <Reference Include="..\..\bin\Mono.Addins.dll" />
+    <Reference Include="..\..\bin\OpenMetaverse.dll" />
+    <Reference Include="..\..\bin\OpenMetaverseTypes.dll" />
+    <Reference Include="..\..\bin\OpenMetaverse.StructuredData.dll" />
+    <Reference Include="..\..\bin\XMLRPC.dll" />
+    <Reference Include="..\..\bin\System.Runtime.Caching.dll" />
+    <Reference Include="..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll" />
+  </ItemGroup>
+
+</Project>

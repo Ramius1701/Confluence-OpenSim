@@ -3696,6 +3696,9 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             float omegaGain = 0;
 
             float damage = 0;
+            bool hasDamage = false;
+            int damageType = ScriptBaseClass.DAMAGE_TYPE_GENERIC;
+            bool hasDamageType = false;
 
             string sound = null;
             float soundVol = 0;
@@ -3921,6 +3924,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                                 try
                                 {
                                     damage = lparam.GetFloatItem(idx);
+                                    hasDamage = true;
                                 }
                                 catch (InvalidCastException)
                                 {
@@ -3993,7 +3997,8 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                             case ScriptBaseClass.REZ_DAMAGE_TYPE:
                                 try
                                 {
-                                    int damageType = lparam.GetIntegerItem(idx);
+                                    damageType = lparam.GetIntegerItem(idx);
+                                    hasDamageType = true;
                                 }
                                 catch (InvalidCastException)
                                 {
@@ -4114,7 +4119,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                         axislock = 2;
                     if(lockAxis.Y != 0)
                         axislock |= 4;
-                    if(lockAxis.X != 0)
+                    if(lockAxis.Z != 0)   // [Confluence: upstream tested X twice, so Z could never lock]
                         axislock |= 8;
                     groot.RotationAxisLocks = axislock;
                 }
@@ -4131,6 +4136,13 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                     else
                         groot.CollisionSoundType = -1;
                 }
+
+                // REZ_DAMAGE / REZ_DAMAGE_TYPE: the new object's collision damage and its type, as llSetDamage and
+                // PRIM_DAMAGE set them (they were parsed and dropped)
+                if (hasDamage)
+                    sog.Damage = (float)damage;
+                if (hasDamageType)
+                    groot.SetLslDamageType(damageType);
 
                 World.AddNewSceneObject(sog, true, pos, rot, vel);
 
@@ -12630,6 +12642,61 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
                             part.ScriptedSitOnly = script_only;
                             break;
+                        case ScriptBaseClass.PRIM_SIT_FLAGS:
+                            // [ PRIM_SIT_FLAGS, integer flags ], as llSetLinkSitFlags
+                            if (remain < 1)
+                                return new LSL_List();
+                            int sitFlags;
+                            try
+                            {
+                                sitFlags = rules.GetLSLIntegerItem(idx++);
+                            }
+                            catch (InvalidCastException)
+                            {
+                                Error(originFunc, string.Format("Error running rule #{0} -> PRIM_SIT_FLAGS: arg #{1} - parameter 2 must be an integer", rulesParsed, idx - idxStart - 1));
+                                return new LSL_List();
+                            }
+
+                            part.SetLslSitFlags(sitFlags);
+                            break;
+                        case ScriptBaseClass.PRIM_DAMAGE:
+                            // [ PRIM_DAMAGE, float damage, integer damage_type ]: the object's, as llSetDamage, and
+                            // the type llDamage-style collisions report (OBJECT_DAMAGE_TYPE)
+                            if (remain < 2)
+                                return new LSL_List();
+                            float primDamage;
+                            int primDamageType;
+                            try
+                            {
+                                primDamage = (float)rules.GetLSLFloatItem(idx++);
+                                primDamageType = rules.GetLSLIntegerItem(idx++);
+                            }
+                            catch (InvalidCastException)
+                            {
+                                Error(originFunc, string.Format("Error running rule #{0} -> PRIM_DAMAGE: arg #{1} - parameters must be float, integer", rulesParsed, idx - idxStart - 1));
+                                return new LSL_List();
+                            }
+
+                            part.ParentGroup.Damage = primDamage;
+                            part.ParentGroup.RootPart.SetLslDamageType(primDamageType);
+                            break;
+                        case ScriptBaseClass.PRIM_HEALTH:
+                            // [ PRIM_HEALTH, float health ]: the object's health (llGetHealth on an object, llDamage)
+                            if (remain < 1)
+                                return new LSL_List();
+                            float primHealth;
+                            try
+                            {
+                                primHealth = (float)rules.GetLSLFloatItem(idx++);
+                            }
+                            catch (InvalidCastException)
+                            {
+                                Error(originFunc, string.Format("Error running rule #{0} -> PRIM_HEALTH: arg #{1} - parameter 2 must be a float", rulesParsed, idx - idxStart - 1));
+                                return new LSL_List();
+                            }
+
+                            part.ParentGroup.RootPart.SetLslHealth(Math.Max(0f, primHealth));
+                            break;
                         case ScriptBaseClass.PRIM_ALPHA_MODE:
                             if (remain < 3)
                                 return new LSL_List();
@@ -14145,6 +14212,20 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
                     case ScriptBaseClass.PRIM_SCRIPTED_SIT_ONLY:
                         res.Add(new LSL_Integer(part.HasLslSitFlag(ScriptBaseClass.SIT_FLAG_SCRIPTED_ONLY) ? 1 : 0));
+                        break;
+
+                    case ScriptBaseClass.PRIM_SIT_FLAGS:
+                        res.Add(new LSL_Integer(part.GetLslSitFlags()));
+                        break;
+
+                    case ScriptBaseClass.PRIM_DAMAGE:
+                        // [ float damage, integer damage_type ]; SL's 0.0 while none is set (the scene keeps -1)
+                        res.Add(new LSL_Float(Math.Max(0f, part.ParentGroup.Damage)));
+                        res.Add(new LSL_Integer(part.ParentGroup.RootPart.GetLslDamageType()));
+                        break;
+
+                    case ScriptBaseClass.PRIM_HEALTH:
+                        res.Add(new LSL_Float(part.ParentGroup.RootPart.GetLslHealth()));
                         break;
 
                     case ScriptBaseClass.PRIM_NORMAL:
@@ -17311,6 +17392,15 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                         case ScriptBaseClass.OBJECT_VOLUME_DETECT:
                             ret.Add(LSL_Integer.Zero);
                             break;
+                        case ScriptBaseClass.OBJECT_HEALTH:
+                            ret.Add(new LSL_Float(av.Health));
+                            break;
+                        case ScriptBaseClass.OBJECT_DAMAGE:
+                            ret.Add(new LSL_Float(0.0));   // an avatar deals no collision damage
+                            break;
+                        case ScriptBaseClass.OBJECT_DAMAGE_TYPE:
+                            ret.Add(new LSL_Integer(ScriptBaseClass.DAMAGE_TYPE_GENERIC));
+                            break;
                         default:
                             // Invalid or unhandled constant.
                             ret.Add(new LSL_Integer(ScriptBaseClass.OBJECT_UNKNOWN_DETAIL));
@@ -17604,6 +17694,17 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                         case ScriptBaseClass.OBJECT_VOLUME_DETECT:
                             bool vdtc = !obj.ParentGroup.IsDeleted && obj.ParentGroup.IsVolumeDetect;
                             ret.Add(vdtc ? LSL_Integer.One : LSL_Integer.Zero);
+                            break;
+                        case ScriptBaseClass.OBJECT_HEALTH:
+                            // the object's health (PRIM_HEALTH, llDamage on an object); kept on the root
+                            ret.Add(new LSL_Float(obj.ParentGroup?.RootPart?.GetLslHealth() ?? obj.GetLslHealth()));
+                            break;
+                        case ScriptBaseClass.OBJECT_DAMAGE:
+                            // llSetDamage / PRIM_DAMAGE; SL's 0.0 while none is set (the scene keeps -1)
+                            ret.Add(new LSL_Float(Math.Max(0f, obj.ParentGroup?.Damage ?? 0f)));
+                            break;
+                        case ScriptBaseClass.OBJECT_DAMAGE_TYPE:
+                            ret.Add(new LSL_Integer(obj.ParentGroup?.RootPart?.GetLslDamageType() ?? obj.GetLslDamageType()));
                             break;
                         default:
                             // Invalid or unhandled constant.
@@ -19816,9 +19917,17 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                         case ScriptBaseClass.PRIM_DESC:
                         case ScriptBaseClass.PRIM_ALLOW_UNSIT:
                         case ScriptBaseClass.PRIM_SCRIPTED_SIT_ONLY:
+                        case ScriptBaseClass.PRIM_SIT_FLAGS:
+                        case ScriptBaseClass.PRIM_HEALTH:
                             if (remain < 1)
                                 return new LSL_List();
                             idx++;
+                            break;
+
+                        case ScriptBaseClass.PRIM_DAMAGE:
+                            if (remain < 2)
+                                return new LSL_List();
+                            idx += 2;
                             break;
 
                         case ScriptBaseClass.PRIM_GLOW:

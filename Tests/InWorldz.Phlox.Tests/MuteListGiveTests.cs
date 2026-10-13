@@ -38,6 +38,8 @@ public class MuteListGiveTests
         }
         public bool UpdateMute(MuteData mute) => false;
         public bool RemoveMute(UUID agentID, UUID muteID, string muteName) => false;
+        // [Confluence: IMuteListService.IsMuted] the same list MuteListRequest answers from
+        public bool IsMuted(UUID muterID, UUID mutedID) => Muted.TryGetValue(muterID, out var ids) && ids.Contains(mutedID);
     }
 
     /// <summary>A user with an inventory and an id of its own (the one-argument helper always uses ...0099).</summary>
@@ -186,5 +188,6 @@ public class MuteListGiveTests
         public byte[] MuteListRequest(UUID agent, uint crc) => throw new InvalidOperationException("mute DB down");
         public bool UpdateMute(MuteData mute) => false;
         public bool RemoveMute(UUID agentID, UUID muteID, string muteName) => false;
+        public bool IsMuted(UUID muterID, UUID mutedID) => throw new InvalidOperationException("mute DB down");   // [Confluence: IMuteListService.IsMuted]
     }
 }

@@ -69,8 +69,12 @@ public class BotRespawnKeyTests
         beforeLoad?.Invoke();
         var bots = new BotManager();
         bots.Initialise(h.Config);
+        h.Scene.Ready = false;
         bots.AddRegion(h.Scene);
         bots.RegionLoaded(h.Scene);
+        // [Confluence: BotManager reloads saved bots on the region's ready transition, once land and prims are
+        // loaded (an empty scene would deactivate every bot); a region start ends with that transition.]
+        h.Scene.Ready = true;
         return bots;
     }
 

@@ -1719,6 +1719,11 @@ namespace OpenSim.Region.Framework.Scenes.Serialization
             writer.WriteElementString("AllowUnsit", sop.AllowUnsit.ToString().ToLower());
             writer.WriteElementString("ScriptedSitOnly", sop.ScriptedSitOnly.ToString().ToLower());
 
+            // Only a state the offset and rotation do not already give (an active target at a zero offset), so other
+            // objects serialize as before. (Tranquillity #253; the reader was ported 2026-10-08, this writer was missed.)
+            if (sop.SitTargetActiveIsExplicit)
+                writer.WriteElementString("SitTargetActive", sop.SitTargetActive.ToString().ToLower());
+
             writer.WriteEndElement();
         }
 

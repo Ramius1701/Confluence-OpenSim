@@ -311,6 +311,8 @@ public class PermissionLifecycleTests
         }
         public bool UpdateMute(MuteData mute) => false;
         public bool RemoveMute(UUID agentID, UUID muteID, string muteName) => false;
+        // [Confluence: IMuteListService.IsMuted] the same list MuteListRequest answers from
+        public bool IsMuted(UUID muterID, UUID mutedID) => Muted.TryGetValue(muterID, out var ids) && ids.Contains(mutedID);
     }
 
     [Theory]

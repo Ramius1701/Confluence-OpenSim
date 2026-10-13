@@ -498,6 +498,14 @@ Treated as core, not an optional add-on:
   attachments get these events whichever engine runs them, and
   `llAdjustDamage` in `on_damage` changes what lands. Damage to objects
   (object health) stays YEngine's own.
+- SL's prim rules `PRIM_SIT_FLAGS`, `PRIM_DAMAGE` (damage and damage
+  type) and `PRIM_HEALTH` in `llSetPrimitiveParams` /
+  `llGetPrimitiveParams`; `llGetObjectDetails`' `OBJECT_HEALTH`,
+  `OBJECT_DAMAGE`, `OBJECT_DAMAGE_TYPE` (objects and avatars);
+  `REZ_DAMAGE` and `REZ_DAMAGE_TYPE` in `llRezObjectWithParams` now
+  reach the rezzed object; and the `DAMAGE_TYPE_*` constants
+  (`DAMAGE_TYPE_IMPACT` to `DAMAGE_TYPE_EMOTIONAL`). Object damage type
+  and health are kept on the object and saved with it (2026-10-13).
 
 ### EEP environment scripting
 

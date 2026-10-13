@@ -400,6 +400,12 @@ namespace OpenSim.Tests.Common
 
         public int PingTimeMS { get { return 0; } }
 
+        // IClientAPI members added since this mock was last updated
+        public float FOV { get; set; }
+        public int viewHeight { get; set; }
+        public int viewWidth { get; set; }
+        public ViewerFlags ViewerFlags { get { return 0; } }
+
         public bool IsActive
         {
             get { return true; }
@@ -966,8 +972,12 @@ namespace OpenSim.Tests.Common
         {
         }
 
+        /// <summary>Every entity this client was sent full ObjectProperties for, in order. (From Tranquillity's TestClient.)</summary>
+        public readonly List<ISceneEntity> ObjectPropertiesSent = new List<ISceneEntity>();
+
         public void SendObjectPropertiesReply(ISceneEntity entity)
         {
+            ObjectPropertiesSent.Add(entity);
         }
 
         public void SendAgentOffline(UUID[] agentIDs)
@@ -1188,7 +1198,7 @@ namespace OpenSim.Tests.Common
             return string.Empty;
         }
 
-        public void SendScriptTeleportRequest(string objName, string simName, Vector3 pos, Vector3 lookAt)
+        public void SendScriptTeleportRequest(string objName, string simName, Vector3 pos, int options)
         {
         }
 
@@ -1335,7 +1345,7 @@ namespace OpenSim.Tests.Common
         {
         }
 
-        public void SendPickInfoReply(UUID pickID,UUID creatorID, bool topPick, UUID parcelID, string name, string desc, UUID snapshotID, string user, string originalName, string simName, Vector3 posGlobal, int sortOrder, bool enabled)
+        public void SendPickInfoReply(UUID pickID,UUID creatorID, bool topPick, UUID parcelID, string name, string desc, UUID snapshotID, string user, string originalName, string simName, Vector3d posGlobal, int sortOrder, bool enabled)
         {
         }
 
@@ -1422,10 +1432,18 @@ namespace OpenSim.Tests.Common
             throw new NotImplementedException();
         }
 
+        /// <summary>Every permission question sent to this client, so a test can assert one was (or was not) asked.
+        /// (From Tranquillity's TestClient.)</summary>
+        public List<(UUID TaskID, UUID ItemID, int Question)> ScriptQuestions { get; } = new();
+
         public void SendScriptQuestion(UUID taskID, string taskName, string ownerName, UUID itemID, int question, UUID experience)
         {
-            throw new NotImplementedException();
+            lock (ScriptQuestions) ScriptQuestions.Add((taskID, itemID, question));
         }
+
+        /// <summary>Answer a permission question the way the viewer's ScriptAnswerYes packet does.</summary>
+        public void FireScriptAnswer(UUID taskID, UUID itemID, int answer)
+            => OnScriptAnswer?.Invoke(this, taskID, itemID, answer);
 
         public void SendEstateExperiences(UUID invoice, UUID[] allowed, UUID[] key, UUID[] blocked, uint estateID)
         {

@@ -1246,6 +1246,15 @@ namespace OpenSim.Region.Framework.Scenes
 
         protected void Dispose(bool disposing)
         {
+            // From the finalizer: touch nothing. An unreachable presence has no subscriptions left to undo, its
+            // fields may be half-built (a constructor that threw) or already finalized, and an exception on the
+            // finalizer thread ends the process. [Confluence]
+            if (!disposing)
+            {
+                disposed = true;
+                return;
+            }
+
             // Check to see if Dispose has already been called.
             if (!disposed)
             {

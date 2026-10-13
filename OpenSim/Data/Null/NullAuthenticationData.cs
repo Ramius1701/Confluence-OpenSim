@@ -36,6 +36,9 @@ namespace OpenSim.Data.Null
 {
     public class NullAuthenticationData : IAuthenticationData
     {
+        // The dictionaries are static, shared by every instance in the process; every access is serialised. (Tranquillity #222.)
+        private static readonly object s_lock = new object();
+
         private static Dictionary<UUID, AuthenticationData> m_DataByUUID = new Dictionary<UUID, AuthenticationData>();
         private static Dictionary<UUID, string> m_Tokens = new Dictionary<UUID, string>();
 
@@ -45,35 +48,53 @@ namespace OpenSim.Data.Null
 
         public AuthenticationData Get(UUID principalID)
         {
-             return m_DataByUUID.TryGetValue(principalID, out AuthenticationData ad) ? ad :null;
+            lock (s_lock)
+            {
+                 return m_DataByUUID.TryGetValue(principalID, out AuthenticationData ad) ? ad :null;
+            }
         }
 
         public bool Store(AuthenticationData data)
         {
-            m_DataByUUID[data.PrincipalID] = data;
-            return true;
+            lock (s_lock)
+            {
+                m_DataByUUID[data.PrincipalID] = data;
+                return true;
+            }
         }
 
         public bool SetDataItem(UUID principalID, string item, string value)
         {
-            // Not implemented
-            return false;
+            lock (s_lock)
+            {
+                // Not implemented
+                return false;
+            }
         }
 
         public bool SetToken(UUID principalID, string token, int lifetime)
         {
-            m_Tokens[principalID] = token;
-            return true;
+            lock (s_lock)
+            {
+                m_Tokens[principalID] = token;
+                return true;
+            }
         }
 
         public bool CheckToken(UUID principalID, string token, int lifetime)
         {
-            return m_Tokens.TryGetValue(principalID, out string tk) ? tk == token : false;
+            lock (s_lock)
+            {
+                return m_Tokens.TryGetValue(principalID, out string tk) ? tk == token : false;
+            }
         }
 
         public bool Delete(UUID principalID)
         {
-            return m_Tokens.Remove(principalID);
+            lock (s_lock)
+            {
+                return m_Tokens.Remove(principalID);
+            }
         }
     }
 }

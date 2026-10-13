@@ -36,6 +36,9 @@ namespace OpenSim.Data.Null
 {
     public class NullAvatarData : IAvatarData
     {
+        // The dictionary is static, shared by every instance in the process; every access is serialised. (Tranquillity #222.)
+        private static readonly object s_lock = new object();
+
         private static Dictionary<UUID, AvatarBaseData> m_DataByUUID = new Dictionary<UUID, AvatarBaseData>();
 
         public NullAvatarData(string connectionString, string realm)
@@ -44,40 +47,52 @@ namespace OpenSim.Data.Null
 
         public AvatarBaseData[] Get(string field, string val)
         {
-            if (field == "PrincipalID")
+            lock (s_lock)
             {
-                if (UUID.TryParse(val, out UUID id))
-                    if (m_DataByUUID.TryGetValue(id, out AvatarBaseData abd))
-                        return new AvatarBaseData[] { abd };
-            }
+                if (field == "PrincipalID")
+                {
+                    if (UUID.TryParse(val, out UUID id))
+                        if (m_DataByUUID.TryGetValue(id, out AvatarBaseData abd))
+                            return new AvatarBaseData[] { abd };
+                }
 
-            // Fail
-            return Array.Empty<AvatarBaseData>();
+                // Fail
+                return Array.Empty<AvatarBaseData>();
+            }
         }
 
         public bool Store(AvatarBaseData data)
         {
-            m_DataByUUID[data.PrincipalID] = data;
-            return true;
+            lock (s_lock)
+            {
+                m_DataByUUID[data.PrincipalID] = data;
+                return true;
+            }
         }
 
         public bool Delete(UUID principalID, string name)
         {
-            if (m_DataByUUID.TryGetValue(principalID, out AvatarBaseData abd))
+            lock (s_lock)
             {
-                return abd.Data.Remove(name);
+                if (m_DataByUUID.TryGetValue(principalID, out AvatarBaseData abd))
+                {
+                    return abd.Data.Remove(name);
+                }
+                return false;
             }
-            return false;
         }
 
         public bool Delete(string field, string val)
         {
-            if (field == "PrincipalID")
+            lock (s_lock)
             {
-                if (UUID.TryParse(val, out UUID id))
-                    return m_DataByUUID.Remove(id);
+                if (field == "PrincipalID")
+                {
+                    if (UUID.TryParse(val, out UUID id))
+                        return m_DataByUUID.Remove(id);
+                }
+                return false;
             }
-            return false;
         }
 
     }

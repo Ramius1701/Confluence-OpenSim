@@ -44,7 +44,7 @@ namespace OpenSim.Tests.Common
         public List<Packet> PacketsSent { get; private set; }
 
         public TestLLUDPServer(IPAddress listenIP, uint port, int proxyPortOffsetParm, IConfigSource configSource, AgentCircuitManager circuitManager)
-            : base(listenIP, port, proxyPortOffsetParm, configSource, circuitManager)
+            : base(listenIP, port, configSource, circuitManager)   // LLUDPServer no longer takes the proxy port offset
         {
             PacketsSent = new List<Packet>();
         }

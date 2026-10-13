@@ -54,7 +54,7 @@ public class CastRayRefusedLogTests
     private const ulong Minute = LSLSystemAPI.CastRayRefusedLineIntervalMs;
 
     /// <summary>A physics scene that refuses every cast while <see cref="Refusing"/> is set, and hits nothing otherwise.</summary>
-    private sealed class RefusingScene : OpenSim.Region.PhysicsModules.BasicPhysics.BasicScene
+    private sealed class RefusingScene : OpenSim.Region.PhysicsModule.BasicPhysics.BasicScene /* [Confluence: upstream namespace] */
     {
         public bool Refusing = true;
         public override List<ContactResult> RaycastWorld(Vector3 position, Vector3 direction, float length, int Count)

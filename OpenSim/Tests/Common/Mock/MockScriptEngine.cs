@@ -143,6 +143,11 @@ namespace OpenSim.Tests.Common
             return true;
         }
 
+        public bool PostObjectLinksetDataEvent(uint localID, int action, ReadOnlySpan<char> name, ReadOnlySpan<char> value)
+        {
+            return false;
+        }
+
         public bool PostObjectEvent(uint localID, EventParams evParams)
         {
             return PostObjectEvent(m_scene.GetSceneObjectPart(localID), evParams);

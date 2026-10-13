@@ -28308,3 +28308,32 @@ Verified: from a fresh clone, the `.bat` steps and the `.sh` script each produce
 Main repo: same, 0/0. Jolt tests: 2099 passed, 8 skipped, 0 failed (unchanged).
 (Git Bash on Windows mangles prebuild's `/target` flag into a path; use `MSYS_NO_PATHCONV=1` there. Not an issue on
 Linux.)
+
+## Phlox's full test suite runs: 5467 passed, 0 failed; what it found (2026-10-13)
+
+Phlox's tests were 40 of 225 files (3035 tests): the rest drive a test scene through `OpenSim.Tests.Common`, which
+`prebuild.xml` leaves commented out, as upstream. Now 223 of 225 files run: **5467 passed, 2 skipped, 0 failed**.
+
+- **Test harness:** `Tests/OpenSim.Tests.Common` (hand-maintained, outside the solution) builds upstream's
+  `OpenSim/Tests/Common` in place against `bin\`. Its mocks had drifted from Confluence's interfaces (TestClient,
+  TestGroupsDataPlugin, TestXInventoryDataPlugin, MockScriptEngine, TestLLUDPServer) and were brought up to date;
+  Tranquillity's TestClient recorders were added. The two files left out test Tranquillity-only modules.
+- **Found and fixed in the core:**
+  - `ScenePresence`'s finalizer called `Dispose(false)`, which touched other objects; on a presence whose constructor
+    threw, that threw on the finalizer thread and **killed the process**. Upstream code; the finalizer path now only
+    marks it disposed.
+  - **Tranquillity #222** (missed in the Phlox hook list): the Null presence, authentication and avatar stores are
+    process-wide and were unlocked; now one static lock each. Standalones with Null storage share them across regions.
+  - **#253's writer was missed on 2026-10-08:** `SitTargetActive` was read from object XML but never written, so a
+    scripted sit target at a zero offset was lost on crossing, take/rez and OAR. Now written.
+- **YEngine SL parity** (the rule-count test found `PRIM_SIT_FLAGS`/`PRIM_DAMAGE`/`PRIM_HEALTH` missing): YEngine now has
+  those three prim rules, `OBJECT_HEALTH`/`OBJECT_DAMAGE`/`OBJECT_DAMAGE_TYPE` in `llGetObjectDetails` (objects and
+  avatars), `REZ_DAMAGE`/`REZ_DAMAGE_TYPE` applied to the rezzed object (both were parsed and dropped), and the
+  `DAMAGE_TYPE_*` constants. Also fixed upstream's `REZ_LOCK_AXES` typo (it tested X twice, so Z never locked; still in
+  opensim-master, worth reporting upstream). Tested by `YEngineCombatParamsTests.cs` (6 tests).
+- **Test-only differences** (marked in the tests): BasicPhysics namespace, `IsMuted` on fake mute services, the bot
+  reload waiting for the region's ready transition, and natives the bare test host lacks (SQLite, OpenJPEG under the
+  name libomv imports, System.Drawing). One deliberate divergence kept: a scripted request to an `/lslhttp/` URL never
+  uses the outbound Except list (upstream's rule; Tranquillity dropped it).
+
+Core changes (`ScenePresence`, the serializer, Null stores, YEngine API) need a deploy to reach the live grid.
