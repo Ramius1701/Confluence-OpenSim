@@ -3003,6 +3003,18 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public LSL_Integer llReturnObjectsByOwner(LSL_Key owner, LSL_Integer scope)
+        {
+            return m_LSL_Functions.llReturnObjectsByOwner(owner, scope);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public LSL_Integer llReturnObjectsByID(LSL_List objects)
+        {
+            return m_LSL_Functions.llReturnObjectsByID(objects);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public LSL_String llHMAC(LSL_String private_key, LSL_String message, LSL_String algo)
         {
             return m_LSL_Functions.llHMAC(private_key, message, algo);

@@ -463,6 +463,13 @@ Treated as core, not an optional add-on:
   `llGetPrimitiveParams`/`llGetLinkPrimitiveParams`. Real PBR terrain
   editing (`ModifyRegion` capability) is also implemented, alongside
   the pre-existing per-face material override support.
+- `llReturnObjectsByOwner` and `llReturnObjectsByID` (2026-10-13), to SL's rules: needs
+  `PERMISSION_RETURN_OBJECTS` granted by the script owner (or, for a group-owned object, a member of
+  the group's Owners role); scopes `OBJECT_RETURN_PARCEL`, `OBJECT_RETURN_PARCEL_OWNER` and
+  `OBJECT_RETURN_REGION` (estate owner/managers only); the parcel owner's, estate owner's and
+  managers' objects, and objects owned by the land's group, are not returned; objects go to their
+  owners' Lost and Found (never deleted), throttled to the region's prim capacity per hour; SL's
+  `ERR_*` codes. The same rules as Phlox's.
 - `llIsExperienceTrusted`, `llGetExperiencePermissions`,
   `llExperienceCanAutoGrant`, `llGetExperienceKeyValueStoreStats`.
 - `osPerlinNoise2D`.

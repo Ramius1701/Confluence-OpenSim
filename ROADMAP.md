@@ -463,8 +463,8 @@ checked by `Tools/data-backend-check`.)*
 - A handful of smaller Halcyon-sourced candidates: since the Phlox port
   (2026-10-12), Phlox scripts have `llReturnObjectsByOwner`/
   `llReturnObjectsByID` and 79 `iw*` utility functions. **YEngine still
-  lacks the two `llReturnObjects` functions** (SL functions; the OSSL
-  equivalents exist), an SL-parity gap worth closing. Still unported:
+  lacks the two `llReturnObjects` functions**: closed 2026-10-13, YEngine
+  has both now (to the same rules). Still unported:
   Euler-rotation LSL functions and a small JWT auth module.
 
 ## Explicitly out of scope for now

@@ -89,6 +89,11 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         public const int PERMISSION_OVERRIDE_ANIMATIONS = 0x8000;
         public const int PERMISSION_RETURN_OBJECTS = 0x10000;
 
+        // llReturnObjectsByOwner scopes (wiki); the ERR_* codes both return are defined further down
+        public const int OBJECT_RETURN_PARCEL = 1;
+        public const int OBJECT_RETURN_PARCEL_OWNER = 2;
+        public const int OBJECT_RETURN_REGION = 4;
+
         public const int AGENT_FLYING = 0x1;
         //ApiDesc The agent has attachments
         public const int AGENT_ATTACHMENTS = 0x2;

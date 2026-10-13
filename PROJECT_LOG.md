@@ -28352,3 +28352,16 @@ Left as upstream: the Authentication and Freeswitch config calls (login and voic
 
 SL parity: in SL a backend hiccup makes a call fail or return empty; it does not kill the script.
 Verified: solution 0 warnings / 0 errors. Not testable without taking a service down; deployed with the next restart.
+
+## YEngine: llReturnObjectsByOwner and llReturnObjectsByID (2026-10-13)
+
+SL functions YEngine never had (Phlox has them since the port). Added to YEngine's LSL_Api, ILSL_Api and LSL_Stub, plus
+the `OBJECT_RETURN_PARCEL` / `_PARCEL_OWNER` / `_REGION` scopes (the `ERR_*` codes already existed). Same rules as
+Phlox's, which follow SL's wiki and Halcyon: `PERMISSION_RETURN_OBJECTS` granted by the script owner, or for a
+group-owned object by a member of the group's Owners role; the region scope only for the estate owner or managers; the
+parcel owner's, estate owner's and managers' objects, and objects owned by the land's group, are exempt; objects go to
+their owners' Lost and Found through the core's parcel-return path, never deleted, one object per call, throttled to the
+region's prim capacity per rolling hour (each engine keeps its own throttle).
+
+Verified: `YEngineObjectReturnTests.cs` (6 tests: grants, scopes, exemptions, ID lists, Lost and Found); full Phlox
+suite 5473 passed, 0 failed. Not deployed.
