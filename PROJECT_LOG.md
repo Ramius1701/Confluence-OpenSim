@@ -28517,3 +28517,31 @@ Legion Grid in the Confluence attribution list); the README's licence paragraph 
 above is ported, its notices come with it.
 
 Verified: solution build 0/0; Jolt tests 2099 passed; full Phlox suite 5488 passed, 0 failed.
+
+## Tranquillity #289 / #290 / #292 / #294 ported: the mesher and llCastRay (2026-10-15)
+
+Hand-ported (Confluence's Meshmerizer, PrimitiveBaseShape and LSL_Api are block-namespaced with log4net logging, so
+the patches did not apply as such); each change marked `[Confluence: Tranquillity #NNN]`.
+- **#289** the hull list and bounding hull of a mesh asset are kept on its `Mesh` (copied by Clone and onto the
+  bounding-box substitute), not in two mesher fields every decode overwrote - a cache hit read whichever asset was
+  decoded last, and threads raced on them. New `GetConvexHulls(IMesh, size)` / `GetBoundingHull(IMesh, size)`; the
+  size-only ones answer for the mesh the calling thread was last handed. Confluence's BulletSim
+  (`BSShapes.CreatePhysicalHull`) now asks with the mesh it just got.
+- **#290** physical and non-physical requests kept apart: bounding-box answers (non-physical, under 0.2 m) have their
+  own cache, a box is made from a cached mesh, the asset bytes a box was made from are kept until the mesh itself is
+  cached (decoding empties the shape's bytes, so a later physical request got null), and two threads building the same
+  mesh get the same answer instead of the second `Add` throwing. (Its eight-argument-overload fix was already here,
+  `6532010e06`.)
+- **#292** a sculpt's type is read from its low three bits (64 invert and 128 mirror are flags; with either set the
+  type fell through to the default), and `GetMeshKey` hashes the sculpt type, so flagged and unflagged copies of one map
+  are cached apart. All `GetMeshKey` users are in-memory caches (Meshmerizer, BulletSim, llCastRayV3); nothing on disk.
+- **#294** `llCastRay` allows `RC_MAX_HITS` up to 256 (SL's limit; upstream cut it to 16), `RC_DETECT_PHANTOM` is TRUE
+  for any non-zero value, and the physics engine is asked for one more hit per host prim the answer leaves out, so a
+  script's own linkset doesn't take places among the hits it asked for. Both engines (Phlox's part applied as is).
+
+Tests: Tranquillity's `MesherHullListTests`, `MesherPhysicalRequestTests`, `SculptFlagsTests`, `LSL_ApiCastRayTests`
+and Phlox's `CastRayHitsTests`, in `Tests/InWorldz.Phlox.Tests` (the xUnit project with the scene and bin references).
+Adapted: the sculpt maps are drawn with System.Drawing and encoded losslessly with libomv's OpenJPEG (what this mesher
+decodes with; theirs used SkiaSharp/CoreJ2K), the BasicPhysics namespace, and the "unflagged sculpts unchanged"
+fingerprints, which were measured on Confluence's mesher before the port (build without it) and are identical after.
+63 passed; Jolt tests 2099 passed; full Phlox suite 5551 passed, 0 failed. Not deployed.

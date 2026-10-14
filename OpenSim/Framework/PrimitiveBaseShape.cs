@@ -883,9 +883,11 @@ namespace OpenSim.Framework
  
             hash = djb2(hash, lod);
 
-            // include sculpt UUID
+            // include sculpt UUID and type: the same map as a sphere, a plane, mirrored or inverted is a different
+            // shape [Confluence: Tranquillity #292]
             if (SculptEntry)
             {
+                hash = djb2(hash, SculptType);
                 byte[] scaleBytes = this.SculptTexture.GetBytes();
                 for (int i = 0; i < scaleBytes.Length; i++)
                     hash = djb2(hash, scaleBytes[i]);

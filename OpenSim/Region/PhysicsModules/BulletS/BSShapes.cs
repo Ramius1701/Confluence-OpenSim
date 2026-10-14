@@ -722,7 +722,7 @@ namespace OpenSim.Region.PhysicsModule.BulletS
                     Meshmerizer realMesher = physicsScene.mesher as Meshmerizer;
                     if (realMesher != null)
                     {
-                        allHulls = realMesher.GetConvexHulls(size);
+                        allHulls = realMesher.GetConvexHulls(meshData, size);   // [Confluence: the hulls of this mesh (Tranquillity #289)]
                     }
                     if (allHulls == null)
                     {

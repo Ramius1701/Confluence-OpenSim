@@ -730,6 +730,13 @@ hardcoded default:
   `OpenSim/Region/PhysicsModules/Jolt/CONFLUENCE.md`. The
   `/features` page's Platform Overview lists which engines are actually
   present on a given deployment.
+- **Meshmerizer** (the mesher BulletSim and Jolt use; from Tranquillity #289/#290/#292, 2026-10-15): a mesh's hull
+  list and bounding hull stay with that mesh, so a cached mesh keeps its own hulls instead of the last decoded
+  asset's; a physical and a non-physical request for the same small mesh get their own answers (mesh vs bounding
+  box) and neither loses the asset the other needs; two threads building the same mesh no longer throw; a sculpt
+  with its invert or mirror flag is built as the viewer shows it, and its cache key tells the flags apart.
+- **`llCastRay`** returns up to 256 hits (SL's limit; upstream stopped at 16), and the script's own prim or linkset
+  no longer takes places among the hits asked for (Tranquillity #294, both script engines).
 
 ### Concierge (region greeter)
 

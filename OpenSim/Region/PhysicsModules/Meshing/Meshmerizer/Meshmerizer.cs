@@ -70,11 +70,23 @@ namespace OpenSim.Region.PhysicsModule.Meshing
 
         private float minSizeForComplexMesh = 0.2f; // prims with all dimensions smaller than this will have a bounding box mesh
 
-        private List<List<Vector3>> mConvexHulls = null;
-        private List<Vector3> mBoundingHull = null;
+        // [Confluence: Tranquillity #289] The hulls are kept on each Mesh; this is the mesh the calling thread was last
+        // handed by CreateMesh, which the size-only hull getters answer for. (Two shared fields, overwritten by every
+        // decode, gave a cache hit the hulls of whichever asset was decoded last, and raced between threads.)
+        [ThreadStatic] private static Mesh t_lastRequestedMesh;
 
         // Mesh cache. Static so it can be shared across instances of this class
         private static Dictionary<ulong, Mesh> m_uniqueMeshes = new Dictionary<ulong, Mesh>();
+
+        // [Confluence: Tranquillity #290] Answers that were replaced by a bounding box (a non-physical request for a small
+        // mesh). The cache key does not carry the physical flag, so these are kept apart from the meshes above, which a
+        // physical request may be given.
+        private static Dictionary<ulong, Mesh> m_uniqueBoundingBoxMeshes = new Dictionary<ulong, Mesh>();
+
+        // The asset bytes a bounding-box answer was made from, by cache key. Decoding empties the shape's asset bytes, so
+        // without these a later physical request for the same mesh could not be answered. An entry is dropped when the
+        // mesh itself is cached. Guarded by m_uniqueBoundingBoxMeshes.
+        private static Dictionary<ulong, byte[]> m_boundingBoxSources = new Dictionary<ulong, byte[]>();
 
         #region INonSharedRegionModule
         public string Name
@@ -300,6 +312,8 @@ namespace OpenSim.Region.PhysicsModule.Meshing
 
             List<Coord> coords;
             List<Face> faces;
+            List<List<Vector3>> convexHulls = null;
+            List<Vector3> boundingHull = null;
 
             if (primShape.SculptEntry)
             {
@@ -310,7 +324,7 @@ namespace OpenSim.Region.PhysicsModule.Meshing
 
                     try
                     {
-                        if (!GenerateCoordsAndFacesFromPrimMeshData(primName, primShape, size, out coords, out faces))
+                        if (!GenerateCoordsAndFacesFromPrimMeshData(primName, primShape, size, out coords, out faces, out convexHulls, out boundingHull))
                             return null;
                     }
                     catch
@@ -375,6 +389,9 @@ namespace OpenSim.Region.PhysicsModule.Meshing
                 mesh.Add(new Triangle(vertices[f.v1], vertices[f.v2], vertices[f.v3]));
             }
 
+            mesh.ConvexHulls = convexHulls;
+            mesh.BoundingHull = boundingHull;
+
             return mesh;
         }
 
@@ -386,9 +403,12 @@ namespace OpenSim.Region.PhysicsModule.Meshing
         /// <param name="size"></param>
         /// <param name="coords">Coords are added to this list by the method.</param>
         /// <param name="faces">Faces are added to this list by the method.</param>
+        /// <param name="convexHulls">The asset's hull list, unscaled, or null if it has none.</param>
+        /// <param name="boundingHull">The asset's bounding hull, unscaled, or null if it has none.</param>
         /// <returns>true if coords and faces were successfully generated, false if not</returns>
         private bool GenerateCoordsAndFacesFromPrimMeshData(
-            string primName, PrimitiveBaseShape primShape, Vector3 size, out List<Coord> coords, out List<Face> faces)
+            string primName, PrimitiveBaseShape primShape, Vector3 size, out List<Coord> coords, out List<Face> faces,
+            out List<List<Vector3>> convexHulls, out List<Vector3> boundingHull)
         {
 //            m_log.DebugFormat("[MESH]: experimental mesh proxy generation for {0}", primName);
 
@@ -396,8 +416,8 @@ namespace OpenSim.Region.PhysicsModule.Meshing
             faces = new List<Face>();
             OSD meshOsd = null;
 
-            mConvexHulls = null;
-            mBoundingHull = null;
+            convexHulls = null;
+            boundingHull = null;
 
             if (primShape.SculptData.Length <= 0)
             {
@@ -497,12 +517,10 @@ namespace OpenSim.Region.PhysicsModule.Meshing
                             Vector3 max = new Vector3(0.5f, 0.5f, 0.5f);
                             if (convexBlock.ContainsKey("Max")) max = convexBlock["Max"].AsVector3();
 
-                            List<Vector3> boundingHull = null;
-
                             if (convexBlock.ContainsKey("BoundingVerts"))
                             {
                                 byte[] boundingVertsBytes = convexBlock["BoundingVerts"].AsBinary();
-                                boundingHull = new List<Vector3>();
+                                List<Vector3> bounding = new List<Vector3>();
                                 for (int i = 0; i < boundingVertsBytes.Length; )
                                 {
                                     ushort uX = Utils.BytesToUInt16(boundingVertsBytes, i); i += 2;
@@ -515,11 +533,11 @@ namespace OpenSim.Region.PhysicsModule.Meshing
                                         Utils.UInt16ToFloat(uZ, min.Z, max.Z)
                                     );
 
-                                    boundingHull.Add(pos);
+                                    bounding.Add(pos);
                                 }
 
-                                mBoundingHull = boundingHull;
-                                if (debugDetail) m_log.DebugFormat("{0} prim='{1}': parsed bounding hull. nVerts={2}", LogHeader, primName, mBoundingHull.Count);
+                                boundingHull = bounding;
+                                if (debugDetail) m_log.DebugFormat("{0} prim='{1}': parsed bounding hull. nVerts={2}", LogHeader, primName, boundingHull.Count);
                             }
 
                             if (convexBlock.ContainsKey("HullList"))
@@ -554,8 +572,8 @@ namespace OpenSim.Region.PhysicsModule.Meshing
                                     hulls.Add(hull);
                                 }
 
-                                mConvexHulls = hulls;
-                                if (debugDetail) m_log.DebugFormat("{0} prim='{1}': parsed hulls. nHulls={2}", LogHeader, primName, mConvexHulls.Count);
+                                convexHulls = hulls;
+                                if (debugDetail) m_log.DebugFormat("{0} prim='{1}': parsed hulls. nHulls={2}", LogHeader, primName, convexHulls.Count);
                             }
                             else
                             {
@@ -736,7 +754,9 @@ namespace OpenSim.Region.PhysicsModule.Meshing
             }
 
             PrimMesher.SculptMesh.SculptType sculptType;
-            switch ((OpenMetaverse.SculptType)primShape.SculptType)
+            // [Confluence: Tranquillity #292] The low three bits are the map type; 64 (invert) and 128 (mirror) are flags,
+            // read below. Without the mask a mirrored or inverted map fell through to the default type.
+            switch ((OpenMetaverse.SculptType)(primShape.SculptType & 0x07))
             {
                 case OpenMetaverse.SculptType.Cylinder:
                     sculptType = PrimMesher.SculptMesh.SculptType.cylinder;
@@ -930,42 +950,64 @@ namespace OpenSim.Region.PhysicsModule.Meshing
         }
 
         /// <summary>
-        /// temporary prototype code - please do not use until the interface has been finalized!
+        /// The bounding hull of the mesh asset that <paramref name="mesh"/> was made from. [Confluence: Tranquillity #289]
         /// </summary>
+        /// <param name="mesh">A mesh returned by CreateMesh, whether freshly made or served from the cache.</param>
         /// <param name="size">value to scale the hull points by</param>
-        /// <returns>a list of vertices in the bounding hull if it exists and has been successfully decoded, otherwise null</returns>
-        public List<Vector3> GetBoundingHull(Vector3 size)
+        /// <returns>a list of vertices in the bounding hull if the asset has one and it was decoded, otherwise null</returns>
+        public List<Vector3> GetBoundingHull(IMesh mesh, Vector3 size)
         {
-            if (mBoundingHull == null)
+            List<Vector3> hull = (mesh as Mesh)?.BoundingHull;
+            if (hull == null)
                 return null;
 
-            List<Vector3> verts = new List<Vector3>();
-            foreach (var vert in mBoundingHull)
+            List<Vector3> verts = new List<Vector3>(hull.Count);
+            foreach (var vert in hull)
                 verts.Add(vert * size);
 
             return verts;
         }
 
         /// <summary>
-        /// temporary prototype code - please do not use until the interface has been finalized!
+        /// The hull list of the mesh asset that <paramref name="mesh"/> was made from. [Confluence: Tranquillity #289]
         /// </summary>
+        /// <param name="mesh">A mesh returned by CreateMesh, whether freshly made or served from the cache.</param>
         /// <param name="size">value to scale the hull points by</param>
-        /// <returns>a list of hulls if they exist and have been successfully decoded, otherwise null</returns>
-        public List<List<Vector3>> GetConvexHulls(Vector3 size)
+        /// <returns>a list of hulls if the asset has them and they were decoded, otherwise null</returns>
+        public List<List<Vector3>> GetConvexHulls(IMesh mesh, Vector3 size)
         {
-            if (mConvexHulls == null)
+            List<List<Vector3>> hulls = (mesh as Mesh)?.ConvexHulls;
+            if (hulls == null)
                 return null;
 
-            List<List<Vector3>> hulls = new List<List<Vector3>>();
-            foreach (var hull in mConvexHulls)
+            List<List<Vector3>> scaled = new List<List<Vector3>>(hulls.Count);
+            foreach (var hull in hulls)
             {
-                List<Vector3> verts = new List<Vector3>();
+                List<Vector3> verts = new List<Vector3>(hull.Count);
                 foreach (var vert in hull)
                     verts.Add(vert * size);
-                hulls.Add(verts);
+                scaled.Add(verts);
             }
 
-            return hulls;
+            return scaled;
+        }
+
+        /// <summary>
+        /// The bounding hull of the mesh that the calling thread was last handed by CreateMesh (null if that call
+        /// returned no mesh). Prefer the overload that takes the mesh.
+        /// </summary>
+        public List<Vector3> GetBoundingHull(Vector3 size)
+        {
+            return GetBoundingHull(t_lastRequestedMesh, size);
+        }
+
+        /// <summary>
+        /// The hull list of the mesh that the calling thread was last handed by CreateMesh (null if that call
+        /// returned no mesh). Prefer the overload that takes the mesh.
+        /// </summary>
+        public List<List<Vector3>> GetConvexHulls(Vector3 size)
+        {
+            return GetConvexHulls(t_lastRequestedMesh, size);
         }
 
         public IMesh CreateMesh(String primName, PrimitiveBaseShape primShape, Vector3 size, float lod)
@@ -993,6 +1035,17 @@ namespace OpenSim.Region.PhysicsModule.Meshing
 
         public IMesh CreateMesh(String primName, PrimitiveBaseShape primShape, Vector3 size, float lod, bool isPhysical, bool shouldCache)
         {
+            Mesh mesh = MakeMesh(primName, primShape, size, lod, isPhysical, shouldCache);
+            t_lastRequestedMesh = mesh;
+            return mesh;
+        }
+
+        // [Confluence: Tranquillity #290] A physical and a non-physical request for the same small mesh get different
+        // answers (the mesh, a bounding box), so the two are cached apart; a box is made from a mesh already cached; the
+        // asset bytes a box was made from are kept until the mesh itself is cached; two threads building the same mesh
+        // get the same answer instead of the second cache Add throwing.
+        private Mesh MakeMesh(String primName, PrimitiveBaseShape primShape, Vector3 size, float lod, bool isPhysical, bool shouldCache)
+        {
 #if SPAM
             m_log.DebugFormat("[MESH]: Creating mesh for {0}", primName);
 #endif
@@ -1000,15 +1053,45 @@ namespace OpenSim.Region.PhysicsModule.Meshing
             Mesh mesh = null;
             ulong key = 0;
 
+            // A non-physical request for a small mesh is answered with a bounding box (below); the others get the mesh.
+            bool boundingBoxOnly = !isPhysical && size.X < minSizeForComplexMesh && size.Y < minSizeForComplexMesh && size.Z < minSizeForComplexMesh;
+            Dictionary<ulong, Mesh> cache = boundingBoxOnly ? m_uniqueBoundingBoxMeshes : m_uniqueMeshes;
+
             // If this mesh has been created already, return it instead of creating another copy
             // For large regions with 100k+ prims and hundreds of copies of each, this can save a GB or more of memory
             if (shouldCache)
             {
                 key = primShape.GetMeshKey(size, lod);
-                lock (m_uniqueMeshes)
+                lock (cache)
                 {
-                    if (m_uniqueMeshes.TryGetValue(key, out mesh))
+                    if (cache.TryGetValue(key, out mesh))
                         return mesh;
+                }
+
+                // The mesh was made for a request that was not replaced by a box: make the box from it rather than
+                // from an asset that has been dropped.
+                if (boundingBoxOnly)
+                {
+                    Mesh whole;
+                    lock (m_uniqueMeshes)
+                    {
+                        m_uniqueMeshes.TryGetValue(key, out whole);
+                    }
+
+                    if (whole != null)
+                        return AddToCache(cache, key, MakeBoundingBox(primName, whole));
+                }
+                else if (primShape.SculptEntry && (primShape.SculptData == null || primShape.SculptData.Length == 0))
+                {
+                    // The asset was dropped after a bounding box was made from it: give the shape its bytes back, the
+                    // decode below drops them again.
+                    byte[] source;
+                    lock (m_uniqueBoundingBoxMeshes)
+                    {
+                        m_boundingBoxSources.TryGetValue(key, out source);
+                    }
+                    if (source != null)
+                        primShape.SculptData = source;
                 }
             }
 
@@ -1016,18 +1099,19 @@ namespace OpenSim.Region.PhysicsModule.Meshing
             if (size.Y < 0.01f) size.Y = 0.01f;
             if (size.Z < 0.01f) size.Z = 0.01f;
 
+            byte[] assetBytes = primShape.SculptEntry ? primShape.SculptData : null;
+
             mesh = CreateMeshFromPrimMesher(primName, primShape, size, lod);
 
             if (mesh != null)
             {
-                if ((!isPhysical) && size.X < minSizeForComplexMesh && size.Y < minSizeForComplexMesh && size.Z < minSizeForComplexMesh)
+                if (boundingBoxOnly)
                 {
 #if SPAM
                 m_log.Debug("Meshmerizer: prim " + primName + " has a size of " + size.ToString() + " which is below threshold of " +
                             minSizeForComplexMesh.ToString() + " - creating simple bounding box");
 #endif
-                    mesh = CreateBoundingBoxMesh(mesh);
-                    mesh.DumpRaw(baseDir, primName, "Z extruded");
+                    mesh = MakeBoundingBox(primName, mesh);
                 }
 
                 // trim the vertex and triangle lists to free up memory
@@ -1035,14 +1119,44 @@ namespace OpenSim.Region.PhysicsModule.Meshing
 
                 if (shouldCache)
                 {
-                    lock (m_uniqueMeshes)
+                    mesh = AddToCache(cache, key, mesh);
+
+                    // Keep the asset only while the bounding box is the one answer there is for it.
+                    lock (m_uniqueBoundingBoxMeshes)
                     {
-                        m_uniqueMeshes.Add(key, mesh);
+                        if (boundingBoxOnly && assetBytes != null && assetBytes.Length != 0)
+                            m_boundingBoxSources[key] = assetBytes;
+                        else if (!boundingBoxOnly)
+                            m_boundingBoxSources.Remove(key);
                     }
                 }
             }
 
             return mesh;
+        }
+
+        // Caches a mesh and returns the one that is cached. Two threads can build the same mesh at once; the first to
+        // finish wins and the other is handed the winner, so both callers get the same answer.
+        private static Mesh AddToCache(Dictionary<ulong, Mesh> cache, ulong key, Mesh mesh)
+        {
+            lock (cache)
+            {
+                if (cache.TryGetValue(key, out Mesh cached))
+                    return cached;
+
+                cache.Add(key, mesh);
+                return mesh;
+            }
+        }
+
+        // The bounding box answer for a mesh, carrying the hulls of the asset the mesh came from.
+        private Mesh MakeBoundingBox(string primName, Mesh mesh)
+        {
+            Mesh box = CreateBoundingBoxMesh(mesh);
+            box.ConvexHulls = mesh.ConvexHulls;
+            box.BoundingHull = mesh.BoundingHull;
+            box.DumpRaw(baseDir, primName, "Z extruded");
+            return box;
         }
         public IMesh GetMesh(String primName, PrimitiveBaseShape primShape, Vector3 size, float lod, bool isPhysical, bool convex)
         {

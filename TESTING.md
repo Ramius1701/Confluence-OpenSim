@@ -121,6 +121,12 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 7.3 Dynamic textures (`osSetDynamicTextureData`, `osDrawText`) on a prim, after a region restart.
 - [ ] 7.4 BulletSim: a physical prim smaller than 0.2 m on each axis collides with its real shape, not a box.
 - [ ] 7.5 ubODE: a twisted torus / tube / ring collides with the twist it shows.
+- [ ] 7.7 A sculpted prim with Invert or Mirror ticked (Build > Features of a sculpt) collides as it looks, on
+      BulletSim and Jolt; two copies of one sculpt map, one mirrored, each collide with their own shape.
+- [ ] 7.8 On BulletSim, a small physical mesh (under 0.2 m) rezzed after a non-physical copy of the same mesh still
+      collides with its mesh, not a box.
+- [ ] 7.9 `llCastRay` with `RC_MAX_HITS` above 16 returns more than 16 hits through a row of prims, and with
+      `RC_REJECT_TYPES, RC_REJECT_HOSTGROUP` the caster's own linkset doesn't use up `RC_MAX_HITS, 1`.
 - [ ] 7.6 OAR import with `--lookup-aliases`: creators and owners resolve through user aliases.
 
 ## 8. Viewer features

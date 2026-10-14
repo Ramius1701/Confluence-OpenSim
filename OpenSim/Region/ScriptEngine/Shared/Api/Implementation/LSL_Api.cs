@@ -18463,6 +18463,8 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
         }
 */
 
+        private const int CastRayMaxHits = 256;   // [Confluence: Tranquillity #294]
+
         public LSL_List llCastRay(LSL_Vector start, LSL_Vector end, LSL_List options)
         {
             LSL_List list = new();
@@ -18488,15 +18490,16 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 if (options.GetIntegerItem(i) == ScriptBaseClass.RC_MAX_HITS)
                     count = options.GetIntegerItem(i + 1);
                 else if (options.GetIntegerItem(i) == ScriptBaseClass.RC_DETECT_PHANTOM)
-                    detectPhantom = (options.GetIntegerItem(i + 1) > 0);
+                    detectPhantom = (options.GetIntegerItem(i + 1) != 0);   // [Confluence: #294, any non-zero is TRUE]
                 else if (options.GetIntegerItem(i) == ScriptBaseClass.RC_DATA_FLAGS)
                     dataFlags = options.GetIntegerItem(i + 1);
                 else if (options.GetIntegerItem(i) == ScriptBaseClass.RC_REJECT_TYPES)
                     rejectTypes = options.GetIntegerItem(i + 1);
             }
 
-            if (count > 16)
-                count = 16;
+            // [Confluence: Tranquillity #294] SL gives RC_MAX_HITS a maximum of 256 (wiki, llCastRay); upstream cut it to 16.
+            if (count > CastRayMaxHits)
+                count = CastRayMaxHits;
 
             List<ContactResult> results = new();
 
@@ -18532,8 +18535,11 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 dist = (float)Math.Sqrt(dist);
                 Vector3 direction = dir * (1.0f / dist);
 
-                // get some more contacts to sort ???
-                object physresults = World.RayCastFiltered(rayStart, direction, dist, 2 * count, rayfilter);
+                // [Confluence: Tranquillity #294] More contacts to sort, plus one for each prim of the host left out of the
+                // answer below, so a hit the script does not get does not take a place among the hits it asked for.
+                int hostHits = rejectHostGroup ? m_host.ParentGroup.PrimCount : (rejectHost ? 1 : 0);
+                object physresults = World.RayCastFiltered(rayStart, direction, dist,
+                    Math.Min(CastRayMaxHits, 2 * count + hostHits), rayfilter);
 
                 if (physresults != null)
                 {
