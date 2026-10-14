@@ -28396,3 +28396,42 @@ Verified: `YEngineServiceOutageAndOsDamageTests.cs` (4 tests: an `IGridService` 
 under `llEdgeOfWorld` - the event ends, the timer still runs, the note is on DEBUG_CHANNEL; a division by zero still
 stops the script; osCauseDamage/osCauseHealing reach OnAvatarDamage and OnAvatarDamageApplied with 30 and -50;
 osCauseDamage to zero fires OnAvatarKilled once); full Phlox suite 5477 passed, 0 failed. Not deployed.
+
+## Phlox gains the 40 functions YEngine has; llSetSculptAnim fixed in both engines (2026-10-14)
+
+Diffed the two engines' function tables (YEngine's `LSL_Stub`/`OSSL_Stub` against Phlox's `Types/Defaults.cs`): 40
+names YEngine has and Phlox did not - 32 `os*` (Confluence's partnership, avatar freeze and fly/walk flags,
+`osGetAgentViewer`, `osGiveLinkInventory[List]`, `osMakeScript`, NPC tags/follow/say-to/look-at, plus upstream's
+`osMessageAttachments`, `osPerm2Use`, `osReplaceAgent/Parcel/RegionEnvironment`, `osResetEnvironment`,
+`osReturnObject[s]` that Tranquillity never carried) and 8 `ll*` (`llCastRayV3`, `llExperienceCanAutoGrant`,
+`llGetExperienceKeyValueStoreStats`, `llGetExperiencePermissions`, `llIsExperienceTrusted`, `llRemoteDataSetRegion`,
+`llRemoteLoadScript`, `llSetSculptAnim`). The reverse direction (Phlox-only names) was not in scope.
+
+Added as table indexes 969-1008, appended so no existing index moves (`DispatchIndexGuardTests` still pass). The
+implementations are ports of YEngine's, with the same OSSL keys and threat levels through `OsslGate`, kept in a new
+`LSLSystemAPI.Confluence.cs`; the shims are generated in the pattern of their neighbours into
+`Glue/SyscallShim.Confluence.cs` (a call that may leave the process - asset, inventory, Experience, the WebUI's partner
+endpoint - on the service lane through `Defer`; the gives that sleep through `RunAsync`). Tranquillity's classes changed
+only by `partial`. Adaptations: Phlox's osNpc* drive NPCs through `IBotManager`, so the tag/follow functions use its
+`AddTagToBot`/`GetBotsWithTag`/`StartFollowingAvatar` (`BOT_START_`/`BOT_STOP_FOLLOWING_DISTANCE`); `llCastRayV3` runs
+Phlox's own `llCastRay` rather than a second copy of the 450-line mesh ray cast.
+
+Found on the way:
+- **`llSetSculptAnim` threw on every call in YEngine** (since the Gunthar port, 2026-08-06): it used DynAttrs namespace
+  `"lsl"`, and `DAMap` refuses namespaces under 4 characters. Now `OpenSim`/`LSLSculptAnim`, as the core's other LSL
+  attributes, in both engines. Nothing was ever stored under the old name, so nothing to migrate.
+- **Upstream `osReplaceRegionEnvironment`**: the day-offset change was compared with the day length, and altitude 3 was
+  range-checked with altitude 2's value. Fixed in both engines (marked in YEngine's OSSL_Api).
+- Phlox still has three stubs that log and report success: `llSetAgentEnvironment`, `llReplaceAgentEnvironment`, and the
+  asset half of `llReplaceEnvironment`. YEngine implements all three; next to port.
+
+Verified: build 0/0; `PhloxConfluenceFunctionsTests.cs` (10): one script calling the ungated and threat-None
+functions run under both engines in identical scenes says exactly the same lines (fly/walk flags, Experience queries
+and stats, NPC look-at codes, partner id); the gated ones on Phlox against YEngine's answers (setters, osPerm2Use,
+partner replies, tag queries); freeze/thaw; osMakeScript's item and text; osGiveLinkInventory to a prim;
+osMessageAttachments reaching a worn script's dataserver; llSetSculptAnim on both engines; the two deprecated
+functions; osReturnObjects refused without parcel rights. Full Phlox suite 5487 passed, 0 failed. Not deployed.
+
+Test lesson: YEngine reads `[OSSL]` once per process (`OSSL_Api` `m_doneSharedInit`), so in a full run its threat level
+and Allow_ lists are those of whichever test initialised it first; a YEngine test must not depend on its own [OSSL]
+settings. The first version of the parity test did, passed alone and failed in the full run.

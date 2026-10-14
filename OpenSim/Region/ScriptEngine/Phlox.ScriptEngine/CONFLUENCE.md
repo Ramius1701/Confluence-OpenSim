@@ -71,6 +71,17 @@ with the windows its Combat2 used (80 ms, then 50 ms quiet, at most 750 ms) wher
 500 ms); both wait only when a script has an on_damage handler. Object health stays YEngine's (`LSL_Api` Combat2).
 YEngine's event codes for on_damage/final_damage/on_death are 45-47, the same numbers as the scene's `scriptEvents` bits.
 
+**Functions YEngine has and Phlox lacked (2026-10-14).** 40: Confluence's OSSL additions (partnership, avatar
+freeze/thaw and fly/walk flags, `osGetAgentViewer`, `osGiveLinkInventory[List]`, `osMakeScript`, NPC tags/follow/
+say-to/look-at), the upstream ones Tranquillity did not carry (`osMessageAttachments`, `osPerm2Use`, the four
+environment functions, `osReturnObject[s]`), and eight `ll*` (`llCastRayV3` runs Phlox's `llCastRay`; the Experience
+trust queries; `llSetSculptAnim`; the deprecated `llRemoteDataSetRegion` / `llRemoteLoadScript`). Table indexes
+969-1008, appended in `Types/Defaults.cs` and `Glue/SyscallShim.cs`; the shims are in `Glue/SyscallShim.Confluence.cs`
+and the implementations in `LSLSystemAPI.Confluence.cs`, each a port of the YEngine one with its OSSL key and threat
+level. Tranquillity's `SyscallShim` and `LSLSystemAPI` classes became `partial` for this. Phlox's osNpc* drive NPCs
+through the bot manager, so the tag and follow functions use its tags and follow. Calls that may leave the process
+(assets, inventory, Experiences, the WebUI's partner service) run on the service lane.
+
 ## Tests
 
 `dotnet test Tests\InWorldz.Phlox.Tests -c Release`: **5467 passed, 2 skipped, 0 failed** (2026-10-13; about 11

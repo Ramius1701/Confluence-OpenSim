@@ -7868,7 +7868,9 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             m_host.DynAttrs ??= new DAMap();
             lock (m_host.DynAttrs)
             {
-                if (!m_host.DynAttrs.TryGetStore("lsl", "sculpt_anim", out OSDMap store) || store == null)
+                // [Confluence: DAMap refuses a namespace under 4 characters, so the ported "lsl" threw on every call;
+                // the core's other LSL attributes use "OpenSim"]
+                if (!m_host.DynAttrs.TryGetStore("OpenSim", "LSLSculptAnim", out OSDMap store) || store == null)
                     store = new OSDMap();
 
                 store["mode"] = OSD.FromInteger(mode.value);
@@ -7878,7 +7880,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 store["end_frame"] = OSD.FromInteger(end_frame.value);
                 store["rate"] = OSD.FromReal(rate.value);
                 store["texture_sync"] = OSD.FromBoolean(texture_sync.value != 0);
-                m_host.DynAttrs.SetStore("lsl", "sculpt_anim", store);
+                m_host.DynAttrs.SetStore("OpenSim", "LSLSculptAnim", store);
             }
 
             // There is no separate LLUDP field for sculpt-map animation in OpenSim, so mirror

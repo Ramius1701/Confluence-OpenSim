@@ -6876,6 +6876,288 @@ namespace InWorldz.Phlox.Types
                 ParamNames = new string[] { "notecardName", "contents" },
                 TableIndex = 968
             }},
+            // [Confluence] Functions YEngine has in Confluence and Phlox lacked (2026-10-14); implemented in
+            // Phlox.ScriptEngine/LSLSystemAPI.Confluence.cs. Appended, so no existing index moves.
+            {"llCastRayV3", new FunctionSig {
+                FunctionName = "llCastRayV3",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] { VarType.Vector, VarType.Vector, VarType.List },
+                ParamNames = new string[] { "start", "end", "options" },
+                TableIndex = 969
+            }},
+            {"llExperienceCanAutoGrant", new FunctionSig {
+                FunctionName = "llExperienceCanAutoGrant",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Integer },
+                ParamNames = new string[] { "permissions" },
+                TableIndex = 970
+            }},
+            {"llGetExperienceKeyValueStoreStats", new FunctionSig {
+                FunctionName = "llGetExperienceKeyValueStoreStats",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] {  },
+                ParamNames = new string[] {  },
+                TableIndex = 971
+            }},
+            {"llGetExperiencePermissions", new FunctionSig {
+                FunctionName = "llGetExperiencePermissions",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] {  },
+                ParamNames = new string[] {  },
+                TableIndex = 972
+            }},
+            {"llIsExperienceTrusted", new FunctionSig {
+                FunctionName = "llIsExperienceTrusted",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] {  },
+                ParamNames = new string[] {  },
+                TableIndex = 973
+            }},
+            {"llRemoteDataSetRegion", new FunctionSig {
+                FunctionName = "llRemoteDataSetRegion",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] {  },
+                ParamNames = new string[] {  },
+                TableIndex = 974
+            }},
+            {"llRemoteLoadScript", new FunctionSig {
+                FunctionName = "llRemoteLoadScript",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key, VarType.String, VarType.Integer, VarType.Integer },
+                ParamNames = new string[] { "target", "name", "running", "start_param" },
+                TableIndex = 975
+            }},
+            {"llSetSculptAnim", new FunctionSig {
+                FunctionName = "llSetSculptAnim",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.Integer, VarType.Integer, VarType.Integer, VarType.Integer, VarType.Float, VarType.Integer },
+                ParamNames = new string[] { "mode", "sizex", "sizey", "start_frame", "end_frame", "rate", "texture_sync" },
+                TableIndex = 976
+            }},
+            {"osAvatarFreeze", new FunctionSig {
+                FunctionName = "osAvatarFreeze",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "avatar" },
+                TableIndex = 977
+            }},
+            {"osAvatarThaw", new FunctionSig {
+                FunctionName = "osAvatarThaw",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "avatar" },
+                TableIndex = 978
+            }},
+            {"osCancelPartnershipProposal", new FunctionSig {
+                FunctionName = "osCancelPartnershipProposal",
+                ReturnType = VarType.String,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "caller" },
+                TableIndex = 979
+            }},
+            {"osEndPartnership", new FunctionSig {
+                FunctionName = "osEndPartnership",
+                ReturnType = VarType.String,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "caller" },
+                TableIndex = 980
+            }},
+            {"osGetAgentViewer", new FunctionSig {
+                FunctionName = "osGetAgentViewer",
+                ReturnType = VarType.String,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "agent" },
+                TableIndex = 981
+            }},
+            {"osGetAvatarFlyDisabled", new FunctionSig {
+                FunctionName = "osGetAvatarFlyDisabled",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "avatar" },
+                TableIndex = 982
+            }},
+            {"osGetAvatarForceFly", new FunctionSig {
+                FunctionName = "osGetAvatarForceFly",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "avatar" },
+                TableIndex = 983
+            }},
+            {"osGetAvatarWalkDisabled", new FunctionSig {
+                FunctionName = "osGetAvatarWalkDisabled",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "avatar" },
+                TableIndex = 984
+            }},
+            {"osGetPartnerId", new FunctionSig {
+                FunctionName = "osGetPartnerId",
+                ReturnType = VarType.Key,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "avatar" },
+                TableIndex = 985
+            }},
+            {"osGiveLinkInventory", new FunctionSig {
+                FunctionName = "osGiveLinkInventory",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.Key, VarType.String },
+                ParamNames = new string[] { "linkNumber", "destination", "inventory" },
+                TableIndex = 986
+            }},
+            {"osGiveLinkInventoryList", new FunctionSig {
+                FunctionName = "osGiveLinkInventoryList",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.Key, VarType.String, VarType.List },
+                ParamNames = new string[] { "linkNumber", "destination", "category", "inventory" },
+                TableIndex = 987
+            }},
+            {"osMakeScript", new FunctionSig {
+                FunctionName = "osMakeScript",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String, VarType.List },
+                ParamNames = new string[] { "scriptName", "contents" },
+                TableIndex = 988
+            }},
+            {"osMessageAttachments", new FunctionSig {
+                FunctionName = "osMessageAttachments",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key, VarType.String, VarType.List, VarType.Integer },
+                ParamNames = new string[] { "avatar", "message", "attachmentPoints", "flags" },
+                TableIndex = 989
+            }},
+            {"osNpcAddTag", new FunctionSig {
+                FunctionName = "osNpcAddTag",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key, VarType.String },
+                ParamNames = new string[] { "npc", "tag" },
+                TableIndex = 990
+            }},
+            {"osNpcDeleteNPCsWithTag", new FunctionSig {
+                FunctionName = "osNpcDeleteNPCsWithTag",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "tag" },
+                TableIndex = 991
+            }},
+            {"osNpcFollow", new FunctionSig {
+                FunctionName = "osNpcFollow",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Key, VarType.Float, VarType.Float },
+                ParamNames = new string[] { "npc", "target", "startDistance", "stopDistance" },
+                TableIndex = 992
+            }},
+            {"osNpcGetNPCsWithTag", new FunctionSig {
+                FunctionName = "osNpcGetNPCsWithTag",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "tag" },
+                TableIndex = 993
+            }},
+            {"osNpcLookAt", new FunctionSig {
+                FunctionName = "osNpcLookAt",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Integer, VarType.Key, VarType.Vector },
+                ParamNames = new string[] { "npckey", "type", "objkey", "offset" },
+                TableIndex = 994
+            }},
+            {"osNpcSayTo", new FunctionSig {
+                FunctionName = "osNpcSayTo",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Key, VarType.Integer, VarType.String },
+                ParamNames = new string[] { "npc", "target", "channel", "msg" },
+                TableIndex = 995
+            }},
+            {"osNpcStopFollow", new FunctionSig {
+                FunctionName = "osNpcStopFollow",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "npc" },
+                TableIndex = 996
+            }},
+            {"osPerm2Use", new FunctionSig {
+                FunctionName = "osPerm2Use",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.String },
+                ParamNames = new string[] { "name" },
+                TableIndex = 997
+            }},
+            {"osProposePartnership", new FunctionSig {
+                FunctionName = "osProposePartnership",
+                ReturnType = VarType.String,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Key },
+                ParamNames = new string[] { "proposer", "target" },
+                TableIndex = 998
+            }},
+            {"osReplaceAgentEnvironment", new FunctionSig {
+                FunctionName = "osReplaceAgentEnvironment",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Integer, VarType.String },
+                ParamNames = new string[] { "agentkey", "transition", "daycycle" },
+                TableIndex = 999
+            }},
+            {"osReplaceParcelEnvironment", new FunctionSig {
+                FunctionName = "osReplaceParcelEnvironment",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.String },
+                ParamNames = new string[] { "transition", "daycycle" },
+                TableIndex = 1000
+            }},
+            {"osReplaceRegionEnvironment", new FunctionSig {
+                FunctionName = "osReplaceRegionEnvironment",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.String, VarType.Float, VarType.Float, VarType.Float, VarType.Float, VarType.Float },
+                ParamNames = new string[] { "transition", "daycycle", "daylen", "dayoffset", "altitude1", "altitude2", "altitude3" },
+                TableIndex = 1001
+            }},
+            {"osResetEnvironment", new FunctionSig {
+                FunctionName = "osResetEnvironment",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.Integer },
+                ParamNames = new string[] { "parcelOrRegion", "transition" },
+                TableIndex = 1002
+            }},
+            {"osRespondToPartnershipProposal", new FunctionSig {
+                FunctionName = "osRespondToPartnershipProposal",
+                ReturnType = VarType.String,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Integer },
+                ParamNames = new string[] { "responder", "accept" },
+                TableIndex = 1003
+            }},
+            {"osReturnObject", new FunctionSig {
+                FunctionName = "osReturnObject",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "userID" },
+                TableIndex = 1004
+            }},
+            {"osReturnObjects", new FunctionSig {
+                FunctionName = "osReturnObjects",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.Integer },
+                ParamNames = new string[] { "type" },
+                TableIndex = 1005
+            }},
+            {"osSetAvatarFlyDisabled", new FunctionSig {
+                FunctionName = "osSetAvatarFlyDisabled",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String, VarType.Integer },
+                ParamNames = new string[] { "avatar", "disabled" },
+                TableIndex = 1006
+            }},
+            {"osSetAvatarForceFly", new FunctionSig {
+                FunctionName = "osSetAvatarForceFly",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String, VarType.Integer },
+                ParamNames = new string[] { "avatar", "force" },
+                TableIndex = 1007
+            }},
+            {"osSetAvatarWalkDisabled", new FunctionSig {
+                FunctionName = "osSetAvatarWalkDisabled",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String, VarType.Integer },
+                ParamNames = new string[] { "avatar", "disabled" },
+                TableIndex = 1008
+            }},
          };
 
         /// <summary>

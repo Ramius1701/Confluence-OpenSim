@@ -633,7 +633,10 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
 A second script engine beside YEngine (2026-10-12). Its lineage is kept: InWorldz (the original engine) →
 Halcyon → Legion Grid → Tranquillity → Confluence. LSL, OSSL (259 `os*`) and SLua (`//InWorldz.Phlox:slua`, a
 Luau-flavoured language) compile to bytecode on a VM whose running state is saved, so a script resumes mid-event
-after a region restart. A grid owner turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on
+after a region restart. Since 2026-10-14 it also has every function YEngine has here (Confluence's partnership,
+avatar freeze and fly/walk flags, viewer name, link inventory giving, NPC tags/follow/say-to/look-at, the
+environment and return functions, and `llCastRayV3`, the Experience trust queries, `llSetSculptAnim`), so a
+script behaves the same on either engine. A grid owner turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on
 the engine its first line names (`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`,
 which stays YEngine. Built with the solution; its test suite runs 5,467 tests with none failing, and its SLua
 conformance runner gives 60 pass / 0 divergent / 3 gaps. Port notes, the core hooks it needs and test details:

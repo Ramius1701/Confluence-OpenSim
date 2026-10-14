@@ -1084,5 +1084,47 @@ namespace InWorldz.Phlox.Glue
         int botIsPersistent(string botID);
         string botGetPersistentData(string botID, string key);
         int botSetPersistentData(string botID, string key, string value);
+
+        // [Confluence] Functions YEngine has in Confluence and Phlox lacked (2026-10-14).
+        LSLList llCastRayV3(Vector3 start, Vector3 end, LSLList options);
+        int llExperienceCanAutoGrant(int permissions);
+        LSLList llGetExperienceKeyValueStoreStats();
+        int llGetExperiencePermissions();
+        int llIsExperienceTrusted();
+        void llRemoteDataSetRegion();
+        void llRemoteLoadScript(string target, string name, int running, int start_param);
+        void llSetSculptAnim(int mode, int sizex, int sizey, int start_frame, int end_frame, float rate, int texture_sync);
+        void osAvatarFreeze(string avatar);
+        void osAvatarThaw(string avatar);
+        string osCancelPartnershipProposal(string caller);
+        string osEndPartnership(string caller);
+        string osGetAgentViewer(string agent);
+        int osGetAvatarFlyDisabled(string avatar);
+        int osGetAvatarForceFly(string avatar);
+        int osGetAvatarWalkDisabled(string avatar);
+        string osGetPartnerId(string avatar);
+        void osGiveLinkInventory(int linkNumber, string destination, string inventory);
+        void osGiveLinkInventoryList(int linkNumber, string destination, string category, LSLList inventory);
+        void osMakeScript(string scriptName, LSLList contents);
+        void osMessageAttachments(string avatar, string message, LSLList attachmentPoints, int flags);
+        void osNpcAddTag(string npc, string tag);
+        int osNpcDeleteNPCsWithTag(string tag);
+        void osNpcFollow(string npc, string target, float startDistance, float stopDistance);
+        LSLList osNpcGetNPCsWithTag(string tag);
+        int osNpcLookAt(string npckey, int type, string objkey, Vector3 offset);
+        void osNpcSayTo(string npc, string target, int channel, string msg);
+        void osNpcStopFollow(string npc);
+        int osPerm2Use(string name);
+        string osProposePartnership(string proposer, string target);
+        int osReplaceAgentEnvironment(string agentkey, int transition, string daycycle);
+        int osReplaceParcelEnvironment(int transition, string daycycle);
+        int osReplaceRegionEnvironment(int transition, string daycycle, float daylen, float dayoffset, float altitude1, float altitude2, float altitude3);
+        int osResetEnvironment(int parcelOrRegion, int transition);
+        string osRespondToPartnershipProposal(string responder, int accept);
+        void osReturnObject(string userID);
+        void osReturnObjects(int type);
+        void osSetAvatarFlyDisabled(string avatar, int disabled);
+        void osSetAvatarForceFly(string avatar, int force);
+        void osSetAvatarWalkDisabled(string avatar, int disabled);
     }
 }

@@ -37,7 +37,7 @@ using ScenePrimType = OpenSim.Region.Framework.Scenes.PrimType;
 
 namespace Phlox.ScriptEngine
 {
-    public class LSLSystemAPI : ISystemAPI, InWorldz.Phlox.Glue.ISyscallDeferralAdvisor
+    public partial class LSLSystemAPI : ISystemAPI, InWorldz.Phlox.Glue.ISyscallDeferralAdvisor   // [Confluence: partial, for LSLSystemAPI.Confluence.cs]
     {
         // ── Inline or deferred ──────────────────────────────────────────────
         //

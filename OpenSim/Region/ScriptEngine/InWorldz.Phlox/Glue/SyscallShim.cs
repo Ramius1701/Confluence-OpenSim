@@ -8,7 +8,7 @@ using InWorldz.Phlox.Types;
 
 namespace InWorldz.Phlox.Glue
 {
-	public class SyscallShim : ISyscallShim
+	public partial class SyscallShim : ISyscallShim   // [Confluence: partial, for SyscallShim.Confluence.cs]
 	{
 		public delegate void ShimCall(SyscallShim self);
         public delegate void LongRunSyscallDelegate();
@@ -1053,6 +1053,47 @@ private static string ConvToString(object o)
 								Shim_osAgentSaveAppearance3,          //966
 								Shim_osMakeNotecard,                  //967
 								Shim_osMakeNotecardList,              //968
+								// [Confluence] 969-1008: SyscallShim.Confluence.cs
+								Shim_llCastRayV3,                     //969
+								Shim_llExperienceCanAutoGrant,        //970
+								Shim_llGetExperienceKeyValueStoreStats, //971
+								Shim_llGetExperiencePermissions,      //972
+								Shim_llIsExperienceTrusted,           //973
+								Shim_llRemoteDataSetRegion,           //974
+								Shim_llRemoteLoadScript,              //975
+								Shim_llSetSculptAnim,                 //976
+								Shim_osAvatarFreeze,                  //977
+								Shim_osAvatarThaw,                    //978
+								Shim_osCancelPartnershipProposal,     //979
+								Shim_osEndPartnership,                //980
+								Shim_osGetAgentViewer,                //981
+								Shim_osGetAvatarFlyDisabled,          //982
+								Shim_osGetAvatarForceFly,             //983
+								Shim_osGetAvatarWalkDisabled,         //984
+								Shim_osGetPartnerId,                  //985
+								Shim_osGiveLinkInventory,             //986
+								Shim_osGiveLinkInventoryList,         //987
+								Shim_osMakeScript,                    //988
+								Shim_osMessageAttachments,            //989
+								Shim_osNpcAddTag,                     //990
+								Shim_osNpcDeleteNPCsWithTag,          //991
+								Shim_osNpcFollow,                     //992
+								Shim_osNpcGetNPCsWithTag,             //993
+								Shim_osNpcLookAt,                     //994
+								Shim_osNpcSayTo,                      //995
+								Shim_osNpcStopFollow,                 //996
+								Shim_osPerm2Use,                      //997
+								Shim_osProposePartnership,            //998
+								Shim_osReplaceAgentEnvironment,       //999
+								Shim_osReplaceParcelEnvironment,      //1000
+								Shim_osReplaceRegionEnvironment,      //1001
+								Shim_osResetEnvironment,              //1002
+								Shim_osRespondToPartnershipProposal,  //1003
+								Shim_osReturnObject,                  //1004
+								Shim_osReturnObjects,                 //1005
+								Shim_osSetAvatarFlyDisabled,          //1006
+								Shim_osSetAvatarForceFly,             //1007
+								Shim_osSetAvatarWalkDisabled,         //1008
         };
 
         /// <summary>

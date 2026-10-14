@@ -7420,7 +7420,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
             if (dayoffset >= -11.5 && dayoffset <= 11.5)
             {
-                int lo = VEnv.DayLength;
+                int lo = VEnv.DayOffset;   // [Confluence: upstream compared the new offset with the day length]
                 if (dayoffset <= 0)
                     dayoffset+= 24;
                 VEnv.DayOffset = (int)(dayoffset * 3600f);
@@ -7438,7 +7438,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 VEnv.Altitudes[1] = (float)altitude2;
                 needSort = true;
             }
-            if (altitude3 > 0 && altitude2 < 4000 && VEnv.Altitudes[2] != (float)altitude3)
+            if (altitude3 > 0 && altitude3 < 4000 && VEnv.Altitudes[2] != (float)altitude3)   // [Confluence: upstream tested altitude2's range]
             {
                 VEnv.Altitudes[2] = (float)altitude3;
                 needSort = true;

@@ -87,7 +87,8 @@ Needs a parcel you own, a second account's objects on it, and a script whose own
 ## 5. Other script functions (ported, never tried in-world)
 
 - [ ] 5.1 `llSignRSA` / `llVerifyRSA` with a PEM key pair: a signature made by one verifies with the other.
-- [ ] 5.2 `llSetSculptAnim` on a sculpted prim animates it (shown through the texture-animation block).
+- [ ] 5.2 `llSetSculptAnim` on a sculpted prim animates it (shown through the texture-animation block); it threw
+      on every call until 2026-10-14.
 - [ ] 5.3 `llSetLinkRenderMaterial` and `llSetLinkGLTFOverrides` on a PBR material: the override shows in a PBR
       viewer and survives a region restart.
 - [ ] 5.4 Region / parcel environment: `llGetEnvironment`, `llSetEnvironment`, and `llReplaceEnvironment` with a
@@ -160,6 +161,9 @@ Try these on a test region first.
       compile and run; their state survives a region restart; YEngine scripts in the same region are unaffected.
 - [ ] 11.3 Phlox SLua: a script starting `//InWorldz.Phlox:slua` runs.
 - [ ] 11.4 Damage across engines: a Phlox `llDamage` raises the events in a YEngine attachment, and the reverse.
+- [ ] 11.5 The functions added to Phlox 2026-10-14 behave as in YEngine: partnering from a ceremony object, avatar
+      freeze and fly/walk flags, `osGiveLinkInventory[List]` to an avatar, NPC tags/follow/say-to/look-at,
+      `osReplaceRegionEnvironment` / `osReplaceParcelEnvironment` / `osResetEnvironment`, `osReturnObject[s]`.
 
 ## 12. Open bugs that need a live reproduction
 

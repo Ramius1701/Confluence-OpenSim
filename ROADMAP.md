@@ -682,7 +682,9 @@ checked by `Tools/data-backend-check`.)*
   - Re-measure speed on real content (idle and event-driven scripts,
     not only tight loops) before recommending it as a default.
   - The async asset-fetch check above is still to do.
-  - Add the 32 Confluence `os*` functions Phlox lacks.
+  - Done 2026-10-14: the 40 functions YEngine has and Phlox lacked (32 `os*`, 8 `ll*`) are in Phlox, with a
+    parity test against YEngine. Still stubs in Phlox (they log and report success): `llSetAgentEnvironment`,
+    `llReplaceAgentEnvironment`, and `llReplaceEnvironment`'s asset part; YEngine has all three - port them next.
   - Test suite: done 2026-10-13, 223 of 225 files run (5467 passed,
     0 failed) on upstream's test helpers, built as
     `Tests/OpenSim.Tests.Common`.
