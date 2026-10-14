@@ -317,6 +317,7 @@ feature described in this README, not just a demo.
 |---|---|
 | `FEATURES.md` | What Confluence has, organized by area |
 | `ROADMAP.md` | What's planned, deferred, or a known limitation |
+| `TESTING.md` | What still needs testing in a real region with a viewer, and how to report results |
 | `WEBUI_PARITY_CHECKLIST.md` | Working audit tracking the Web UI's page-by-page structural parity against WhiteCore-Dev |
 | `INWORLD_COMMANDS.md` | Every in-world chat command available to avatars/estate managers |
 | `SETUP.md` | Step-by-step setup for every database (SQLite, MySQL/MariaDB, PostgreSQL) in standalone and grid mode - each step tested from a fresh clone |
