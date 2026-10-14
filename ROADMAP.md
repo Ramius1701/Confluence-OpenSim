@@ -238,14 +238,11 @@ checked by `Tools/data-backend-check`.)*
 ## Planned, not started
 
 - **Follow-ups from 2026-10-13** (Phlox test suite, damage paths, service-outage fix):
-  - YEngine still reports any non-script exception as "Script must be Reset to re-enable", although it only drops
-    the event; make the message say what happens, and consider treating infrastructure exceptions (connection
-    refused, timeout) from any service call as a failed call rather than a script error.
   - Report upstream: `llRezObjectWithParams`' `REZ_LOCK_AXES` tests X twice, so Z never locks (fixed here).
-  - The Authentication and Freeswitch-config connectors still throw on an unreachable service (login and voice
-    paths, not scripts); the other script-reachable ones were fixed.
-  - `osCauseDamage` / `osCauseHealing` / `osSetHealth` (upstream) set health directly, outside the damage door,
-    so they raise no on_damage / final_damage.
+  - Done 2026-10-14: YEngine treats a network failure reaching a grid service as a failed call (event dropped,
+    script keeps running); the Authentication connector answers "not authenticated" when unreachable (the
+    Freeswitch config call was already caught by its only caller); `osCauseDamage` / `osCauseHealing` go through
+    the damage door. `osSetHealth` stays a direct set: it is not damage.
 - **Offline IM-to-email forwarding (found 2026-10-02, reviewing GuduleLapointe/opensim-helpers).** That
   project (a mature, actively-maintained PHP helper toolkit, formerly "Flexible Helper Scripts") offers an
   opt-in "forward offline IMs to email" feature. Confirmed by code, not assumed: Confluence's own native
@@ -692,8 +689,8 @@ checked by `Tools/data-backend-check`.)*
   - Damage paths joined (2026-10-13): avatar damage from collisions and
     from either engine's llDamage goes through `ScenePresence.ApplyDamage`,
     and both engines deliver on_damage/final_damage/on_death from it.
-    Not yet tested in-world. Left as upstream has them: YEngine's
-    `osCauseDamage`/`osSetHealth` set Health directly (no events);
+    Not yet tested in-world. YEngine's `osCauseDamage`/`osCauseHealing`
+    joined the door 2026-10-14; `osSetHealth` stays a direct set;
     object health is YEngine-only.
   - Run Linden's SLua conformance suite (`secondlife/slua`) against
     Phlox's SLua.

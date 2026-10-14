@@ -5606,7 +5606,7 @@ namespace OpenSim.Region.Framework.Scenes
         /// is offered to EventManager.OnAvatarDamage (a script engine's on_damage, which may rewrite each Amount),
         /// applied, then offered to OnAvatarDamageApplied (final_damage). Gods and the invulnerable take nothing.
         /// Health is clamped to 0..100; at 0 the client is told and TriggerAvatarKill fires with the last killing
-        /// entry's local id, once. YEngine's llDamage keeps its own path (LSL_Api Combat2) for now.
+        /// entry's local id, once. Collisions, both engines' llDamage and osCauseDamage / osCauseHealing all come here.
         /// </summary>
         /// <param name="announce">true: always tell the client (scripted damage); false: only when the
         /// change is more than 1.0, the collision path's rule against per-frame spam.</param>

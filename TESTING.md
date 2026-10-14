@@ -38,8 +38,8 @@ that has `on_damage`, `final_damage` and `on_death` handlers.
 - [ ] 1.6 `llDetectedRezzer` reports the object that rezzed the damaging object.
 - [ ] 1.7 Object health: `llDamage` on an object with `PRIM_HEALTH` set lowers it; `llGetHealth` on the object
       reports it.
-- [ ] 1.8 **(known gap)** `osCauseDamage`, `osCauseHealing` and `osSetHealth` change health but raise no
-      `on_damage` / `final_damage`.
+- [ ] 1.8 `osCauseDamage` and `osCauseHealing` raise `on_damage` / `final_damage` like `llDamage` (healing as
+      negative damage), and `osCauseDamage` to zero kills once. `osSetHealth` sets health directly, with no events.
 - [ ] 1.9 Team Combat (`[TeamCombatModule] Enabled = true`): a team member who dies respawns at the team's combat
       point, cannot teleport out while in combat, and regenerates health at the configured rate.
 
@@ -78,8 +78,11 @@ Needs a parcel you own, a second account's objects on it, and a script whose own
 
 - [ ] 4.1 With a region up, restart Robust. Scripts using groups (a group titler), `llRequestAgentData`, mute lists,
       offline IM or Experiences keep running: the region log shows warnings, not "Script must be Reset".
-- [ ] 4.2 **(known gap)** If a script does stop with "Script must be Reset to re-enable", note which function it was
-      in (the message itself is being reworded).
+- [ ] 4.2 While Robust is down, a script's call that needs it drops that one event with a debug-channel note ("a grid
+      service did not answer ... the script keeps running"); the script's next event runs normally. If a script
+      still stops with "Script must be Reset to re-enable" during an outage, report the function and the log lines.
+- [ ] 4.3 With Robust down, an IAR save or load from the region console that asks for a password reports a failed
+      password, not an exception.
 
 ## 5. Other script functions (ported, never tried in-world)
 

@@ -550,11 +550,56 @@ namespace OpenSim.Region.ScriptEngine.Yengine
                 // Some general script error.
                 SendScriptErrorMessage(e, curevent);
             }
+            else if (IsServiceUnreachable(e, out Exception cause))
+            {
+                // [Confluence] A grid service (Robust) could not be reached during an API call. That is the call failing,
+                // not the script: drop this event and keep the script running, as Second Life does when its back end
+                // hiccups. Disabling it here would leave every group titler, vendor etc. dead after a Robust restart.
+                SendServiceUnreachableMessage(cause, curevent);
+            }
             else
             {
                 // Some general script error.
                 SendErrorMessage(e);
             }
+        }
+
+        /// <summary>
+        /// [Confluence] True when the exception (or one it wraps) is a network failure reaching another server:
+        /// connection refused, reset, name lookup or timeout. Those come from service connectors, never from the
+        /// script's own logic.
+        /// </summary>
+        internal static bool IsServiceUnreachable(Exception e, out Exception cause)
+        {
+            for (Exception x = e; x is not null; x = x.InnerException)
+            {
+                if (x is System.Net.Http.HttpRequestException || x is System.Net.Sockets.SocketException ||
+                    x is System.Net.WebException || x is TimeoutException)
+                {
+                    cause = x;
+                    return true;
+                }
+            }
+            cause = null;
+            return false;
+        }
+
+        private void SendServiceUnreachableMessage(Exception cause, ScriptEventCode ev)
+        {
+            Vector3 pos = m_Part.AbsolutePosition;
+            string msgst = string.Format(
+                "YEngine: a grid service did not answer ({0}: {1}); the {2} event was dropped and the script keeps running. " +
+                "(script: {3} primID: {4} at: <{5},{6},{7}>)",
+                cause.GetType().Name, cause.Message, ev, m_Item.Name, m_Part.UUID,
+                (int)Math.Floor(pos.X), (int)Math.Floor(pos.Y), (int)Math.Floor(pos.Z));
+            if (msgst.Length > 1000)
+                msgst = msgst[..1000];
+
+            m_Engine.World.SimChat(Utils.StringToBytes(msgst), ChatTypeEnum.DebugChannel, 0x7FFFFFFF,
+                                   m_Part.AbsolutePosition, m_Part.Name, m_Part.UUID, false);
+            m_log.WarnFormat("[YEngine]: service unreachable in script {0} (event {1}, part {2} {3} in {4}): {5}: {6}",
+                m_Item.Name, ev, m_Part.Name, m_Part.UUID, m_Part.ParentGroup.Scene.Name, cause.GetType().Name, cause.Message);
+            // m_SleepUntil is left alone, so the next queued event runs.
         }
 
         private void SendScriptErrorMessage(Exception e, ScriptEventCode ev)

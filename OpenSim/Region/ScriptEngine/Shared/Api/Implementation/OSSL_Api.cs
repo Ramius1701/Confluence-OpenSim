@@ -4941,29 +4941,42 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             if (presence is null)
                 return;
 
+            // [Confluence] the parcel's damage flag, or the region's Allow Damage (which, as on SL, turns it on for
+            // every parcel), the same rule as Phlox's osCauseDamage
             Vector3 pos = m_host.GetWorldPosition();
             LandData land = World.GetLandData(pos);
-            if ((land.Flags & (uint)ParcelFlags.AllowDamage) == (uint)ParcelFlags.AllowDamage)
-            {
-                float health = presence.Health;
-                health -= (float)damage;
-                presence.setHealthWithUpdate(health);
-                if (health <= 0)
-                {
-                    // check to see if it is an NPC and just remove it
-                    if (presence.IsNPC)
-                    {
-                        INPCModule NPCmodule = World.RequestModuleInterface<INPCModule>();
-                        NPCmodule?.DeleteNPC(presence.UUID, World);
-                    return;
-                    }
+            bool parcelAllows = land is not null && (land.Flags & (uint)ParcelFlags.AllowDamage) != 0;
+            if (parcelAllows || World.RegionInfo.RegionSettings.AllowDamage)
+                ApplyDamageThroughPresence(presence, (float)damage, "osCauseDamage");
+        }
 
-                    float healthliveagain = 100;
-                    presence.ControllingClient.SendAgentAlertMessage("You died!", true);
-                    presence.setHealthWithUpdate(healthliveagain);
-                    presence.Scene.TeleportClientHome(presence.UUID, presence.ControllingClient);
+        /// <summary>
+        /// [Confluence] osCauseDamage / osCauseHealing go through ScenePresence.ApplyDamage, the one door llDamage and
+        /// collisions use, so worn scripts get on_damage (and may llAdjustDamage it), final_damage and on_death, and
+        /// death is handled once by the CombatModule (NPC removed; otherwise "You died!", health reset, sent home) -
+        /// what this function used to do inline. Healing is negative damage, as llDamage treats it. Off the script
+        /// thread, so YEngine can wait for on_damage's adjustments, as LSL_Api's llDamage does.
+        /// </summary>
+        private void ApplyDamageThroughPresence(ScenePresence presence, float amount, string caller)
+        {
+            UUID presenceID = presence.UUID;
+            UUID sourceObject = m_host.UUID;
+            UUID sourceOwner = m_host.OwnerID;
+            uint sourceLocalId = m_host.LocalId;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    ScenePresence sp = World.GetScenePresence(presenceID);
+                    if (sp is null || sp.IsDeleted || sp.IsChildAgent || sp.IsInTransit)
+                        return;
+                    sp.ApplyDamage(sourceObject, sourceOwner, sourceLocalId, amount, ScriptBaseClass.DAMAGE_TYPE_GENERIC, true);
                 }
-            }
+                catch (Exception e)
+                {
+                    m_log.WarnFormat("[OSSL]: {0} on avatar {1} failed: {2}", caller, presenceID, e.Message);
+                }
+            });
         }
 
         public void osCauseHealing(LSL_Key avatar, LSL_Float healing)
@@ -4977,13 +4990,7 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             if (presence is null)
                 return;
 
-            float health = presence.Health;
-            health += (float)healing;
-
-            if (health >= 100)
-                health = 100;
-
-            presence.setHealthWithUpdate(health);
+            ApplyDamageThroughPresence(presence, -(float)healing, "osCauseHealing");
         }
 
         public void osSetHealth(LSL_Key avatar, LSL_Float health)

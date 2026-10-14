@@ -501,7 +501,8 @@ Treated as core, not an optional add-on:
   (before that YEngine had no event codes for them, so a script
   declaring one could not compile and the posted events were dropped).
   Damage to an avatar - collisions, `llDamage` from either script
-  engine - goes through one core path, so the scripts in the avatar's
+  engine, and YEngine's `osCauseDamage` / `osCauseHealing` (healing as
+  negative damage, since 2026-10-14) - goes through one core path, so the scripts in the avatar's
   attachments get these events whichever engine runs them, and
   `llAdjustDamage` in `on_damage` changes what lands. Damage to objects
   (object health) stays YEngine's own.
@@ -778,7 +779,13 @@ NaN/Infinity before being applied.
 - **A grid-service outage no longer aborts scripts** (2026-10-13). When Robust is restarting or
   unreachable, the Groups, Offline IM, Experience and mute-list connectors answer "no reply" (as the
   service would for nothing found) instead of throwing into the calling script; as in Second Life, a
-  backend hiccup makes a call fail, it doesn't stop the script.
+  backend hiccup makes a call fail, it doesn't stop the script. Since
+  2026-10-14 YEngine itself also treats a network failure reaching a grid
+  service (connection refused, reset, timeout) during an API call as a
+  failed call: that event is dropped with a debug-channel note and the
+  script keeps running, instead of "Script must be Reset to re-enable".
+  The region's authentication connector likewise answers "not
+  authenticated" when the service can't be reached.
 - **The region process survives a failed avatar setup**: `ScenePresence`'s finalizer no longer touches
   other objects, so a presence whose construction failed can no longer take the whole region down when
   it is collected (2026-10-13).

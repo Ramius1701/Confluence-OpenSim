@@ -28365,3 +28365,34 @@ region's prim capacity per rolling hour (each engine keeps its own throttle).
 
 Verified: `YEngineObjectReturnTests.cs` (6 tests: grants, scopes, exemptions, ID lists, Lost and Found); full Phlox
 suite 5473 passed, 0 failed. Not deployed.
+
+## TESTING.md; YEngine survives grid-service outages; osCauseDamage through the damage door (2026-10-14)
+
+**`TESTING.md`** (new, linked from the README): every item built (most deployed) but never confirmed in a real region
+with a viewer, gathered from this log and the roadmap - combat, prim/rez parameters, object return, outages, the ported
+script functions (RSA, sculpt animation, GLTF overrides, EEP, pathfinding, NPC follow/tags), bots, content, viewer
+features, land/admin, the SQLite/PostgreSQL service paths, Jolt and Phlox, and the two open bugs needing a live repro -
+with how to report a result.
+
+**YEngine and service outages.** Checked first: when an event handler throws a non-script exception, YEngine sets
+`m_SleepUntil = MaxValue`, so the script really is stopped until reset (the roadmap's "it only drops the event" was
+wrong). New in `XMRInstRun.HandleScriptException`: when the exception, or one it wraps, is an
+`HttpRequestException`, `SocketException`, `WebException` or `TimeoutException` - a connector failing to reach Robust -
+the event is dropped, a debug-channel line says so and that the script keeps running, a warning is logged, and the
+script's next event runs. Script errors (division by zero etc.) keep upstream's handling.
+
+**Connectors.** `AuthenticationServicesConnector`: one `Post` helper; unreachable or a malformed reply is a failed
+authentication (empty token / false), which every caller handles. `RemoteFreeswitchConnector.GetJsonConfig` needed
+nothing: its only caller (`FreeSwitchVoiceModule.Initialise`) already catches and logs "plugin initialization failed".
+
+**osCauseDamage / osCauseHealing** now call `ScenePresence.ApplyDamage` (healing as negative damage, as llDamage treats
+it) on the thread pool, as YEngine's llDamage does, so worn scripts get on_damage (and llAdjustDamage), final_damage and
+on_death; death is handled once by the CombatModule (it did the same "You died!"/reset/home/NPC removal inline before).
+The gate is now the parcel's damage flag or the region's Allow Damage, the same as Phlox's osCauseDamage and SL's
+estate setting. `osSetHealth` stays a direct set - it is not damage. Gods and invulnerable avatars now take nothing from
+osCauseDamage, as from every other damage.
+
+Verified: `YEngineServiceOutageAndOsDamageTests.cs` (4 tests: an `IGridService` that throws `HttpRequestException`
+under `llEdgeOfWorld` - the event ends, the timer still runs, the note is on DEBUG_CHANNEL; a division by zero still
+stops the script; osCauseDamage/osCauseHealing reach OnAvatarDamage and OnAvatarDamageApplied with 30 and -50;
+osCauseDamage to zero fires OnAvatarKilled once); full Phlox suite 5477 passed, 0 failed. Not deployed.

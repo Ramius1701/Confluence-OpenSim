@@ -91,6 +91,33 @@ namespace OpenSim.Services.Connectors
             return Authenticate(principalID, password, lifetime);
         }
 
+        /// <summary>
+        /// [Confluence] The service's parsed reply, or null when it cannot be reached or answers with something that is
+        /// not a reply. An unreachable authentication service is a failed authentication (empty token / false), which
+        /// every caller already handles, not an exception.
+        /// </summary>
+        private Dictionary<string, object> Post(Dictionary<string, object> sendData)
+        {
+            try
+            {
+                string reply = SynchronousRestFormsRequester.MakeRequest("POST",
+                        m_ServerURI + "/auth/plain",
+                        ServerUtils.BuildQueryString(sendData), m_Auth);
+                return string.IsNullOrEmpty(reply) ? null : ServerUtils.ParseXmlResponse(reply);
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[AUTH CONNECTOR]: {0} {1} failed: {2}", m_ServerURI, sendData["METHOD"], e.Message);
+                return null;
+            }
+        }
+
+        private static bool Succeeded(Dictionary<string, object> replyData)
+        {
+            return replyData is not null && replyData.TryGetValue("Result", out object result) &&
+                result?.ToString() == "Success";
+        }
+
         public string Authenticate(UUID principalID, string password, int lifetime)
         {
             Dictionary<string, object> sendData = new Dictionary<string, object>();
@@ -100,17 +127,12 @@ namespace OpenSim.Services.Connectors
 
             sendData["METHOD"] = "authenticate";
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST",
-                    m_ServerURI + "/auth/plain",
-                    ServerUtils.BuildQueryString(sendData), m_Auth);
+            Dictionary<string, object> replyData = Post(sendData);
 
-            Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(
-                    reply);
-
-            if (replyData["Result"].ToString() != "Success")
+            if (!Succeeded(replyData) || !replyData.TryGetValue("Token", out object token))
                 return String.Empty;
 
-            return replyData["Token"].ToString();
+            return token.ToString();
         }
 
         public bool Verify(UUID principalID, string token, int lifetime)
@@ -123,14 +145,9 @@ namespace OpenSim.Services.Connectors
 
             sendData["METHOD"] = "verify";
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST",
-                    m_ServerURI + "/auth/plain",
-                    ServerUtils.BuildQueryString(sendData), m_Auth);
+            Dictionary<string, object> replyData = Post(sendData);
 
-            Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(
-                    reply);
-
-            if (replyData["Result"].ToString() != "Success")
+            if (!Succeeded(replyData))
                 return false;
 
             return true;
@@ -144,13 +161,9 @@ namespace OpenSim.Services.Connectors
 
             sendData["METHOD"] = "release";
 
-            string reply = SynchronousRestFormsRequester.MakeRequest("POST",
-                    m_ServerURI + "/auth/plain",
-                    ServerUtils.BuildQueryString(sendData), m_Auth);
+            Dictionary<string, object> replyData = Post(sendData);
 
-            Dictionary<string, object> replyData = ServerUtils.ParseXmlResponse(reply);
-
-            if (replyData["Result"].ToString() != "Success")
+            if (!Succeeded(replyData))
                 return false;
 
             return true;
