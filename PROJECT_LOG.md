@@ -28492,3 +28492,28 @@ health-page fixes. Ideas to check against Confluence's own: the profile's "show 
 flag (what OpenSim shows and keeps), not a profile column; `avatar_publish_update` (the profile checkbox Robust
 ignores); a registering simulator's search snapshot is read later (after its regions load), with backoff for an
 unreachable one; currency served only with a MoneyScriptAccessKey (no default key).
+
+## Licence and attribution notices from Legion's Jolt and Phlox lanes (2026-10-14)
+
+Legion's 10-13 commits on `lane/jolt` (a6e1e8777c, a70cfb157a, da62c34c20, 3e99e775f5, b0b8735951) and `lane/phlox`
+(0d808038e0, 609e1a5864, 5355197769, 56f50eefdf, 2601bb8d13, f40e3b0d4a, 70b6b3f1d2, cabde04649, ecb496bcb7) restore
+the upstream notices on the files they took from InWorldz Halcyon and HalcyonGrid/phlox, add headers to Legion's own
+files, and reword comments and docs that stayed too close to the Second Life wiki (citing each page instead).
+Confluence carries the same files, so the same gap.
+
+Replayed file by file onto Confluence's paths (Source/... -> OpenSim/Region/..., Docs/ -> doc/) with `git apply --3way`:
+435 files took them cleanly; 7 licence texts added to `ThirdPartyLicenses/` (Halcyon, Phlox (Apache-2.0), Lua, Luau,
+zlib, Microsoft-referencesource, lsl-definitions). Checked: the staged .cs changes are comments, licence text and the
+`using` lines moving under the new headers - no code. Conflicts, where Legion's comments sit beside code Confluence has
+not taken yet, kept Confluence's side: the ray-cast start-inside fix (JoltPhysicsBackend.RayCasts.cs), the
+HOVER_GLOBAL_HEIGHT priority fix and its test (VehicleController.cs, VehicleHoverTests.cs), Tranquillity #295's InWorldz
+vehicle code (SOPVehicle.cs, VehicleConstants.cs - their Halcyon notice comes with that code), and doc/JoltPhysics.md's
+sections for Jolt features not here (mesh asset fetch, rotation target, edge removal). Not applicable: the
+InWorldz.Phlox.Tools project and native joltc patches (not in this tree), Tranquillity's LICENSE/CONTRIBUTORS text (ours
+written instead).
+
+`LICENSE.txt` gains a section saying which other licences apply where; `CONTRIBUTORS.txt` lists Legion Builds (and
+Legion Grid in the Confluence attribution list); the README's licence paragraph names them. When the conflicting code
+above is ported, its notices come with it.
+
+Verified: solution build 0/0; Jolt tests 2099 passed; full Phlox suite 5488 passed, 0 failed.

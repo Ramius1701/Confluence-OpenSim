@@ -23,3 +23,12 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
 IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Confluence also includes code under other licenses, each file carrying its own notice:
+- InWorldz Halcyon (BSD-3-Clause) and HalcyonGrid/phlox (Apache License 2.0), in the Phlox script engine and the
+  Jolt vehicle code; texts in ThirdPartyLicenses/Halcyon.txt and ThirdPartyLicenses/Phlox.txt.
+- Legion Builds' own Phlox and Jolt files (Mozilla Public License 2.0), as their headers say.
+- Jolt Physics, JoltPhysicsSharp and joltc (MIT): ThirdPartyLicenses/JoltPhysics.txt, JoltPhysicsSharp.txt, joltc.txt.
+- Smaller parts from Lua, Luau and zlib, the .NET Framework reference source (MIT) and lsl-definitions (MIT):
+  ThirdPartyLicenses/Lua.txt, Luau.txt, zlib.txt, Microsoft-referencesource.txt and lsl-definitions.txt.
+The other third-party licenses are in the ThirdPartyLicenses directory.

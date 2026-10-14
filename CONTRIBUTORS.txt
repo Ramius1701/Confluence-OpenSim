@@ -134,6 +134,7 @@ what it is today.
 * lickx
 * lillith_xue
 * lkalif
+* Legion Builds (Legion Grid)
 * LuciusSirnah
 * lulurun 
 * M.Igarashi
@@ -231,6 +232,8 @@ PROJECT_LOG.md for the specifics of what was drawn from each:
 
 * Gunthar's OpenSim fork (https://github.com/GuntharDeNiro/opensim)
 * Tranquillity / OpenSim-NGC (https://github.com/OpenSim-NGC/OpenSim-Tranquillity)
+* Legion Grid / Legion Builds (https://github.com/JohnLegionH/Legion-Grid-Code and its Tranquillity
+  branches): the Jolt physics module and the Phlox engine as ported here
 * Mobius (https://github.com/Mobius-Team/Mobius)
 * WhiteCore-Dev (https://github.com/WhiteCoreSim/WhiteCore-Dev)
 * opensim-lickx (original repository since deleted; archived locally)

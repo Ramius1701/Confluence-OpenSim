@@ -386,5 +386,7 @@ reported to the official OpenSimulator project.
 
 Confluence is distributed under the same BSD-style license as
 OpenSimulator. See `LICENSE.txt`. Imported components keep their own
-licence headers: Phlox's core is Apache 2.0, and Legion's Jolt module and
-some Tranquillity files are MPL-2.0.
+licence headers: Phlox's core is Apache 2.0 (HalcyonGrid/phlox), its engine
+and the Jolt vehicle code carry InWorldz Halcyon's BSD-3 notice, and Legion's
+own Jolt and Phlox files and some Tranquillity files are MPL-2.0. The licence
+texts are in `ThirdPartyLicenses/`; `LICENSE.txt` lists which applies where.
