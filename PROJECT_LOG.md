@@ -28447,3 +28447,48 @@ better shared than copied. Verified: `PhloxEnvironmentReplaceTests.cs` - one scr
 recording environment module: identical codes (set 1, track -5, length -6, remove track 0 -9, remove track 3 -5,
 missing asset -3, reset 1, agent without an Experience -1) and the same stored region environment; full Phlox suite
 5488 passed, 0 failed.
+
+## Donor fetch 2026-10-14: what is new, triaged by diff scope (nothing ported yet)
+
+Fetched all donor remotes; `origin` (opensim-master) and Legion `main` had nothing new.
+
+**Tranquillity `develop` `ab855c0009..1ab87a277b`** (#282-#298, release 1.1, now 1.2-alpha):
+- Core physics/scene, worth porting with their tests: #282 llSetBuoyancy/llSetHoverHeight/llStopHover from an
+  attachment act on the wearer; #283 dragging a physical object uses the actor's move-to-target; #287 four small core
+  fixes (infinite-Z check, rubber/light friction, shutdown with an avatar in, llGetMass with no actor); #288 mouse-
+  rotating a physical object uses the look-at controller; #291 a part delinked from a physical linkset keeps its
+  velocity; #296 the physics actor is told while keyframed motion moves its object; #297 look-at and rotate-drag
+  targets handed to an engine with a rotation target.
+- Meshmerizer (used by BulletSim and Jolt here): #289 hull list and bounding hull of the mesh asked for, #290 physical
+  and non-physical requests kept apart, #292 sculpt invert/mirror built as the viewer does.
+- Both engines: #294 llCastRay up to 256 hits, rejected types take no hit, phantoms found when asked (YEngine and Phlox).
+- #295 the saved vehicle record keeps InWorldz's two vehicle types and six float parameters (core + Phlox).
+- Phlox: #284 inventory reads under the core writers' lock (new PhloxInventoryLock), #285 notecard reads pause 0.1 s,
+  #286 notecard fetch logging and events saved at region stop.
+- Skip: #293 test warnings, #298 log-file config + docs (check), version bumps.
+
+**Legion `lane/jolt` / `lane/jolt-side` / `lane/phlox`** (our Jolt and Phlox sources):
+- Licensing, first: restored Halcyon's and OpenSim's notices on the Jolt vehicle files, Halcyon's licence in
+  ThirdPartyLicenses, joltc's MIT notice, the Apache-2.0 licence for code from HalcyonGrid/phlox with the compiler/VM
+  files marked, Halcyon's notices on the Phlox engine and bot files, Microsoft's notice on the gzip inflater, Luau's on
+  math.noise, and SL-wiki passages in comments and docs reworded and cited. About 340 files, comments only. Confluence
+  carries the same files, so it carries the same gap until these are taken.
+- Jolt: a mesh prim's asset is fetched and its real shape cooked when it arrives (and sculpt maps the same way),
+  physical meshes collide as their hull list with identical meshes sharing one shape, inverted sculpts hittable from
+  outside, enhanced internal edge removal settings and sweeping fast bodies against volume-detect prims, a ray cast no
+  longer hits the prim or avatar it starts inside, bodies resting on a moved fixed prim are woken, a rotation target
+  (critically damped spring), mesh prim resize by scaling the cooked shape.
+
+**Firestorm** (`phoenix-firestorm` clone, `da6458b47b..c33bfee253`, 108 commits): nothing to port server-side. Of
+note for OpenSim: the event-poll 502 retry now reached for OpenSim (a915194883 - a long-poll timeout answered 502 is
+normal), VarRegion map tracking on first click (a15a232209), an ExtraParams bounds check (087f80feed, SL viewer #6430).
+
+**LibreMetaverse** (`1914e8329b..fd302f28a9`, 31 commits): a package split (Protocol, Transport, Assets, region archives
+moved out of the core), glTF/Collada import, LOD/physics generation on upload, OAR read/write, a login-redirect fix.
+Client library; Confluence's OpenMetaverse*.dll come from OpenSim's own libomv build, so reference only.
+
+**opensim-helpers** (`opensim-kit` branch, `e65ebccde6..7c008ce68c`, v3.0.0-beta.6): search, profile, currency and
+health-page fixes. Ideas to check against Confluence's own: the profile's "show in search" is the user account's first
+flag (what OpenSim shows and keeps), not a profile column; `avatar_publish_update` (the profile checkbox Robust
+ignores); a registering simulator's search snapshot is read later (after its regions load), with backoff for an
+unreachable one; currency served only with a MoneyScriptAccessKey (no default key).
