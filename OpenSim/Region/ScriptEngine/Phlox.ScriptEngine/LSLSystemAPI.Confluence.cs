@@ -701,6 +701,144 @@ namespace Phlox.ScriptEngine
             return 1;
         }
 
+        // ── llReplaceEnvironment / llReplaceAgentEnvironment (LSL_Api.cs, YEngine's) ───────────────────────────────
+
+        private const int ENV_NOT_EXPERIENCE = -1, ENV_NO_EXPERIENCE_PERMISSION = -2, ENV_NO_ENVIRONMENT = -3,
+            ENV_INVALID_AGENT = -4, ENV_INVALID_RULE = -5, ENV_VALIDATION_FAIL = -6, ENV_NO_PERMISSIONS = -9;
+
+        /// <summary>LSL_Api.cs TryLoadEnvironmentAsset: a settings asset by key or this prim's item name.</summary>
+        private bool TryLoadEnvironmentAsset(string environment, out OSD envOSD)
+        {
+            envOSD = null;
+            UUID envID = ScriptUtils.GetAssetIdFromKeyOrItemName(m_host, environment);
+            if (envID == UUID.Zero) return false;
+            AssetBase asset = World.AssetService.Get(envID.ToString());
+            if (asset == null || asset.Type != (byte)AssetType.Settings) return false;
+            try
+            {
+                envOSD = OSDParser.Deserialize(asset.Data);
+                return envOSD != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>SL: a day length of 4 h to 7 days, an offset within a day; -1 leaves either alone.</summary>
+        private static bool ValidateEnvironmentTime(int dayLength, int dayOffset)
+        {
+            if (dayLength >= 0 && (dayLength < 14400 || dayLength > 604800)) return false;
+            return dayOffset < 0 || dayOffset <= 86400;
+        }
+
+        private static void ApplyEnvironmentTime(ViewerEnvironment env, int dayLength, int dayOffset)
+        {
+            if (dayLength >= 0) env.DayLength = dayLength;
+            if (dayOffset >= 0) env.DayOffset = dayOffset;
+        }
+
+        /// <summary>track -1 the whole environment; 0 water, 1 ground sky, 2-4 the altitude skies (LSL_Api.cs).</summary>
+        private int ApplyReplaceEnvironmentAsset(ViewerEnvironment env, int trackNo, string environment)
+        {
+            if (!TryLoadEnvironmentAsset(environment, out OSD envOSD)) return ENV_NO_ENVIRONMENT;
+            bool ok = trackNo == -1 ? env.CycleFromOSD(envOSD) : env.ReplaceTrackFromAsset(trackNo, null, envOSD);
+            return ok ? 1 : ENV_NO_ENVIRONMENT;
+        }
+
+        /// <summary>
+        /// LSL_Api.cs llReplaceEnvironment: a negative x or y is the whole region (estate rights), else the parcel there
+        /// (parcel environment rights, if the estate allows parcel environments). An empty environment with no track and
+        /// no times resets it; tracks 0 and 1 cannot be removed, removing one sky track is not supported.
+        /// </summary>
+        private int ConfluenceReplaceEnvironment(Vector3 position, string environment, int trackNo, int dayLength, int dayOffset)
+        {
+            IEnvironmentModule env = EnvModule;
+            if (env == null || m_host == null) return ENV_NO_ENVIRONMENT;
+            if (trackNo < -1 || trackNo > 4) return ENV_INVALID_RULE;
+            if (!ValidateEnvironmentTime(dayLength, dayOffset)) return ENV_VALIDATION_FAIL;
+
+            bool isEmpty = string.IsNullOrEmpty(environment) || environment == NULL_KEY;
+            if (isEmpty && trackNo != -1)
+                return trackNo <= 1 ? ENV_NO_PERMISSIONS : ENV_INVALID_RULE;
+            bool reset = isEmpty && trackNo == -1 && dayLength < 0 && dayOffset < 0;
+
+            if (position.X < 0 || position.Y < 0)
+            {
+                if (!World.Permissions.CanIssueEstateCommand(m_host.OwnerID, true)) return ENV_NO_PERMISSIONS;
+                if (reset)
+                {
+                    env.StoreOnRegion(null);
+                    env.WindlightRefresh(0);
+                    return 1;
+                }
+                ViewerEnvironment regionEnv = env.GetRegionEnvironment().Clone();
+                if (!isEmpty)
+                {
+                    int rc = ApplyReplaceEnvironmentAsset(regionEnv, trackNo, environment);
+                    if (rc != 1) return rc;
+                }
+                ApplyEnvironmentTime(regionEnv, dayLength, dayOffset);
+                env.StoreOnRegion(regionEnv);
+                env.WindlightRefresh(0);
+                return 1;
+            }
+
+            if (!World.RegionInfo.EstateSettings.AllowEnvironmentOverride) return ENV_NO_PERMISSIONS;
+            ILandObject parcel = World.LandChannel?.GetLandObject(position.X, position.Y);
+            if (parcel == null) return ENV_NO_ENVIRONMENT;
+            if (!World.Permissions.CanEditParcelProperties(m_host.OwnerID, parcel, GroupPowers.AllowEnvironment, true))
+                return ENV_NO_PERMISSIONS;
+            if (reset)
+            {
+                parcel.StoreEnvironment(null);
+                env.WindlightRefresh(0, false);
+                return 1;
+            }
+            ViewerEnvironment parcelEnv = (parcel.LandData.Environment ?? env.GetRegionEnvironment()).Clone();
+            if (!isEmpty)
+            {
+                int rc = ApplyReplaceEnvironmentAsset(parcelEnv, trackNo, environment);
+                if (rc != 1) return rc;
+            }
+            ApplyEnvironmentTime(parcelEnv, dayLength, dayOffset);
+            parcel.StoreEnvironment(parcelEnv);
+            env.WindlightRefresh(0, false);
+            return 1;
+        }
+
+        /// <summary>
+        /// LSL_Api.cs llReplaceAgentEnvironment: an Experience script, with the avatar's permission for that Experience,
+        /// sends the avatar a whole environment (or clears its override) through the event queue.
+        /// </summary>
+        private int ConfluenceReplaceAgentEnvironment(string agentID, float transition, string environment)
+        {
+            if (m_host == null || World == null) return ENV_INVALID_AGENT;
+            UUID experience = GetScriptExperienceId();
+            if (experience == UUID.Zero) return ENV_NOT_EXPERIENCE;
+            if (!UUID.TryParse(agentID, out UUID avatar) || avatar == UUID.Zero) return ENV_INVALID_AGENT;
+            ScenePresence presence = World.GetScenePresence(avatar);
+            if (presence == null || presence.IsChildAgent || presence.Animator == null) return ENV_INVALID_AGENT;
+            if (World.ExperienceModule?.GetExperiencePermission(avatar, experience) != ExperiencePermission.Allowed)
+                return ENV_NO_EXPERIENCE_PERMISSION;
+
+            IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
+            if (eq == null) return ENV_NO_ENVIRONMENT;
+
+            if (string.IsNullOrEmpty(environment) || environment == NULL_KEY)
+            {
+                eq.SendEnvironmentUpdate(experience, avatar, new ClearEnvironmentUpdate { TransitionTime = transition });
+                return 1;
+            }
+
+            UUID envID = ScriptUtils.GetAssetIdFromKeyOrItemName(m_host, environment);
+            if (envID == UUID.Zero) return ENV_NO_ENVIRONMENT;
+            AssetBase asset = World.AssetService.Get(envID.ToString());
+            if (asset == null || asset.Type != (byte)AssetType.Settings) return ENV_NO_ENVIRONMENT;
+            eq.SendEnvironmentUpdate(experience, avatar, new FullEnvironmentUpdate { AssetID = asset.FullID, TransitionTime = transition });
+            return 1;
+        }
+
         // ── ll* functions YEngine has ──────────────────────────────────────────────────────────────────────────────
 
         /// <summary>

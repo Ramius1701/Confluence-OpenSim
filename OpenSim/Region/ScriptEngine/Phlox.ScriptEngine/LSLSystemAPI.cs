@@ -20288,50 +20288,8 @@ public int llSetLinkGLTFOverrides(int link, int face, LSLList overrides)
         }
 
         public int llReplaceEnvironment(Vector3 pos, string environment, int track, int day_length, int day_offset)
-        {
-            // Check permissions
-            var envModule = World?.RequestModuleInterface<IEnvironmentModule>();
-            if (envModule == null) return -1;
-
-            if (!World.Permissions.CanEditParcelProperties(m_host.OwnerID,
-                World.LandChannel.GetLandObject(m_host.AbsolutePosition.X, m_host.AbsolutePosition.Y), 0, false))
-            {
-                ShoutError("llReplaceEnvironment: insufficient permissions");
-                return -1;
-            }
-
-            var env = envModule.GetRegionEnvironment();
-            if (env == null) return -1;
-
-            // Apply day_length and day_offset if specified (not -1)
-            bool changed = false;
-            if (day_length > 0)
-            {
-                env.DayLength = Math.Clamp(day_length, 14400, 604800);
-                changed = true;
-            }
-            if (day_offset != -1)
-            {
-                env.DayOffset = day_offset;
-                changed = true;
-            }
-
-            if (changed)
-            {
-                envModule.StoreOnRegion(env);
-                envModule.WindlightRefresh(0);
-            }
-
-            // Note: the 'environment' parameter would load an EEP asset by name/UUID
-            // from prim inventory. Full asset loading is not implemented yet — only
-            // day_length and day_offset changes are applied.
-            if (!string.IsNullOrEmpty(environment))
-            {
-                m_log.LogInformation("[PhloxAPI]: llReplaceEnvironment: EEP asset '{0}' load not yet implemented, day_length/offset applied", environment);
-            }
-
-            return ENV_OK;
-        }
+            // [Confluence: YEngine's implementation, LSLSystemAPI.Confluence.cs; Tranquillity's logged the asset and did not load it]
+            => ConfluenceReplaceEnvironment(pos, environment, track, day_length, day_offset);
 
         // ── Tier 7b: Agent Environment + User Key (633–635) ──
 
@@ -20411,25 +20369,8 @@ public int llSetLinkGLTFOverrides(int link, int face, LSLList overrides)
         }
 
         public int llReplaceAgentEnvironment(string agentID, float transition, string environment)
-        {
-            // Experience-gated: replace per-agent environment with named EEP preset
-            if (m_host == null || World == null) return -1;
-
-            UUID targetAgent;
-            if (!UUID.TryParse(agentID, out targetAgent)) return -1;
-
-            // Check experience permission
-            if (!HasExperiencePermission(targetAgent))
-                return -3; // XP_ERROR_NOT_EXPERIENCE
-
-            ScenePresence sp = World.GetScenePresence(targetAgent);
-            if (sp == null || sp.IsChildAgent) return -1;
-
-            // Per-agent EEP replace requires viewer protocol support.
-            m_log.LogInformation("[PhloxAPI]: llReplaceAgentEnvironment called for agent {0} environment='{1}' (transition={2}s). Per-agent EEP not yet implemented in viewer protocol.",
-                targetAgent, environment, transition);
-            return 0; // Report success so scripts proceed
-        }
+            // [Confluence: YEngine's implementation, LSLSystemAPI.Confluence.cs; Tranquillity's logged the asset and did not load it]
+            => ConfluenceReplaceAgentEnvironment(agentID, transition, environment);
 
         // ── Tier 8: Remaining SL Function Gaps (636–643) ──
 

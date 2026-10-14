@@ -80,7 +80,10 @@ trust queries; `llSetSculptAnim`; the deprecated `llRemoteDataSetRegion` / `llRe
 and the implementations in `LSLSystemAPI.Confluence.cs`, each a port of the YEngine one with its OSSL key and threat
 level. Tranquillity's `SyscallShim` and `LSLSystemAPI` classes became `partial` for this. Phlox's osNpc* drive NPCs
 through the bot manager, so the tag and follow functions use its tags and follow. Calls that may leave the process
-(assets, inventory, Experiences, the WebUI's partner service) run on the service lane.
+(assets, inventory, Experiences, the WebUI's partner service) run on the service lane. The same day
+`llReplaceEnvironment` (Tranquillity's logged the asset and loaded nothing) and `llReplaceAgentEnvironment` (a stub
+that reported success) became YEngine's, on the service lane; `llSetAgentEnvironment` and `llSetEnvironment`'s rules
+are still Tranquillity's.
 
 ## Tests
 

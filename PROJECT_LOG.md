@@ -28435,3 +28435,15 @@ functions; osReturnObjects refused without parcel rights. Full Phlox suite 5487 
 Test lesson: YEngine reads `[OSSL]` once per process (`OSSL_Api` `m_doneSharedInit`), so in a full run its threat level
 and Allow_ lists are those of whichever test initialised it first; a YEngine test must not depend on its own [OSSL]
 settings. The first version of the parity test did, passed alone and failed in the full run.
+
+**Same day: llReplaceEnvironment and llReplaceAgentEnvironment in Phlox are YEngine's.** Tranquillity's
+llReplaceEnvironment applied only day length/offset (it logged the asset name and loaded nothing, and checked parcel
+rights at the prim, not the target); its llReplaceAgentEnvironment logged and returned success. Both now delegate to
+ports of YEngine's (`LSLSystemAPI.Confluence.cs`): region (estate rights) or parcel (parcel environment rights),
+per-track replacement 0-4, reset, the SL error codes; the agent form through the event queue for an Experience script
+with the avatar's permission. Their shims moved to the service lane (a settings asset fetch). Still Tranquillity's:
+llSetAgentEnvironment (stub) and llSetEnvironment (day length/offset only) - they need YEngine's ~800-line rule parser,
+better shared than copied. Verified: `PhloxEnvironmentReplaceTests.cs` - one script under both engines against a
+recording environment module: identical codes (set 1, track -5, length -6, remove track 0 -9, remove track 3 -5,
+missing asset -3, reset 1, agent without an Experience -1) and the same stored region environment; full Phlox suite
+5488 passed, 0 failed.

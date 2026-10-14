@@ -7029,8 +7029,9 @@ private static string ConvToString(object o)
             int p2 = ConvToInt(self._interpreter.ScriptState.Operands.Pop());
             string p1 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
             Vector3 p0 = ConvToVector(self._interpreter.ScriptState.Operands.Pop());
-            int ret = self._systemAPI.llReplaceEnvironment(p0, p1, p2, p3, p4);
-            self._interpreter.ScriptState.Operands.Push(ConvToLSLType(ret));
+            // [Confluence: a settings asset fetch, so on the service lane]
+            Defer(self, "llReplaceEnvironment", new object[] { p0, p1, p2, p3, p4 },
+                () => ConvToLSLType(self._systemAPI.llReplaceEnvironment(p0, p1, p2, p3, p4)), -3, true);
         }
 		static private void Shim_llRequestUserKey(SyscallShim self)
         {
@@ -7051,8 +7052,9 @@ private static string ConvToString(object o)
             string p2 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
             float p1 = ConvToFloat(self._interpreter.ScriptState.Operands.Pop());
             string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
-            int ret = self._systemAPI.llReplaceAgentEnvironment(p0, p1, p2);
-            self._interpreter.ScriptState.Operands.Push(ConvToLSLType(ret));
+            // [Confluence: a settings asset fetch, so on the service lane]
+            Defer(self, "llReplaceAgentEnvironment", new object[] { p0, p1, p2 },
+                () => ConvToLSLType(self._systemAPI.llReplaceAgentEnvironment(p0, p1, p2)), -3, true);
         }
 		static private void Shim_llGetExperienceErrorMessage(SyscallShim self)
         {

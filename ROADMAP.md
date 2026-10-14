@@ -683,8 +683,11 @@ checked by `Tools/data-backend-check`.)*
     not only tight loops) before recommending it as a default.
   - The async asset-fetch check above is still to do.
   - Done 2026-10-14: the 40 functions YEngine has and Phlox lacked (32 `os*`, 8 `ll*`) are in Phlox, with a
-    parity test against YEngine. Still stubs in Phlox (they log and report success): `llSetAgentEnvironment`,
-    `llReplaceAgentEnvironment`, and `llReplaceEnvironment`'s asset part; YEngine has all three - port them next.
+    parity test against YEngine. `llReplaceEnvironment` and `llReplaceAgentEnvironment` are YEngine's too (same
+    day). Still thinner in Phlox than YEngine: `llSetAgentEnvironment` (a stub that reports success) and
+    `llSetEnvironment` (day length and offset only). Both need YEngine's environment rule parser (about 800 lines in
+    `LSL_Api.ParamsToEnvUpdate` / `ApplyEnvironmentParameters`); better moved to a shared helper both engines call
+    than copied.
   - Test suite: done 2026-10-13, 223 of 225 files run (5467 passed,
     0 failed) on upstream's test helpers, built as
     `Tests/OpenSim.Tests.Common`.
