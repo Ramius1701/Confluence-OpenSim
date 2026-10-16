@@ -28545,3 +28545,23 @@ Adapted: the sculpt maps are drawn with System.Drawing and encoded losslessly wi
 decodes with; theirs used SkiaSharp/CoreJ2K), the BasicPhysics namespace, and the "unflagged sculpts unchanged"
 fingerprints, which were measured on Confluence's mesher before the port (build without it) and are identical after.
 63 passed; Jolt tests 2099 passed; full Phlox suite 5551 passed, 0 failed. Not deployed.
+
+## Donor fetch 2026-10-16: Tranquillity #299-#318, open PRs (triage only)
+
+`tranquillity/develop` `1ab87a277b..02329bb34d`; origin and Legion `main` unchanged.
+- Already here, by another route: #305-#311 are the licence/attribution work taken from Legion's lanes on 2026-10-14
+  (`ea5899c46f`); #306 also carries Halcyon's notice onto SOPVehicle/VehicleConstants/IBotManager/BotManager, which
+  Confluence skipped then because the InWorldz vehicle code (#295) is not ported - BotManager/IBotManager are here and
+  should take it.
+- Worth porting, small core fixes: #318 YEngine keeps llTarget/llRotTarget targets across a state change
+  (XMRInstBackend, 3 lines + test); #316 land: parcel access and ban list edits stored, ban flag kept on save; #317 a
+  teleport request arriving mid-crossing is answered; #300 a null asset POST answers 400; #299 sitters stood up inside
+  the region before an edge-flagged object is deleted or returned (+ `ScriptRezzedObjectsDieAtEdge`).
+- Larger, to decide: #315 ZephyrWind wind plugin (terrain-shaped, aloft and underwater wind; 1,592 lines) + iwSetWind;
+  #301 gatekeeper external address through a configurable DNS server.
+- Open PRs: #314 vehicle record per-axis motor timescales and wind efficiency (needs #295 first); #302 per-viewer
+  region address selection (4,500 lines); #208/#204/#203/#180/#173 unchanged.
+- JohnLegionH: `feature/oar-inspector` (read-only OAR/IAR inspector library and tool) - relevant to the Halcyon OAR
+  import work; a dozen new `side/` Jolt branches (vehicles-iw, prim-hulls, push-model, avatar-hit) and fix branches
+  (mesher profile rings, rotlookat normalise, reflection-probe mirror, physical complexity limit).
+- LibreMetaverse `fd302f28a9..85429b83be`; review points updated.
