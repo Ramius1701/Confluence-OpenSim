@@ -2,7 +2,6 @@ using System;
 using System.Collections.Specialized;
 using System.IO;
 using System.Net;
-using System.Text;
 using System.Web;
 using OpenSim.Framework;
 using OSHttpServer.Exceptions;
@@ -19,7 +18,6 @@ namespace OSHttpServer
         /// <summary>
         /// Chars used to split an URL path into multiple parts.
         /// </summary>
-        public static readonly char[] UriSplitters = new[] { '/' };
         public static uint baseID = 0;
 
         private readonly NameValueCollection m_headers = new();
@@ -284,42 +282,13 @@ namespace OSHttpServer
         {
             get
             {
-                if(m_remoteIPEndPoint == null)
-                {
-                    // m_context.LocalIPEndPoint (despite its name - see
-                    // HttpClientContext, where it's assigned straight from
-                    // the accepted socket's own remoteEndPoint) is the real,
-                    // non-spoofable TCP peer for this connection. Only honour
-                    // a caller-supplied X-Forwarded-For when that real peer
-                    // is loopback - i.e. only from our own reverse proxy
-                    // (Casperia's shared Apache frontend runs on the same
-                    // host as Robust/every region). From any other peer, an
-                    // X-Forwarded-For header is just an unverified claim -
-                    // trusting it unconditionally let an attacker forge
-                    // their apparent source IP to any of the grid's public
-                    // HTTP services, defeating every IP-based ban/allowlist
-                    // check downstream. Found via a sibling fork's own
-                    // responsible-disclosure writeup, 2026-09-23.
-                    IPEndPoint directPeer = m_context.LocalIPEndPoint;
-                    if (directPeer != null && IPAddress.IsLoopback(directPeer.Address))
-                    {
-                        string addr = m_headers["x-forwarded-for"];
-                        if (!string.IsNullOrEmpty(addr))
-                        {
-                            try
-                            {
-                                m_remoteIPEndPoint = new IPEndPoint(IPAddress.Parse(addr), directPeer.Port);
-                            }
-                            catch
-                            {
-                                m_remoteIPEndPoint = null;
-                            }
-                        }
-                    }
-                }
                 m_remoteIPEndPoint ??= m_context.LocalIPEndPoint;
 
                 return m_remoteIPEndPoint;
+            }
+            set
+            {
+                m_remoteIPEndPoint = value;
             }
         }
         /*
@@ -399,19 +368,19 @@ namespace OSHttpServer
                             addr = s.Trim();
                         }
                     }
-                    if(addr.Length > 7)
+                    if(addr.Length >= 7)
                     {
                         m_headers.Add("x-forwarded-for", addr);
                     }
                     break;
                 case "x-forwarded-for":
-                    if (value.Length > 7)
+                    if (value.Length >= 7)
                     {
                         string[] xparts = value.Split(Util.SplitCommaArray);
                         if(xparts.Length > 0)
                         {
                             string xs = xparts[0].Trim();
-                            if(xs.Length > 7)
+                            if(xs.Length >= 7)
                                 m_headers.Add("x-forwarded-for", xs);
                         }
                     }

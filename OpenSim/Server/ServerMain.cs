@@ -146,6 +146,9 @@ namespace OpenSim.Server
 
             registryLocation = serverConfig.GetString("RegistryLocation",".");
 
+            if (networkConfig != null)   // [Confluence: read above already]
+                NetworkXffUtil.Initialize(networkConfig);
+
             IConfig servicesConfig = m_Server.Config.Configs["ServiceList"];
             if (servicesConfig != null)
             {

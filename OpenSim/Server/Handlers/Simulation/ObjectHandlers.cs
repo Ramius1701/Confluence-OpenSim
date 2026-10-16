@@ -66,6 +66,14 @@ namespace OpenSim.Server.Handlers.Simulation
                 return;
             }
 
+            // upstream: a script's llHTTPRequest (which sends X-SecondLife-Shard) is refused
+            if(httpRequest.Headers["X-SecondLife-Shard"] != null)
+            {
+                httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
+                httpResponse.RawBuffer = Utils.falseStrBytes;
+                return;   // [Confluence: upstream went on to handle it; and the parameter check below stays, DELETE uses it]
+            }
+
             if (!Utils.GetParams(httpRequest.UriPath, out UUID objectID, out UUID regionID, out string action))
             {
                 m_log.InfoFormat("[OBJECT HANDLER]: Invalid parameters for object message {0}", httpRequest.UriPath);

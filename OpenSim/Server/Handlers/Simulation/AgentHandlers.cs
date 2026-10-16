@@ -72,6 +72,12 @@ namespace OpenSim.Server.Handlers.Simulation
                 httpResponse.RawBuffer = Utils.falseStrBytes;
             }
 
+            if(httpRequest.Headers["X-SecondLife-Shard"] != null)
+            {
+                httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
+                httpResponse.RawBuffer = Utils.falseStrBytes;
+            }
+
             UUID agentID;
             UUID regionID;
             string action;
@@ -227,6 +233,12 @@ namespace OpenSim.Server.Handlers.Simulation
                 httpResponse.StatusCode = (int)HttpStatusCode.InternalServerError;
                 httpResponse.RawBuffer = Utils.falseStrBytes;
                 return;
+            }
+
+            if(httpRequest.Headers["X-SecondLife-Shard"] != null)
+            {
+                httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
+                httpResponse.RawBuffer = Utils.falseStrBytes;
             }
 
             if (!Utils.GetParams(httpRequest.UriPath, out UUID agentID, out UUID regionID, out string action))

@@ -91,6 +91,13 @@ namespace OpenSim.Region.CoreModules.Avatar.Friends
             if (!m_ControlPlaneAccess.Authorize(httpRequest, httpResponse))
                 return;
 
+            // upstream: a script's llHTTPRequest (which sends X-SecondLife-Shard) is refused
+            if(httpRequest.Headers["X-SecondLife-Shard"] != null)
+            {
+                httpResponse.StatusCode = (int)HttpStatusCode.NotAcceptable;
+                return;   // [Confluence: upstream set the status and went on, so the OK below replaced it]
+            }
+
             httpResponse.KeepAlive = false;
             httpResponse.StatusCode = (int)HttpStatusCode.OK;
             httpResponse.ContentType = "text/xml";
