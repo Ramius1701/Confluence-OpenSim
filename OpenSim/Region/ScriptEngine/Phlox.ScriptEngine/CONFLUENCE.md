@@ -87,7 +87,7 @@ are still Tranquillity's.
 
 ## Tests
 
-`dotnet test Tests\InWorldz.Phlox.Tests -c Release`: **5467 passed, 2 skipped, 0 failed** (2026-10-13; about 11
+`dotnet test Tests\InWorldz.Phlox.Tests -c Release`: **5,561 tests on 2026-10-16** (5,558 passed, 2 skipped, and `MasterSchedulerStopTests.EveryStopEndsTheThreadWellInsideTheJoin`, a stop-timing test that fails only when the machine stalls during the full run and passes on its own). Earlier: **5467 passed, 2 skipped, 0 failed** (2026-10-13; about 11
 minutes). 223 of their 225 test files run; the two left out test Tranquillity modules Confluence does not have (its
 SkiaSharp/CoreJ2K vector renderer, its server-side baking). The scene tests use upstream's `OpenSim/Tests/Common`
 (commented out of `prebuild.xml`, as upstream), built by the hand-maintained `Tests/OpenSim.Tests.Common`, with its

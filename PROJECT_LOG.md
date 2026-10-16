@@ -28592,3 +28592,29 @@ material, the asset is stored after a backup and the inline copy is gone. Agains
 physics shape None, 1,018 materials converted, 1,516 of 1,524 material faces linked (the other 8 name an id their prim's
 map does not hold - missing in the archive itself). Full Phlox suite 5559 passed, 0 failed. Not deployed; not yet loaded into a
 running region.
+
+## opensim-master merged (2026-10-12..15): XFF trusted proxies, RegionsAutoRegistration (2026-10-16)
+
+`1008502621`, 14 upstream commits. What they bring: `X-Forwarded-For` honoured only from proxies in `[Network]
+XFFTrustedProxies` (resolved once per request in HttpClientContext, an untrusted header removed), a GridService
+`RegionsAutoRegistration` option (default true: unchanged), object permissions that only add transfer to group/everyone
+permissions that have copy, scripted requests (`X-SecondLife-Shard`) refused by the friends, object, agent and neighbour
+handlers, and HTTP/DOS-protector clean-ups.
+
+Confluence decisions in the merge:
+- XFF: Confluence had its own fix (2026-09-23): trust the header only from a loopback peer, in BaseHttpServer and
+  HttpRequest. Upstream's mechanism replaces it; to keep the behaviour, an unset `XFFTrustedProxies` means loopback
+  (127.0.0.0/8, ::1) in Confluence, and `none` trusts no proxy. Casperia sets neither and its Robust does not use
+  `DOSAllowXForwardedForHeader`, so nothing changes there.
+- Upstream bugs fixed on the way: the friends handler set 406 for a scripted request and then overwrote it with 200 (no
+  return; ObjectHandlers likewise went on); UserAccountCache.GetUser, rewritten upstream, looked up UUID.Zero (it parsed
+  the id into `userID` and used `uuid`). Confluence's tiered cache expiry (1 h local, 2 h foreign, 10 min null) kept over
+  upstream's flat 5 minutes.
+- ObjectHandlers keeps its URI parameter check (upstream commented it out; Confluence's DELETE branch uses the ids).
+- Gloebit moved off the now-obsolete `RegionInfo.originRegionID` (it returns RegionID).
+- Upstream added a source file: prebuild re-run (and Jolt/Phlox re-added to the solution).
+Verified: build 0 warnings / 0 errors; full Phlox suite on the merged tree 5,558 passed, 2 skipped, 1 failed -
+`MasterSchedulerStopTests.EveryStopEndsTheThreadWellInsideTheJoin` (Tranquillity's stop-timing test: all four stops
+took ~1,115 ms at the same moment, a whole-machine stall during the run; it passes alone in 143 ms, and the merge
+touches nothing in Phlox). Docs updated: HARDENING (XFFTrustedProxies), FEATURES, TESTING 9.5, README, ROADMAP. Not
+deployed.

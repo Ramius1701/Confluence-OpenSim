@@ -82,10 +82,13 @@ level to Debug to see the list.
 
 ## Reverse proxies and client IPs
 
-`X-Forwarded-For` is honored only when the direct TCP peer is loopback (a proxy
-on the same host). From any other peer the socket address is used, so a forged
-header cannot fake a trusted or unblocked source. A proxy on another machine will
-therefore be seen as the proxy's address.
+`X-Forwarded-For` is honored only when the direct TCP peer is a trusted proxy:
+`[Network] XFFTrustedProxies` (bar-separated addresses, hostnames or CIDR ranges, in
+OpenSim.ini and Robust.ini; OpenSimulator's option since 2026-10). Unset, Confluence
+trusts this machine only (127.0.0.0/8 and ::1), so a proxy on the same host keeps
+working; `none` trusts no proxy. From any other peer the header is removed and the
+socket address is used, so a forged header cannot fake a trusted or unblocked source.
+A proxy on another machine must be listed there, or it is seen as the proxy's address.
 
 ## Hypergrid behavior
 

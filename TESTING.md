@@ -151,6 +151,10 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 9.4 Hypergrid export: an object without Export permission cannot be taken to another grid; estate deny-access
       settings refuse a Hypergrid visitor.
 
+- [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
+      see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,
+      the same; with it not listed, everything comes from the proxy's address.
+
 ## 10. Other databases
 
 Casperia runs MariaDB. On a grid using **SQLite** or **PostgreSQL**:

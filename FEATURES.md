@@ -638,7 +638,7 @@ avatar freeze and fly/walk flags, viewer name, link inventory giving, NPC tags/f
 environment and return functions, and `llCastRayV3`, the Experience trust queries, `llSetSculptAnim`), so a
 script behaves the same on either engine. A grid owner turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on
 the engine its first line names (`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`,
-which stays YEngine. Built with the solution; its test suite runs 5,467 tests with none failing, and its SLua
+which stays YEngine. Built with the solution; its test suite runs 5,561 tests (2026-10-16), and its SLua
 conformance runner gives 60 pass / 0 divergent / 3 gaps. Port notes, the core hooks it needs and test details:
 `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`; setup: `doc/PhloxSetup.md`.
 
@@ -882,10 +882,12 @@ multi-machine setup, deployment checklist) is in `HARDENING.md`.
   another grid can't read or save private notes/preferences through that
   foreign region.
 - **X-Forwarded-For trust fixed at the source** — the header is now
-  only honored when the direct TCP peer is loopback, closing a
+  only honored when the direct TCP peer is a trusted proxy, closing a
   source-IP spoofing gap that undermined every IP-based trust
   decision (including the allowlist above) without regressing
-  legitimate reverse-proxy deployments.
+  legitimate reverse-proxy deployments. Since 2026-10-16 this is
+  OpenSimulator's `[Network] XFFTrustedProxies` mechanism; unset, Confluence
+  trusts loopback only (a proxy on the same host), as it did before.
 - **Friends-list-wipe / presence-spoof bug fixed** — cross-grid
   friendship deletion and online/offline presence-status matching
   used to compare a caller-supplied secret against a stored value via

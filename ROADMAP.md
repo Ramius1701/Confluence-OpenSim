@@ -237,6 +237,19 @@ checked by `Tools/data-backend-check`.)*
 
 ## Planned, not started
 
+- **From the 2026-10-16 donor fetch** (triage in `PROJECT_LOG.md`): Tranquillity #318 (YEngine keeps llTarget /
+  llRotTarget across a state change), #316 (parcel access and ban list edits stored), #317 (a teleport request during
+  a border crossing answered), #300, #299 (sitters stood up inside the region before an edge-flagged object goes);
+  to decide: #315 ZephyrWind and #301 gatekeeper DNS resolver; Halcyon's notice on BotManager/IBotManager (#306).
+  Still open from 2026-10-14: Tranquillity's core physics fixes #282/#283/#287/#288/#291/#296/#297 and Legion's Jolt
+  work (mesh asset fetch, hulls, edge removal, rotation target).
+- **Optional creator filter on OAR load (idea from Halcyon's archiver).** Halcyon could load an OAR replacing prims,
+  sculpt/mesh shapes and face textures the region owner did not create with plywood and a default prim, marking them
+  "(Replaced: Prim created by ...)" - a way for a grid owner to accept a resident's OAR without importing other
+  creators' content. OpenSim has nothing like it. Not SL parity (SL has no OARs); not started.
+- **Phlox environment rules**: `llSetAgentEnvironment` (a stub) and `llSetEnvironment` (day length/offset only) need
+  YEngine's ~800-line rule parser; move it to a helper both engines share rather than copy it.
+
 - **Follow-ups from 2026-10-13** (Phlox test suite, damage paths, service-outage fix):
   - Report upstream: `llRezObjectWithParams`' `REZ_LOCK_AXES` tests X twice, so Z never locks (fixed here).
   - Done 2026-10-14: YEngine treats a network failure reaching a grid service as a failed call (event dropped,

@@ -30,7 +30,7 @@ a later phase.
 | Windows build | Successful — full solution build, 0 warnings / 0 errors, including Jolt and Phlox |
 | Script engines | YEngine (default); Phlox (LSL, OSSL and SLua with saved running state) optional, off by default |
 | Physics engines | ubODE (default), BulletSim, and Jolt (Jolt Physics v5.6), selectable per region |
-| Automated tests | Jolt: 2,099 passed, 0 failed. Phlox, including the core and YEngine behaviour it exercises: 5,467 passed, 0 failed |
+| Automated tests | Jolt: 2,099 passed, 0 failed. Phlox, including the core and YEngine behaviour it exercises: 5,561 tests (2026-10-16: 5,558 passed, 2 skipped, 1 load-sensitive timing test that passes on its own) |
 | Web/Admin UI | Live-verified against a running Robust instance (real HTTP sessions, admin actions, database writes) |
 | In-world/viewer testing | Live-verified with a real viewer (Firestorm): login, region crossing, weather, a full currency/land-purchase transaction, and spatial WebRTC voice with two real, separately-located participants |
 
@@ -153,7 +153,7 @@ dotnet test Tests/OpenSim.Region.PhysicsModules.Jolt.Tests -c Release
 dotnet test Tests/InWorldz.Phlox.Tests -c Release
 ```
 
-The Jolt suite (2,099 tests, about 3 minutes) drives real Jolt worlds. The Phlox suite (5,467 tests, about
+The Jolt suite (2,099 tests, about 3 minutes) drives real Jolt worlds. The Phlox suite (5,561 tests, about
 11 minutes) covers Phlox's compiler and VM, and runs scenes through upstream OpenSim's test helpers
 (`OpenSim/Tests/Common`, built by `Tests/OpenSim.Tests.Common`), so it also exercises the core: damage, parcels,
 crossings, permissions, Experiences, and YEngine's side of shared behaviour. `Tests/SluaProofRunner`
@@ -352,7 +352,9 @@ incompatible with a straight cherry-pick, hand-ported from:
   the only remaining copy is archived locally
 - [Halcyon/InWorldz](https://github.com/HalcyonGrid/halcyon) — audited as a
   preservation effort for design ideas and code from a project that has
-  fallen by the wayside; also where Phlox comes from
+  fallen by the wayside; also where Phlox comes from, and the reference for
+  loading InWorldz-era OARs with their projectors, materials and physics
+  shapes
 
 Engines and references:
 
