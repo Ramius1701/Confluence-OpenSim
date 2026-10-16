@@ -780,6 +780,17 @@ to edit. An empty box means the same as never saved, so it can't silence
 the greeting by accident; saving just `-` turns a message off on purpose, for
 the whole grid or for one region. A region's own text always wins.
 
+### InWorldz / Halcyon archives
+
+OARs (and objects in IARs) written by InWorldz or another Halcyon-based grid load with their projector lights, their
+materials and their physics shape types (2026-10-16). Halcyon kept these where OpenSim does not read them: a projector
+in five shape elements of its own (it left the shape's ExtraParams out), each prim's normal/specular materials inline in
+the prim rather than as assets, and the physics shape type (Prim / None / Convex Hull) on the shape. On load the
+projector settings go onto the prim, the materials a face uses become material assets under their original ids (so the
+faces keep them), and the physics shape type is kept - a part set to None stays walk-through. Stock OpenSim (and grids
+built on it) drops all three. Also fixed on the way: materials stored on a prim in OpenSim's own older format were never
+saved as assets, so they were lost at the next region restart.
+
 ### Region stability
 
 Sim FPS auto-mitigation and stuck-region auto-restart (`SimProtection`)

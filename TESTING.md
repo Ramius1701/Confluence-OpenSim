@@ -121,6 +121,9 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 7.3 Dynamic textures (`osSetDynamicTextureData`, `osDrawText`) on a prim, after a region restart.
 - [ ] 7.4 BulletSim: a physical prim smaller than 0.2 m on each axis collides with its real shape, not a box.
 - [ ] 7.5 ubODE: a twisted torus / tube / ring collides with the twist it shows.
+- [ ] 7.10 Load an InWorldz/Halcyon OAR (`load oar --merge` on a test region): projector lights project their texture,
+      normal and specular maps show (Firestorm with Advanced Lighting on), parts that were physics shape None are walk-through
+      - and all three are still there after a region restart.
 - [ ] 7.7 A sculpted prim with Invert or Mirror ticked (Build > Features of a sculpt) collides as it looks, on
       BulletSim and Jolt; two copies of one sculpt map, one mirrored, each collide with their own shape.
 - [ ] 7.8 On BulletSim, a small physical mesh (under 0.2 m) rezzed after a non-physical copy of the same mesh still

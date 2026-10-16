@@ -28565,3 +28565,30 @@ fingerprints, which were measured on Confluence's mesher before the port (build 
   import work; a dozen new `side/` Jolt branches (vehicles-iw, prim-hulls, push-model, avatar-hit) and fix branches
   (mesher profile rings, rotlookat normalise, reflection-probe mirror, physical complexity limit).
 - LibreMetaverse `fd302f28a9..85429b83be`; review points updated.
+
+## InWorldz/Halcyon OARs load with their projectors, materials and physics shapes (2026-10-16)
+
+From a resident's report: InWorldz-era OARs lost their advanced lighting and materials on another OpenSim grid, but
+not on a Halcyon-derived one. Checked against Halcyon's source (`HalcyonGrid/halcyon`, OpenSim/Framework/
+PrimitiveBaseShape.cs, RenderMaterials.cs, Archiver/) and a real archive (94 objects, 1,304 prims, written 2019): Halcyon
+serialised the shape with XmlSerializer and marked `ExtraParams` `[XmlIgnore]`, so a projector exists only as
+`ProjectionEntry`/`ProjectionTextureUUID`/`ProjectionFOV`/`ProjectionFocus`/`ProjectionAmbiance`; materials are inline in
+`RenderMaterialsBytes` (protobuf-net: map of material id -> RenderMaterial, the ids being the TextureEntry faces'
+MaterialIDs); the physics shape type is `PreferredPhysicsShape`. OpenSim's reader ignores all of them, and its
+MaterialsModule then clears every face MaterialID it finds no asset for.
+
+`SceneObjectSerializer` now reads the five projector elements onto the shape, `PreferredPhysicsShape` onto the part,
+and converts `RenderMaterialsBytes` (a small protobuf wire decoder; no new dependency) - only the materials a face uses
+(the archive's maps also hold ones no face uses) - into the part's legacy DynAttrs `OpenSim/Materials` store under their
+original ids. MaterialsModule already read that store when an object enters the scene, but removed it and never saved
+the materials as assets (upstream bug: lost at the next restart); it now queues them for the asset store like an edited
+material. Applies to OAR objects and to object assets in OARs/IARs alike.
+
+Verified: `HalcyonArchiveImportTests` (8): a projector read and present in ExtraParams for the viewer; Prim/None/
+ConvexHull; a used material converted under its id with every field (encoded by protobuf-net from a copy of Halcyon's
+contract) and an unused one dropped; a plain object unchanged; in a scene with MaterialsModule the face keeps its
+material, the asset is stored after a backup and the inline copy is gone. Against the real archive (local only, via
+`HALCYON_OAR_OBJECTS`; the content is a resident's and is not committed): all 94 objects read, 111 projectors, 223
+physics shape None, 1,018 materials converted, 1,516 of 1,524 material faces linked (the other 8 name an id their prim's
+map does not hold - missing in the archive itself). Full Phlox suite 5559 passed, 0 failed. Not deployed; not yet loaded into a
+running region.

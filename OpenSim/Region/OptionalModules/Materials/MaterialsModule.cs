@@ -327,6 +327,10 @@ namespace OpenSim.Region.OptionalModules.Materials
                                 fmat.ID = id;
                                 m_Materials[id] = fmat;
                                 m_MaterialsRefCount[id] = 0;
+                                // [Confluence] The store is removed from the part above, so the material must become an
+                                // asset or it is gone at the next region start (upstream never stored it). Also how an
+                                // InWorldz archive's materials arrive (SceneObjectSerializer.HalcyonShapeImport).
+                                m_changed[fmat] = Util.GetTimeStamp();
                             }
                         }
                         catch (Exception e)

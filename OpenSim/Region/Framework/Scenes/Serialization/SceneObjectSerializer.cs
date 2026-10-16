@@ -34,6 +34,7 @@ using System.Reflection;
 using System.Xml;
 using log4net;
 using OpenMetaverse;
+using OpenMetaverse.StructuredData;
 using OpenSim.Framework;
 using OpenSim.Framework.Serialization.External;
 
@@ -623,7 +624,17 @@ namespace OpenSim.Region.Framework.Scenes.Serialization
             {"LightEntry", ProcessShpLightEntry },
             {"SculptEntry", ProcessShpSculptEntry },
             {"Media", ProcessShpMedia },
-            {"MatOvrd", ProcessShpMatOvrd }
+            {"MatOvrd", ProcessShpMatOvrd },
+            // [Confluence] InWorldz/Halcyon archives: Halcyon serialised the shape with XmlSerializer and left ExtraParams
+            // out, so a projector is only in these five elements; its materials are in RenderMaterialsBytes and its
+            // physics shape type in PreferredPhysicsShape. See HalcyonShapeImport below.
+            {"ProjectionEntry", ProcessShpProjectionEntry },
+            {"ProjectionTextureUUID", ProcessShpProjectionTextureUUID },
+            {"ProjectionFOV", ProcessShpProjectionFOV },
+            {"ProjectionFocus", ProcessShpProjectionFocus },
+            {"ProjectionAmbiance", ProcessShpProjectionAmbiance },
+            {"RenderMaterialsBytes", ProcessShpRenderMaterialsBytes },
+            {"PreferredPhysicsShape", ProcessShpPreferredPhysicsShape }
         }.ToFrozenDictionary();
 
         #region SOPXmlProcessors
@@ -1509,6 +1520,46 @@ namespace OpenSim.Region.Framework.Scenes.Serialization
             }
         }
 
+        // ── [Confluence] InWorldz/Halcyon archive elements ────────────────────────────────────────────────────────────
+
+        private static void ProcessShpProjectionEntry(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            shp.ProjectionEntry = Util.ReadBoolean(reader);
+        }
+
+        private static void ProcessShpProjectionTextureUUID(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            shp.ProjectionTextureUUID = Util.ReadUUID(reader, "ProjectionTextureUUID");
+        }
+
+        private static void ProcessShpProjectionFOV(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            shp.ProjectionFOV = reader.ReadElementContentAsFloat("ProjectionFOV", string.Empty);
+        }
+
+        private static void ProcessShpProjectionFocus(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            shp.ProjectionFocus = reader.ReadElementContentAsFloat("ProjectionFocus", string.Empty);
+        }
+
+        private static void ProcessShpProjectionAmbiance(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            shp.ProjectionAmbiance = reader.ReadElementContentAsFloat("ProjectionAmbiance", string.Empty);
+        }
+
+        private static void ProcessShpRenderMaterialsBytes(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            string value = reader.ReadElementContentAsString("RenderMaterialsBytes", string.Empty);
+            HalcyonShapeImport.t_renderMaterials = string.IsNullOrWhiteSpace(value) ? null : Convert.FromBase64String(value);
+        }
+
+        private static void ProcessShpPreferredPhysicsShape(PrimitiveBaseShape shp, XmlReader reader)
+        {
+            string value = reader.ReadElementContentAsString("PreferredPhysicsShape", string.Empty);
+            if (Enum.TryParse(value, true, out PhysicsShapeType type))
+                HalcyonShapeImport.t_physicsShape = (byte)type;
+        }
+
         private static void ProcessShpMatOvrd(PrimitiveBaseShape shp, XmlReader reader)
         {
             try
@@ -2007,6 +2058,9 @@ namespace OpenSim.Region.Framework.Scenes.Serialization
 
             reader.ReadStartElement(name, string.Empty); // Shape
 
+            HalcyonShapeImport.t_renderMaterials = null;
+            HalcyonShapeImport.t_physicsShape = null;
+
             ExternalRepresentationUtils.ExecuteReadProcessors(
                 shape,
                 m_ShapeXmlProcessors,
@@ -2021,11 +2075,213 @@ namespace OpenSim.Region.Framework.Scenes.Serialization
 
             reader.ReadEndElement(); // Shape
 
+            HalcyonShapeImport.ApplyToPart(shape, obj);
+
             errorNodeNames = internalErrorNodeNames;
 
             return shape;
         }
 
         #endregion
+
+        /// <summary>
+        /// [Confluence] What an InWorldz/Halcyon archive keeps on the shape that OpenSim keeps on the part. The shape
+        /// readers only see the shape, so they leave these here (per thread, cleared at the start of each shape) and
+        /// ReadShape hands them to the part.
+        ///
+        /// Materials: Halcyon stored a prim's materials inline (PrimitiveBaseShape.RenderMaterials, protobuf-net: a map
+        /// of material id -> RenderMaterial), and each TextureEntry face's MaterialID is a key of that map. OpenSim keeps
+        /// a material as an asset under its id. The materials the faces use are converted to OpenSim's FaceMaterial and
+        /// left in the part's legacy DynAttrs store (OpenSim/Materials), which the materials module reads when the object
+        /// enters the scene and saves as material assets under the same ids, so the faces keep pointing at them. A
+        /// material no face uses (Halcyon kept replaced ones in the map) is not carried.
+        /// </summary>
+        internal static class HalcyonShapeImport
+        {
+            [ThreadStatic] internal static byte[] t_renderMaterials;
+            [ThreadStatic] internal static byte? t_physicsShape;
+
+            internal static void ApplyToPart(PrimitiveBaseShape shape, SceneObjectPart part)
+            {
+                byte[] materials = t_renderMaterials;
+                byte? physicsShape = t_physicsShape;
+                t_renderMaterials = null;
+                t_physicsShape = null;
+                if (part is null)
+                    return;
+
+                if (physicsShape.HasValue)
+                    part.PhysicsShapeType = physicsShape.Value;
+
+                if (materials is null || materials.Length == 0)
+                    return;
+                try
+                {
+                    OSDArray store = ToLegacyMaterials(materials, shape);
+                    if (store.Count == 0)
+                        return;
+                    part.DynAttrs ??= new DAMap();
+                    lock (part.DynAttrs)
+                        part.DynAttrs.SetStore("OpenSim", "Materials", new OSDMap { ["Materials"] = store });
+                }
+                catch (Exception e)
+                {
+                    m_log.WarnFormat("[SceneObjectSerializer]: could not read the InWorldz materials of {0} {1}: {2}",
+                        part.Name, part.UUID, e.Message);
+                }
+            }
+
+            /// <summary>The materials a face of the shape uses, as the legacy store's [{ID, Material}] entries.</summary>
+            internal static OSDArray ToLegacyMaterials(byte[] renderMaterials, PrimitiveBaseShape shape)
+            {
+                HashSet<UUID> used = new();
+                Primitive.TextureEntry te = shape.Textures;
+                if (te is not null)
+                {
+                    if (te.DefaultTexture is not null && te.DefaultTexture.MaterialID.IsNotZero())
+                        used.Add(te.DefaultTexture.MaterialID);
+                    foreach (Primitive.TextureEntryFace face in te.FaceTextures)
+                        if (face is not null && face.MaterialID.IsNotZero())
+                            used.Add(face.MaterialID);
+                }
+
+                OSDArray result = new();
+                if (used.Count == 0)
+                    return result;
+
+                // RenderMaterials: field 1, repeated map entry { 1: key (bcl.Guid), 2: value (RenderMaterial) }.
+                foreach ((int field, ReadOnlyMemory<byte> entry) in Fields(renderMaterials))
+                {
+                    if (field != 1)
+                        continue;
+                    UUID id = UUID.Zero;
+                    ReadOnlyMemory<byte> value = default;
+                    foreach ((int f, ReadOnlyMemory<byte> v) in Fields(entry))
+                    {
+                        if (f == 1) id = ReadGuid(v);
+                        else if (f == 2) value = v;
+                    }
+                    if (id.IsZero() || !used.Contains(id))
+                        continue;
+
+                    FaceMaterial fm = ReadMaterial(value);
+                    fm.ID = id;
+                    result.Add(new OSDMap { ["ID"] = OSD.FromUUID(id), ["Material"] = fm.toOSD() });
+                }
+                return result;
+            }
+
+            // Halcyon's RenderMaterial (protobuf-net, ProtoMember numbers): 1 NormalID, 2-6 normal offset x/y, repeat x/y,
+            // rotation; 7 SpecularID, 8-12 the same for specular; 13-16 specular colour RGBA; 17 specular exponent;
+            // 18 environment intensity; 19 diffuse alpha mode; 20 alpha mask cutoff. protobuf-net leaves out a field whose
+            // value is zero, so a missing field is 0, not FaceMaterial's own default.
+            private static FaceMaterial ReadMaterial(ReadOnlyMemory<byte> data)
+            {
+                FaceMaterial fm = new()
+                {
+                    NormalRepeatX = 0, NormalRepeatY = 0, SpecularRepeatX = 0, SpecularRepeatY = 0,
+                    SpecularLightColorR = 0, SpecularLightColorG = 0, SpecularLightColorB = 0, SpecularLightColorA = 0,
+                    SpecularLightExponent = 0, EnvironmentIntensity = 0, DiffuseAlphaMode = 0, AlphaMaskCutoff = 0
+                };
+                foreach ((int f, ReadOnlyMemory<byte> v, ulong n) in FieldsWithValues(data))
+                {
+                    switch (f)
+                    {
+                        case 1: fm.NormalMapID = ReadGuid(v); break;
+                        case 2: fm.NormalOffsetX = Float(v); break;
+                        case 3: fm.NormalOffsetY = Float(v); break;
+                        case 4: fm.NormalRepeatX = Float(v); break;
+                        case 5: fm.NormalRepeatY = Float(v); break;
+                        case 6: fm.NormalRotation = Float(v); break;
+                        case 7: fm.SpecularMapID = ReadGuid(v); break;
+                        case 8: fm.SpecularOffsetX = Float(v); break;
+                        case 9: fm.SpecularOffsetY = Float(v); break;
+                        case 10: fm.SpecularRepeatX = Float(v); break;
+                        case 11: fm.SpecularRepeatY = Float(v); break;
+                        case 12: fm.SpecularRotation = Float(v); break;
+                        case 13: fm.SpecularLightColorR = (byte)n; break;
+                        case 14: fm.SpecularLightColorG = (byte)n; break;
+                        case 15: fm.SpecularLightColorB = (byte)n; break;
+                        case 16: fm.SpecularLightColorA = (byte)n; break;
+                        case 17: fm.SpecularLightExponent = (byte)n; break;
+                        case 18: fm.EnvironmentIntensity = (byte)n; break;
+                        case 19: fm.DiffuseAlphaMode = (byte)n; break;
+                        case 20: fm.AlphaMaskCutoff = (byte)n; break;
+                    }
+                }
+                return fm;
+            }
+
+            private static float Float(ReadOnlyMemory<byte> v)
+                => v.Length == 4 ? BitConverter.ToSingle(v.Span) : 0f;
+
+            // protobuf-net's bcl.Guid: { 1: fixed64 lo, 2: fixed64 hi }, the two halves of Guid.ToByteArray().
+            private static UUID ReadGuid(ReadOnlyMemory<byte> data)
+            {
+                byte[] bytes = new byte[16];
+                foreach ((int f, ReadOnlyMemory<byte> v) in Fields(data))
+                {
+                    if (v.Length != 8) continue;
+                    if (f == 1) v.Span.CopyTo(bytes.AsSpan(0, 8));
+                    else if (f == 2) v.Span.CopyTo(bytes.AsSpan(8, 8));
+                }
+                return new UUID(new Guid(bytes));
+            }
+
+            private static IEnumerable<(int, ReadOnlyMemory<byte>)> Fields(ReadOnlyMemory<byte> data)
+            {
+                foreach ((int f, ReadOnlyMemory<byte> v, ulong _) in FieldsWithValues(data))
+                    yield return (f, v);
+            }
+
+            // The protobuf wire format: a varint key (field << 3 | wire type) then varint (0), fixed64 (1),
+            // length-delimited (2) or fixed32 (5). A varint's value is returned as the number; the others as bytes.
+            private static IEnumerable<(int, ReadOnlyMemory<byte>, ulong)> FieldsWithValues(ReadOnlyMemory<byte> data)
+            {
+                int i = 0;
+                while (i < data.Length)
+                {
+                    ulong key = ReadVarint(data.Span, ref i);
+                    int field = (int)(key >> 3);
+                    switch ((int)(key & 7))
+                    {
+                        case 0:
+                            yield return (field, ReadOnlyMemory<byte>.Empty, ReadVarint(data.Span, ref i));
+                            break;
+                        case 1:
+                            if (i + 8 > data.Length) throw new FormatException("truncated fixed64");
+                            yield return (field, data.Slice(i, 8), 0);
+                            i += 8;
+                            break;
+                        case 2:
+                            int len = (int)ReadVarint(data.Span, ref i);
+                            if (len < 0 || i + len > data.Length) throw new FormatException("truncated field");
+                            yield return (field, data.Slice(i, len), 0);
+                            i += len;
+                            break;
+                        case 5:
+                            if (i + 4 > data.Length) throw new FormatException("truncated fixed32");
+                            yield return (field, data.Slice(i, 4), 0);
+                            i += 4;
+                            break;
+                        default:
+                            throw new FormatException("unknown wire type " + (key & 7));
+                    }
+                }
+            }
+
+            private static ulong ReadVarint(ReadOnlySpan<byte> data, ref int i)
+            {
+                ulong value = 0;
+                for (int shift = 0; shift < 64; shift += 7)
+                {
+                    if (i >= data.Length) throw new FormatException("truncated varint");
+                    byte b = data[i++];
+                    value |= (ulong)(b & 0x7F) << shift;
+                    if (b < 0x80) return value;
+                }
+                throw new FormatException("varint too long");
+            }
+        }
     }
 }
