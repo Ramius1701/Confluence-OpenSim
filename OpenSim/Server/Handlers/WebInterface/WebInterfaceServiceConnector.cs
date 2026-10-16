@@ -1213,6 +1213,12 @@ namespace OpenSim.Server.Handlers.WebInterface
                     case BasePath + "/myregions/concierge/save":
                         HandleMyRegionsConciergeSave(request, response);
                         break;
+                    case BasePath + "/myregions/weather":
+                        HandleMyRegionsWeather(request, response);
+                        break;
+                    case BasePath + "/myregions/weather/save":
+                        HandleMyRegionsWeatherSave(request, response);
+                        break;
                     case BasePath + "/myland":
                         HandleMyLand(request, response);
                         break;
@@ -11795,7 +11801,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                     .Append("a public-facing reverse proxy has real, environment-dependent failure modes (body size limits, read timeouts) ")
                     .Append("that a self-service page can't fix on its own. Restore an OAR from the region's own console instead.</p>");
 
-                rows.Append("<table><tr><th>Region</th><th>Status</th><th>Location</th><th>Currency</th><th>Actions</th><th>Group Auto-Invite</th><th>Concierge</th></tr>");
+                rows.Append("<table><tr><th>Region</th><th>Status</th><th>Location</th><th>Currency</th><th>Actions</th><th>Group Auto-Invite</th><th>Concierge</th><th>Weather</th></tr>");
                 foreach (GridRegion region in ownedRegions)
                 {
                     string currentCurrency = GetRegionEconomyModule(region.RegionID);
@@ -11832,7 +11838,9 @@ namespace OpenSim.Server.Handlers.WebInterface
                     rows.Append("<input type=\"hidden\" name=\"action\" value=\"disable\">");
                     rows.Append("<button type=\"submit\">Disable</button></form>");
                     rows.Append("</td>");
-                    rows.Append("<td><a href=\"").Append(BasePath).Append("/myregions/concierge?region=").Append(region.RegionID).Append("\">Edit</a></td></tr>");
+                    rows.Append("<td><a href=\"").Append(BasePath).Append("/myregions/concierge?region=").Append(region.RegionID).Append("\">Edit</a></td>");
+                    rows.Append("<td><a href=\"").Append(BasePath).Append("/myregions/weather?region=").Append(region.RegionID).Append("\">")
+                        .Append(Html(WeatherSummary(region.RegionID))).Append("</a></td></tr>");
                 }
                 rows.Append("</table>");
             }

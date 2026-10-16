@@ -686,6 +686,15 @@ with persistent precipitation, correctly-positioned lightning, and four
 tuned weather profiles. Still reasonably described as experimental —
 not scientifically simulated weather.
 
+- **Each region's owner decides** (2026-10-16): weather is off in a region until its owner turns it on under
+  My Regions > Weather, where they also choose whether it changes by itself and how long each weather lasts
+  (default 1 hour). The region picks the change up within about a minute, no restart. A grid without the web portal
+  uses the `[Weather]` ini as before.
+- **The weather sky is per avatar** (2026-10-16): storms darken the sky and change the clouds for the people in the
+  region, built from the region's own day cycle so the sun keeps moving, and the region's environment is never
+  changed - a restart or crash can't leave a storm sky behind (it used to, until someone typed `weather clear`).
+  Sunny gives the normal sky back (it used to keep the storm's). Parcels with their own environment, and avatars
+  given one by a script, are left alone.
 - A region-wide `"WEATHER|<Kind>"` broadcast on a configurable channel
   lets independent scripted objects (fireplaces, seasonal clothing,
   umbrellas) react to weather without being part of the module.

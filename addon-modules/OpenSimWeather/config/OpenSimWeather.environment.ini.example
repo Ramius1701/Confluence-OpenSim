@@ -36,7 +36,6 @@
     ExclusionObjectName = Weather Exclusion
 
     AdjustEnvironment = true
-    AllowPersistentEnvironmentChanges = true
     RestoreCloudsOnClear = true
 
     AdjustWind = true

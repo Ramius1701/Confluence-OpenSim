@@ -32,7 +32,7 @@
     ThunderEnabled = false
 
     AutoCycleEnabled = true
-    AutoCycleHours = 6.0
+    AutoCycleHours = 1.0
     AutoCycleStartupDelaySeconds = 30
     AutoCycleChangeOnStartup = false
     AutoCycleChoices = storm,rain,snow,sunny,clear

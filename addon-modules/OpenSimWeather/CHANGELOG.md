@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - Confluence: the sky per avatar, on or off per region (2026-10-16)
+
+- The weather sky is each avatar's own environment override built from the region's day cycle, never the region's
+  stored environment: a restart or crash no longer leaves a storm sky that only `weather clear` removes. Avatars on a
+  parcel with its own environment, or with a script's, are left alone. `AllowPersistentEnvironmentChanges` removed.
+- Sunny (and any weather without a sky profile) gives the normal sky back; it used to keep the previous storm sky.
+- At startup a weather sky an earlier version left saved on the region is put back to the region default.
+- Per-region on/off, automatic changes and hours per weather from the web portal (My Regions > Weather), read from
+  Robust's `/weather/<region>`; off until the owner turns it on. Without the portal the ini decides.
+- `AutoCycleHours` defaults to 1 (was 6); turning weather on starts the first change after
+  `AutoCycleStartupDelaySeconds`.
+
 ## 0.3.4 - chat response and complete environment profiles
 
 - Removed the duplicate `Weather:` prefix from object-style chat replies.

@@ -15,6 +15,7 @@
 	 <ReferencePath>../../../bin/</ReferencePath>
 	 <Reference name="OpenMetaverse"/>
 	 <Reference name="OpenMetaverseTypes"/>
+	 <Reference name="OpenMetaverse.StructuredData"/>
 	 <Reference name="OpenSim.Framework"/>
 	 <Reference name="OpenSim.Region.Framework"/>
 	 <Reference name="OpenSim.Region.PhysicsModules.SharedBase"/>

@@ -78,6 +78,13 @@ namespace OpenSim.Framework
     public class ViewerEnvironment
     {
         DayCycle Cycle = new();
+
+        /// <summary>[Confluence] Every sky of the day cycle, to change in place (on a Clone, to change a copy).</summary>
+        public IEnumerable<SkyData> SkyFrames => Cycle?.skyframes?.Values ?? (IEnumerable<SkyData>)Array.Empty<SkyData>();
+
+        /// <summary>[Confluence] True for an environment made from LightShare settings (<see cref="FromLightShare"/>).</summary>
+        public bool IsLightShare => Cycle?.Name == "Lightshare";
+
         public int DayLength = 14400;
         public int DayOffset = 57600;
         public int Flags = 0;

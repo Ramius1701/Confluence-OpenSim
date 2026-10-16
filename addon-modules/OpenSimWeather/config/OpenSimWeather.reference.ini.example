@@ -136,7 +136,6 @@
     ;; OpenSim persists these changes, so the explicit acknowledgement is also
     ;; required before any profile is applied.
     AdjustEnvironment = false
-    AllowPersistentEnvironmentChanges = false
     RestoreCloudsOnClear = true
 
     ;; ------------------------------------------------------------------------
@@ -170,7 +169,7 @@
     ;; ------------------------------------------------------------------------
 
     AutoCycleEnabled = false
-    AutoCycleHours = 6.0
+    AutoCycleHours = 1.0
     AutoCycleStartupDelaySeconds = 30
     AutoCycleChangeOnStartup = false
     AutoCycleChoices = storm,rain,snow,sunny,clear

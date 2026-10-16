@@ -36,6 +36,7 @@ using log4net;
 using Mono.Addins;
 using Nini.Config;
 using OpenMetaverse;
+using OpenMetaverse.StructuredData;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
@@ -190,11 +191,16 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private UUID m_weatherOwnerId = UUID.Zero;
         private readonly Dictionary<long, SceneObjectGroup> m_activeEmitterCells = new Dictionary<long, SceneObjectGroup>();
         private bool m_adjustClouds;
-        private bool m_allowPersistentEnvironmentChanges;
+        // [Confluence] per-region switches from the web portal (see Initialise)
+        private bool m_useWebSettings;
+        private string m_settingsServerURI = string.Empty;
+        private bool m_iniAutoCycleEnabled;
+        private float m_iniAutoCycleHours;
+        private bool m_regionActive;
+        private bool m_webSettingsAvailable = true;
+        private Timer m_webSettingsTimer;
         private bool m_restoreCloudsOnClear;
         private IEnvironmentModule m_environmentModule;
-        private RegionLightShareData m_savedEnvironment;
-        private bool m_savedEnvironmentWasUnset;
         private IWindModule m_windModule;
         private string m_savedWindPlugin;
         private Dictionary<string, float> m_savedWindParams;
@@ -389,15 +395,20 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             m_lightningTexture = ReadTexture(config, "LightningTexture", Util.BLANK_TEXTURE_UUID);
 
             m_adjustClouds = config.GetBoolean("AdjustEnvironment", config.GetBoolean("AdjustClouds", false));
-            m_allowPersistentEnvironmentChanges = config.GetBoolean("AllowPersistentEnvironmentChanges", false);
             m_restoreCloudsOnClear = config.GetBoolean("RestoreCloudsOnClear", true);
-            if (m_adjustClouds && !m_allowPersistentEnvironmentChanges)
-            {
-                m_adjustClouds = false;
-                m_log.Warn(
-                    "[WEATHER]: AdjustEnvironment=true ignored because AllowPersistentEnvironmentChanges is not true. "
-                    + "OpenSim stores LightShare/EEP region environment changes; enable the acknowledgement only after reading the module documentation.");
-            }
+            // [Confluence] The weather sky is now each avatar's own override and is never stored on the region, so the
+            // old acknowledgement for stored changes is no longer needed (and no longer read).
+            if (config.Contains("AllowPersistentEnvironmentChanges"))
+                m_log.Info("[WEATHER]: AllowPersistentEnvironmentChanges is no longer used: the weather sky is shown per avatar and never stored on the region.");
+
+            // [Confluence] Per-region switches from the grid's web portal (My Regions > Weather), read from Robust's
+            // /weather/<region>. With them, a region has weather only when its owner turned it on; without them (no
+            // Robust address, or a Robust without the endpoint) this ini decides, as before.
+            m_useWebSettings = config.GetBoolean("UseWebPortalSettings", true);
+            m_settingsServerURI = config.GetString("SettingsServerURI", string.Empty);
+            if (string.IsNullOrWhiteSpace(m_settingsServerURI))
+                m_settingsServerURI = source.Configs["GridService"]?.GetString("GridServerURI", string.Empty) ?? string.Empty;
+            m_settingsServerURI = m_settingsServerURI.Trim().TrimEnd('/');
 
             m_adjustWind = config.GetBoolean("AdjustWind", false);
             m_restoreWindOnClear = config.GetBoolean("RestoreWindOnClear", true);
@@ -456,10 +467,12 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             m_auroraHighColor = ReadVector4(config, "AuroraHighColor", m_auroraHighColor);
 
             m_autoCycleEnabled = config.GetBoolean("AutoCycleEnabled", false);
-            m_autoCycleHours = Clamp(config.GetFloat("AutoCycleHours", 6f), 0.01f, 596f);
+            m_autoCycleHours = Clamp(config.GetFloat("AutoCycleHours", 1f), 0.01f, 596f);   // [Confluence: 1 hour, was 6]
             m_autoCycleStartupDelaySeconds = Clamp(config.GetInt("AutoCycleStartupDelaySeconds", 30), 1, 86400);
             m_autoCycleChangeOnStartup = config.GetBoolean("AutoCycleChangeOnStartup", false);
             ParseAutoCycleChoices(config.GetString("AutoCycleChoices", "storm,rain,snow,sunny,clear"));
+            m_iniAutoCycleEnabled = m_autoCycleEnabled;
+            m_iniAutoCycleHours = m_autoCycleHours;
             m_autoCycleForecastWarningMinutes = Clamp(config.GetInt("AutoCycleForecastWarningMinutes", 15), 0, 35790);
             m_autoCycleForecastWarningMessage = config.GetString(
                 "AutoCycleForecastWarningMessage",
@@ -574,6 +587,7 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
         public void RemoveRegion(Scene scene)
         {
+            StopWebSettingsPolling();
             StopAutoCycle();
             StopActiveAreaRefresh();
             StopWanderingRefresh();
@@ -634,15 +648,20 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             if (m_cleanupGeneratedObjectsOnStartup)
                 CleanupGeneratedObjects();
 
+            HealSavedWeatherSky();
             RefreshExclusionVolumes(true);
-            StartAutoCycle();
-            StartSurfaceTimer();
-            StartAuroraTimer();
-            StartLightningSweepTimer();
+
+            // [Confluence] With the web portal the region has weather only once its owner turns it on (polled below);
+            // without it, the ini's Enabled=true is the answer, as before.
+            if (UsesWebSettings)
+                StartWebSettingsPolling();
+            else
+                SetRegionActive(true, "the [Weather] ini settings");
         }
 
         public void Close()
         {
+            StopWebSettingsPolling();
             StopAutoCycle();
             StopActiveAreaRefresh();
             StopWanderingRefresh();
@@ -662,8 +681,13 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
         private void OnMakeRootAgent(ScenePresence sp)
         {
-            if (sp == null || sp.IsDeleted || sp.IsNPC || sp.IsChildAgent)
+            if (sp == null || sp.IsDeleted || sp.IsNPC || sp.IsChildAgent || !m_regionActive)
                 return;
+
+            // [Confluence] an arrival sees the weather sky too (it is per avatar, see ApplyClouds)
+            ViewerEnvironment weatherSky = m_weatherEnvironment;
+            if (weatherSky != null)
+                SetAvatarSky(sp, null, weatherSky);
 
             if (m_coverageMode == CoverageMode.ActiveArea && IsPrecipitationWeather(CurrentWeather()))
                 QueueActiveAreaRefresh();
@@ -705,6 +729,12 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             if (m_estateManagerOnly && !scene.Permissions.IsEstateManager(client.AgentId))
             {
                 SendReply(client, "Only estate managers can change weather here.");
+                return;
+            }
+
+            if (!m_regionActive)
+            {
+                SendReply(client, "Weather is off in this region. Its owner can turn it on under My Regions on the grid's website.");
                 return;
             }
 
@@ -1222,12 +1252,18 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
         private void StartAutoCycle()
         {
+            StartAutoCycle(m_autoCycleChangeOnStartup);
+        }
+
+        /// <param name="changeSoon">first change after AutoCycleStartupDelaySeconds rather than a full interval</param>
+        private void StartAutoCycle(bool changeSoon)
+        {
             if (!m_autoCycleEnabled || m_scene == null)
                 return;
 
             StopAutoCycle();
 
-            int dueTime = m_autoCycleChangeOnStartup
+            int dueTime = changeSoon
                 ? m_autoCycleStartupDelaySeconds * 1000
                 : AutoCycleIntervalMS();
 
@@ -3051,70 +3087,297 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             return false;
         }
 
+        // ── [Confluence] The weather sky, per viewer ─────────────────────────────────────────────────────────────────
+        //
+        // The weather sky is each avatar's own environment override (ScenePresence.Environment, which the environment
+        // module serves before the parcel's and the region's), never the region's stored environment. It used to be
+        // written to the region (FromLightShare), so a crash, a forced stop or a restart before the clean-up left the
+        // storm sky saved, and the module, starting at Clear, never took it off ("stuck until weather clear").
+        //
+        // The override is a copy of the region's day cycle with the weather applied to every sky in it, so the sun
+        // and moon keep moving. An avatar standing on a parcel with its own environment, or one a script has given its
+        // own (llReplaceAgentEnvironment, osReplaceAgentEnvironment), is left alone.
+
+        /// <summary>The override the module last gave avatars; null when no weather sky is showing.</summary>
+        private ViewerEnvironment m_weatherEnvironment;
+
         private void ApplyClouds(WeatherKind weather)
         {
             if (!m_adjustClouds || m_environmentModule == null)
                 return;
 
-            // m_savedEnvironment is only the restore point for "weather clear" -
-            // each individual weather change must clone from the LIVE
-            // environment, not that frozen snapshot, or the sun/moon position
-            // (left untouched below) gets stuck at whatever it was when the
-            // first weather of the session started instead of continuing to
-            // track the region's actual day/night cycle.
-            RegionLightShareData current = m_environmentModule.ToLightShare();
-            if (current == null)
-                return;
-
-            if (m_savedEnvironment == null)
+            // A weather without a sky of its own (sunny, clear) shows the region's normal sky. Before, it changed
+            // nothing, so the sky of the previous weather stayed (a storm sky under "sunny").
+            if (!m_environmentProfiles.TryGetValue(weather, out EnvironmentProfile profile))
             {
-                m_savedEnvironmentWasUnset = RegionEnvironmentWasUnset();
-                m_savedEnvironment = CloneLightShare(current);
+                RestoreClouds(true);
+                return;
             }
 
-            if (!m_environmentProfiles.TryGetValue(weather, out EnvironmentProfile profile))
+            ViewerEnvironment regionEnvironment = m_environmentModule.GetRegionEnvironment();
+            if (regionEnvironment == null)
                 return;
 
-            RegionLightShareData environment = CloneLightShare(current);
-            environment.cloudCoverage = profile.CloudCoverage;
-            environment.cloudScale = profile.CloudScale;
-            environment.cloudColor = profile.CloudColor;
-            environment.cloudXYDensity = profile.CloudXYDensity;
-            environment.cloudDetailXYDensity = profile.CloudDetailXYDensity;
-            environment.cloudScrollX = profile.CloudScrollX;
-            environment.cloudScrollY = profile.CloudScrollY;
-            environment.horizon = profile.Horizon;
-            environment.blueDensity = profile.BlueDensity;
-            // Multiplicative, not absolute - real weather darkens/brightens
-            // whatever daylight currently exists, it doesn't replace day
-            // with night or erase the admin's own tuned look. starBrightness
-            // is deliberately not touched at all (stays whatever `current`
-            // already had, via CloneLightShare) - weather never erases night
-            // stars or forces them visible during the day.
-            environment.ambient = new Vector4(
-                current.ambient.X * profile.AmbientMultiplier,
-                current.ambient.Y * profile.AmbientMultiplier,
-                current.ambient.Z * profile.AmbientMultiplier,
-                current.ambient.W);
-            environment.sunMoonColor = new Vector4(
-                current.sunMoonColor.X * profile.SunMoonColorMultiplier,
-                current.sunMoonColor.Y * profile.SunMoonColorMultiplier,
-                current.sunMoonColor.Z * profile.SunMoonColorMultiplier,
-                current.sunMoonColor.W);
-            environment.hazeHorizon = profile.HazeHorizon;
-            environment.hazeDensity = profile.HazeDensity;
-            environment.densityMultiplier = profile.DensityMultiplier;
-            environment.distanceMultiplier = profile.DistanceMultiplier;
-            environment.sunGlowFocus = profile.SunGlowFocus;
-            environment.sunGlowSize = profile.SunGlowSize;
-            environment.sceneGamma = current.sceneGamma * profile.SceneGammaMultiplier;
-            // sunMoonPosition/eastAngle/maxAltitude intentionally left untouched
-            // (already copied from `current` via CloneLightShare) so weather
-            // never overrides the region's day/night cycle.
-            environment.drawClassicClouds = profile.DrawClassicClouds;
-            environment.cloudScrollXLock = profile.CloudScrollXLock;
-            environment.cloudScrollYLock = profile.CloudScrollYLock;
-            m_environmentModule.FromLightShare(environment);
+            ViewerEnvironment weatherEnvironment = regionEnvironment.Clone();
+            foreach (SkyData sky in weatherEnvironment.SkyFrames)
+                ApplyProfileToSky(sky, profile);
+
+            ViewerEnvironment previous = m_weatherEnvironment;
+            m_weatherEnvironment = weatherEnvironment;
+            ForEachWeatherAvatar(sp => SetAvatarSky(sp, previous, weatherEnvironment));
+        }
+
+        /// <summary>
+        /// The profile on one sky of the day cycle, with the same meaning the LightShare form of it had: the clouds,
+        /// horizon, haze and glow are the weather's own; ambient light, sunlight and gamma are scaled from the sky's
+        /// (weather darkens the daylight there is, it does not replace day with night); stars are not touched.
+        /// </summary>
+        private static void ApplyProfileToSky(SkyData sky, EnvironmentProfile profile)
+        {
+            sky.cloud_shadow = profile.CloudCoverage;
+            sky.cloud_scale = profile.CloudScale;
+            sky.cloud_color = new Vector3(profile.CloudColor.X, profile.CloudColor.Y, profile.CloudColor.Z);
+            sky.cloud_pos_density1 = profile.CloudXYDensity;
+            sky.cloud_pos_density2 = profile.CloudDetailXYDensity;
+            sky.cloud_scroll_rate = new Vector2(
+                profile.CloudScrollXLock ? 0f : profile.CloudScrollX,
+                profile.CloudScrollYLock ? 0f : profile.CloudScrollY);
+            sky.blue_horizon = new Vector3(profile.Horizon.X * 2f, profile.Horizon.Y * 2f, profile.Horizon.Z * 2f);
+            sky.blue_density = new Vector3(profile.BlueDensity.X * 2f, profile.BlueDensity.Y * 2f, profile.BlueDensity.Z * 2f);
+            sky.haze_horizon = profile.HazeHorizon;
+            sky.haze_density = profile.HazeDensity;
+            sky.density_multiplier = profile.DensityMultiplier / 1000f;
+            sky.distance_multiplier = profile.DistanceMultiplier;
+            sky.glow = new Vector3((2f - profile.SunGlowSize) * 20f, 0f, -profile.SunGlowFocus * 5f);
+            sky.ambient *= profile.AmbientMultiplier;
+            sky.sunlight_color *= profile.SunMoonColorMultiplier;
+            sky.gamma *= profile.SceneGammaMultiplier;
+        }
+
+        private void RestoreClouds(bool force)
+        {
+            ViewerEnvironment previous = m_weatherEnvironment;
+            m_weatherEnvironment = null;
+            if (previous == null || m_environmentModule == null)
+                return;
+            ForEachWeatherAvatar(sp => SetAvatarSky(sp, previous, null));
+        }
+
+        /// <summary>The avatars the weather sky is for: root, not NPCs.</summary>
+        private void ForEachWeatherAvatar(Action<ScenePresence> action)
+        {
+            Scene scene = m_scene;
+            if (scene == null)
+                return;
+            scene.ForEachRootScenePresence(sp =>
+            {
+                if (!sp.IsNPC && !sp.IsDeleted)
+                    action(sp);
+            });
+        }
+
+        /// <summary>
+        /// Gives an avatar <paramref name="next"/> (null: no weather sky) if its environment is the module's own or
+        /// none at all, and it is not on a parcel with an environment of its own; then tells its viewer.
+        /// </summary>
+        private void SetAvatarSky(ScenePresence sp, ViewerEnvironment previous, ViewerEnvironment next)
+        {
+            try
+            {
+                ViewerEnvironment current = sp.Environment;
+                bool ours = current == null || (previous != null && ReferenceEquals(current, previous));
+                if (!ours)
+                    return;
+
+                if (next != null)
+                {
+                    ILandObject land = m_scene?.LandChannel?.GetLandObject(sp.AbsolutePosition.X, sp.AbsolutePosition.Y);
+                    if (land?.LandData?.Environment != null)
+                        next = null;
+                }
+
+                if (ReferenceEquals(current, next))
+                    return;
+                sp.Environment = next;
+                m_environmentModule?.WindlightRefreshForced(sp, 2);
+            }
+            catch (Exception e)
+            {
+                m_log.DebugFormat("[WEATHER]: Could not set the weather sky for {0}: {1}", sp.Name, e.Message);
+            }
+        }
+
+        /// <summary>
+        /// A weather sky the old module left saved on the region: a LightShare environment (what FromLightShare
+        /// stores) whose clouds are exactly one of the weather profiles'. Put back to the region's default, as
+        /// "weather clear" did. Anything else - an owner's own environment - is left as it is.
+        /// </summary>
+        private void HealSavedWeatherSky()
+        {
+            if (m_environmentModule == null || m_scene == null)
+                return;
+            try
+            {
+                ViewerEnvironment env = m_environmentModule.GetRegionEnvironment();
+                if (env == null || !env.IsLightShare)
+                    return;
+                foreach (SkyData sky in env.SkyFrames)
+                {
+                    foreach (KeyValuePair<WeatherKind, EnvironmentProfile> kv in m_environmentProfiles)
+                    {
+                        EnvironmentProfile p = kv.Value;
+                        if (Math.Abs(sky.cloud_shadow - p.CloudCoverage) < 0.0005f && Math.Abs(sky.cloud_scale - p.CloudScale) < 0.0005f
+                            && Math.Abs(sky.cloud_color.X - p.CloudColor.X) < 0.0005f && Math.Abs(sky.cloud_color.Y - p.CloudColor.Y) < 0.0005f)
+                        {
+                            m_environmentModule.ResetEnvironmentSettings(m_scene.RegionInfo.RegionID);
+                            m_log.InfoFormat("[WEATHER]: {0} had a {1} sky saved by an earlier weather version; put back to the region default.",
+                                m_scene.RegionInfo.RegionName, kv.Key);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[WEATHER]: Could not check {0} for a saved weather sky: {1}", m_scene.RegionInfo.RegionName, e.Message);
+            }
+        }
+
+
+        // ── [Confluence] On or off per region, from the web portal ──────────────────────────────────────────────────
+
+        private static readonly System.Net.Http.HttpClient s_settingsHttp = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        private const int WebSettingsFirstPollMS = 5000, WebSettingsPollMS = 60000;
+        private long m_lastWebSettingsWarnMs;
+
+        private bool UsesWebSettings => m_useWebSettings && m_webSettingsAvailable && m_settingsServerURI.Length > 0;
+
+        /// <summary>
+        /// Turns the region's weather on (timers started, the cycle's first change soon) or off (any weather cleared,
+        /// the sky given back, every timer stopped). Called with the owner's choice or, without the portal, at startup.
+        /// </summary>
+        private void SetRegionActive(bool active, string why)
+        {
+            lock (m_weatherChangeSync)
+            {
+                if (active == m_regionActive || m_scene == null)
+                    return;
+                m_regionActive = active;
+                string region = m_scene.RegionInfo.RegionName;
+
+                if (active)
+                {
+                    StartAutoCycle(true);
+                    StartSurfaceTimer();
+                    StartAuroraTimer();
+                    StartLightningSweepTimer();
+                    m_log.InfoFormat("[WEATHER]: Weather on in {0} ({1}).", region, why);
+                }
+                else
+                {
+                    StopAutoCycle();
+                    StopActiveAreaRefresh();
+                    StopWanderingRefresh();
+                    StopSurfaceTimer();
+                    StopAuroraTimer();
+                    StopLightningSweepTimer();
+                    RemoveAuroraEmitters();
+                    ClearWeather(false, true, true);
+                    m_log.InfoFormat("[WEATHER]: Weather off in {0} ({1}).", region, why);
+                }
+            }
+        }
+
+        private void StartWebSettingsPolling()
+        {
+            StopWebSettingsPolling();
+            m_webSettingsTimer = new Timer(_ => PollWebSettings(), null, WebSettingsFirstPollMS, WebSettingsPollMS);
+            m_log.InfoFormat("[WEATHER]: {0} follows its owner's weather setting from the web portal (off until turned on).",
+                m_scene?.RegionInfo.RegionName);
+        }
+
+        private void StopWebSettingsPolling()
+        {
+            Timer timer = m_webSettingsTimer;
+            m_webSettingsTimer = null;
+            timer?.Dispose();
+        }
+
+        private void PollWebSettings()
+        {
+            Scene scene = m_scene;
+            if (scene == null || !UsesWebSettings)
+                return;
+
+            string url = m_settingsServerURI + "/weather/" + scene.RegionInfo.RegionID;
+            try
+            {
+                using var response = s_settingsHttp.GetAsync(url).GetAwaiter().GetResult();
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // A Robust without the endpoint (an older build): the ini decides, as before this feature.
+                    m_webSettingsAvailable = false;
+                    StopWebSettingsPolling();
+                    m_log.WarnFormat("[WEATHER]: {0} answers 404 for the region weather settings; {1} uses the [Weather] ini settings.",
+                        m_settingsServerURI, scene.RegionInfo.RegionName);
+                    m_autoCycleEnabled = m_iniAutoCycleEnabled;
+                    m_autoCycleHours = m_iniAutoCycleHours;
+                    SetRegionActive(true, "the [Weather] ini settings");
+                    return;
+                }
+                response.EnsureSuccessStatusCode();
+                string json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                ApplyWebSettings(OSDParser.DeserializeJson(json) as OSDMap);
+            }
+            catch (Exception e)
+            {
+                // Robust unreachable: keep what the region has (at startup, off) and say so now and then.
+                long now = Environment.TickCount64;
+                if (now - m_lastWebSettingsWarnMs > 600000)
+                {
+                    m_lastWebSettingsWarnMs = now;
+                    m_log.WarnFormat("[WEATHER]: Could not read the weather settings of {0} from {1}: {2}",
+                        scene.RegionInfo.RegionName, m_settingsServerURI, e.Message);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The owner's choice, read as the My Regions page shows it: "enabled" (absent: off), "autocycle" (absent: on)
+        /// and "cyclehours" (absent: 1 hour).
+        /// </summary>
+        private void ApplyWebSettings(OSDMap map)
+        {
+            if (map == null || m_scene == null)
+                return;
+
+            bool enabled = map.TryGetValue("enabled", out OSD e) && string.Equals(e.AsString(), "true", StringComparison.OrdinalIgnoreCase);
+            bool autoCycle = map.TryGetValue("autocycle", out OSD a)
+                ? string.Equals(a.AsString(), "true", StringComparison.OrdinalIgnoreCase)
+                : true;
+            float hours = 1f;
+            if (map.TryGetValue("cyclehours", out OSD h)
+                && float.TryParse(h.AsString(), NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+                hours = Clamp(parsed, 0.25f, 24f);
+
+            lock (m_weatherChangeSync)
+            {
+                bool cycleChanged = autoCycle != m_autoCycleEnabled || Math.Abs(hours - m_autoCycleHours) > 0.001f;
+                m_autoCycleEnabled = autoCycle;
+                m_autoCycleHours = hours;
+
+                if (enabled != m_regionActive)
+                    SetRegionActive(enabled, "set by the region's owner");
+                else if (enabled && cycleChanged)
+                {
+                    if (autoCycle)
+                        StartAutoCycle(false);
+                    else
+                        StopAutoCycle();
+                    m_log.InfoFormat("[WEATHER]: {0}: automatic changes {1}, every {2:0.##} hours.",
+                        m_scene.RegionInfo.RegionName, autoCycle ? "on" : "off", hours);
+                }
+            }
         }
 
         private void ApplyWind(WeatherKind weather)
@@ -3203,120 +3466,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 string regionName = m_scene == null ? "unknown region" : m_scene.RegionInfo.RegionName;
                 m_log.WarnFormat("[WEATHER]: Could not restore weather wind in {0}: {1}", regionName, e.Message);
             }
-        }
-
-        private void RestoreClouds(bool force)
-        {
-            if (m_environmentModule == null)
-                return;
-
-            if (!force && !m_restoreCloudsOnClear)
-                return;
-
-            if (m_savedEnvironment == null)
-            {
-                // No in-session snapshot to restore to - most often because the
-                // region restarted while weather was still active, so this
-                // instance never captured a "before weather" baseline. Fall
-                // back to a full reset so an explicit "weather clear" always
-                // produces a clean sky instead of silently leaving whatever
-                // dirty environment happened to be persisted from before.
-                try
-                {
-                    if (m_scene != null)
-                        m_environmentModule.ResetEnvironmentSettings(m_scene.RegionInfo.RegionID);
-                }
-                catch (Exception e)
-                {
-                    string regionName = m_scene == null ? "unknown region" : m_scene.RegionInfo.RegionName;
-                    m_log.WarnFormat("[WEATHER]: Could not reset weather environment in {0}: {1}", regionName, e.Message);
-                }
-                return;
-            }
-
-            try
-            {
-                if (m_savedEnvironmentWasUnset && m_scene != null)
-                    m_environmentModule.ResetEnvironmentSettings(m_scene.RegionInfo.RegionID);
-                else
-                    m_environmentModule.FromLightShare(m_savedEnvironment);
-
-                m_savedEnvironment = null;
-                m_savedEnvironmentWasUnset = false;
-            }
-            catch (Exception e)
-            {
-                string regionName = m_scene == null ? "unknown region" : m_scene.RegionInfo.RegionName;
-                m_log.WarnFormat("[WEATHER]: Could not restore weather environment in {0}: {1}", regionName, e.Message);
-            }
-        }
-
-        private bool RegionEnvironmentWasUnset()
-        {
-            Scene scene = m_scene;
-            if (scene == null)
-                return false;
-
-            try
-            {
-                PropertyInfo property = scene.GetType().GetProperty(
-                    "RegionEnvironment",
-                    BindingFlags.Instance | BindingFlags.Public);
-
-                return property != null && property.GetValue(scene, null) == null;
-            }
-            catch (Exception e)
-            {
-                m_log.DebugFormat(
-                    "[WEATHER]: Could not determine whether {0} used the default region environment: {1}",
-                    scene.RegionInfo.RegionName,
-                    e.Message);
-                return false;
-            }
-        }
-
-        private static RegionLightShareData CloneLightShare(RegionLightShareData source)
-        {
-            return new RegionLightShareData
-            {
-                waterColor = source.waterColor,
-                waterFogDensityExponent = source.waterFogDensityExponent,
-                underwaterFogModifier = source.underwaterFogModifier,
-                reflectionWaveletScale = source.reflectionWaveletScale,
-                fresnelScale = source.fresnelScale,
-                fresnelOffset = source.fresnelOffset,
-                refractScaleAbove = source.refractScaleAbove,
-                refractScaleBelow = source.refractScaleBelow,
-                blurMultiplier = source.blurMultiplier,
-                bigWaveDirection = source.bigWaveDirection,
-                littleWaveDirection = source.littleWaveDirection,
-                normalMapTexture = source.normalMapTexture,
-                horizon = source.horizon,
-                hazeHorizon = source.hazeHorizon,
-                blueDensity = source.blueDensity,
-                hazeDensity = source.hazeDensity,
-                densityMultiplier = source.densityMultiplier,
-                distanceMultiplier = source.distanceMultiplier,
-                maxAltitude = source.maxAltitude,
-                sunMoonColor = source.sunMoonColor,
-                sunMoonPosition = source.sunMoonPosition,
-                ambient = source.ambient,
-                eastAngle = source.eastAngle,
-                sunGlowFocus = source.sunGlowFocus,
-                sunGlowSize = source.sunGlowSize,
-                sceneGamma = source.sceneGamma,
-                starBrightness = source.starBrightness,
-                cloudColor = source.cloudColor,
-                cloudXYDensity = source.cloudXYDensity,
-                cloudCoverage = source.cloudCoverage,
-                cloudScale = source.cloudScale,
-                cloudDetailXYDensity = source.cloudDetailXYDensity,
-                cloudScrollX = source.cloudScrollX,
-                cloudScrollXLock = source.cloudScrollXLock,
-                cloudScrollY = source.cloudScrollY,
-                cloudScrollYLock = source.cloudScrollYLock,
-                drawClassicClouds = source.drawClassicClouds
-            };
         }
 
         private void DeleteEmitters(List<SceneObjectGroup> emitters)

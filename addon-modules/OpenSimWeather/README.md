@@ -223,114 +223,24 @@ The built-in sun-position values come from OpenSim's `RegionLightShareData`
 defaults, preventing a dark pre-weather sun position from leaking into Sunny.
 The shipped complete example exposes every applied field.
 
-### Persistence warning
+### The weather sky is per avatar (Confluence, 0.4.0)
 
-OpenSim stores region environment changes. They are not merely a temporary
-viewer overlay. Therefore both settings are required:
+`AdjustEnvironment = true` darkens the sky and changes the clouds for each avatar in the region while a weather
+lasts, as that avatar's own environment override (the way `osReplaceAgentEnvironment` works). The region's stored
+environment is never changed, so a crash, a forced stop or a restart can never leave a storm sky behind. The
+override is a copy of the region's day cycle with the weather applied to every sky, so the sun and moon keep moving.
+Avatars on a parcel with its own environment, or given one by a script, are left alone. Sunny and clear show the
+region's normal sky. `AllowPersistentEnvironmentChanges` is no longer used.
 
-```ini
-AdjustEnvironment = true
-AllowPersistentEnvironmentChanges = true
-```
+At startup the module puts back a storm, rain or snow sky that an earlier version left saved on the region (a
+LightShare environment whose clouds are exactly one of the weather profiles'); an owner's own environment is never
+touched.
 
-The module records the pre-weather environment and restores it on clear and
-normal shutdown when `RestoreCloudsOnClear = true`. If the region originally
-inherited its environment, restoration uses the environment reset path rather
-than storing a copied custom default. A process crash or power loss can still
-occur before restoration. Export or record a custom environment before enabling
-this feature.
+### On or off per region (Confluence, 0.4.0)
 
-## Wind
+On a grid with Confluence's web portal, a region has weather only when its owner turns it on under My Regions >
+Weather, where they also choose whether it changes by itself and how many hours each weather lasts (default 1).
+The region reads that from Robust (`/weather/<region>`) about once a minute; no restart. `[Weather] Enabled = true`
+only makes the module available. Without the portal (no `SettingsServerURI` and no `[GridService] GridServerURI`,
+`UseWebPortalSettings = false`, or a Robust without the endpoint) the ini decides, as before.
 
-Wind adjustment supports OpenSim's `SimpleRandomWind` and `ConfigurableWind`
-plugins. Unsupported active plugins are detected and left unchanged. Saved
-parameters are restored on clear and normal shutdown when
-`RestoreWindOnClear = true`.
-
-Particle drift is also derived from the configured direction and strength, so
-visible precipitation remains coordinated even when region wind integration is
-disabled.
-
-## Lightning and thunder
-
-Storm strikes retry several candidate locations and prefer an outdoor,
-non-excluded point. The lightning object begins near terrain rather than at the
-precipitation emitter altitude. Thunder is sent from the strike position.
-
-Thunder requires a valid uploaded sound UUID:
-
-```ini
-ThunderEnabled = true
-ThunderSound = <asset UUID>
-```
-
-Visual lightning can remain enabled without a sound asset.
-
-## Puddles and snow accumulation
-
-Surface effects are experimental and disabled by default. They are temporary
-terrain overlays near active avatars; they do not rewrite terrain textures,
-modify the terrain heightmap, or persist as saved region objects.
-
-The model tracks normalized wetness and snow levels:
-
-- rain and storms increase wetness;
-- snow accumulates when `TemperatureC` is near or below `FreezingPointC`;
-- warmer snowfall contributes wetness instead;
-- clear and sunny states dry puddles and melt snow at configurable rates;
-- rain accelerates snow melt;
-- more qualifying patches appear as the level rises.
-
-Puddles are restricted to shallow outdoor terrain, below the configured maximum
-slope, above water, and near local low points. Snow uses similar outdoor and
-slope checks. Both effects honor exclusion volumes and cover tests.
-
-Required assets:
-
-```ini
-SurfaceEffectsEnabled = true
-PuddleTexture = <alpha puddle asset UUID>
-SnowSurfaceTexture = <feathered snow asset UUID>
-```
-
-A blank required surface texture disables that effect instead of creating a
-solid default disk. Accumulation currently applies only to terrain—not roofs,
-mesh floors, prim roads, or vegetation—and resets when the module or simulator
-restarts. This is intentional for production safety.
-
-## Generated objects and cleanup
-
-Weather-created objects use names beginning with `OpenSimWeather:` and a marker
-description. They are:
-
-- added with scene backup disabled;
-- marked `TemporaryOnRez`;
-- marked as temporary module instances;
-- deleted when the weather changes, clears, the region unloads, or the module
-  shuts down.
-
-`CleanupGeneratedObjectsOnStartup = true` removes matching **non-persistent**
-objects left by an interrupted earlier module instance. It deliberately does
-not delete saved region objects merely because their name happens to resemble a
-weather object.
-
-## First production test
-
-Use a duplicate/non-public region process first:
-
-1. Install the source and run a clean prebuild/build.
-2. Start with `OpenSimWeather.manual.ini.example` and `Enabled = false`.
-3. Add valid particle texture UUIDs, then enable the module.
-4. Verify `weather status`, rain, storm, snow, sunny, and clear.
-5. Confirm the default 8x8 Region layout produces 64 or fewer emitters after cover suppression on each region size.
-6. Test a building with sky probes, then add `Weather Exclusion` volumes where
-   needed.
-7. Restart once while particle weather is active and verify no generated objects
-   are restored from backup.
-8. Enable environment, wind, auto-cycle, and surface effects one subsystem at a
-   time.
-9. Watch simulator frame time, physics time, object updates, and viewer behavior
-   before deploying to all production regions.
-
-See `AUDIT.md`, `CHANGELOG.md`, and `VALIDATION.txt` for the repair record and
-remaining limitations.

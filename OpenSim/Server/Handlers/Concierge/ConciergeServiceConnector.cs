@@ -175,6 +175,8 @@ namespace OpenSim.Server.Handlers.Concierge
             }
 
             server.AddSimpleStreamHandler(new ConciergeSimpleHandler(settings), true);
+            // [Confluence] the region weather switches, from the same settings table (no ini entry of its own)
+            server.AddSimpleStreamHandler(new RegionWeatherHandler(settings), true);
         }
     }
 

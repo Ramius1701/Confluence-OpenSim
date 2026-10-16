@@ -140,6 +140,11 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 8.3 Display names: changing one, then trying again inside the 7-day cooldown shows the correct notification.
 - [ ] 8.4 Abuse report with a screenshot on a region using SSL caps: the report and screenshot arrive.
 - [ ] 8.5 The weather addon's aurora effect is visible in a viewer.
+- [ ] 8.6 Weather per region: a region shows no weather until My Regions > Weather is set On (within about a minute);
+      Off clears it and gives the sky back; "Hours each weather lasts" changes how often it moves on.
+- [ ] 8.7 Weather sky: a storm darkens the sky for everyone in the region, someone arriving during it sees it too,
+      the sun still moves; after sunny or clear the normal sky is back; a region restart during a storm comes back with
+      the normal sky (no `weather clear` needed); a parcel with its own environment keeps it.
 
 ## 9. Land, money and admin
 

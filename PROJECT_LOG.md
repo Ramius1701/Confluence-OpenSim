@@ -28618,3 +28618,38 @@ Verified: build 0 warnings / 0 errors; full Phlox suite on the merged tree 5,558
 took ~1,115 ms at the same moment, a whole-machine stall during the run; it passes alone in 143 ms, and the merge
 touches nothing in Phlox). Docs updated: HARDENING (XFFTrustedProxies), FEATURES, TESTING 9.5, README, ROADMAP. Not
 deployed.
+
+## Weather rework: the sky per avatar, on or off per region (2026-10-16)
+
+Reported: the weather "seems stuck" until `/89 weather clear`, and every region has weather from the ini whether its
+owner wants it or not. Found (code and live config): the live addon config sets `AllowPersistentEnvironmentChanges =
+true`, so the weather sky was written into the region's stored environment (FromLightShare) and only put back on a clean
+shutdown; after a crash, a forced stop or a Windows Update restart the module started at Clear with the storm sky still
+saved, `AutoCycleChangeOnStartup = false` and `AutoCycleHours = 6` meant nothing touched it for hours, and `weather
+clear` worked only because it resets the region environment when it has no snapshot. Second cause: Sunny has no sky
+profile, and a weather change cleared the old weather without restoring the sky, so storm -> sunny kept the storm sky.
+
+Changes (`addon-modules/OpenSimWeather`, 0.4.0):
+- The weather sky is each avatar's own override (`ScenePresence.Environment`, which the environment module already
+  serves first), built from a clone of the region's day cycle with the weather applied to every sky
+  (`ApplyProfileToSky`, the same mapping as LightShare -> SkyData), so the sun keeps moving. Never stored on the region.
+  Arrivals get it; avatars on a parcel with its own environment or with a script's override are left alone; a weather
+  without a profile (sunny, clear) gives the normal sky back. `AllowPersistentEnvironmentChanges` is no longer read.
+  Core: `ViewerEnvironment.SkyFrames` and `IsLightShare` accessors (the cycle is private).
+- At startup, a LightShare environment whose clouds exactly match a weather profile (what the old version saved) is
+  reset to the region default; an owner's own environment is untouched.
+- Per-region switches: Robust serves `GET /weather/<region>` (`RegionWeatherHandler`, registered by the concierge
+  connector, so no Robust ini change) from the grid settings table (`weather.enabled|autocycle|cyclehours.<scope>`);
+  My Regions gains a Weather column and page (owner or admin). The module polls it every 60 s: off until the owner
+  turns it on, automatic changes on and 1 hour unless set. Without the portal (no URI, `UseWebPortalSettings = false`,
+  or a 404 from an older Robust) the ini decides as before. Off clears the weather and gives the sky back; on starts
+  the first change after `AutoCycleStartupDelaySeconds`. Chat commands in a region with weather off say so.
+- `AutoCycleHours` defaults to 1. Addon README/UPGRADE/CHANGELOG and the example configs updated.
+
+Effect on the live grid at deploy: every region's weather is off until it is turned on under My Regions > Weather.
+
+Verified: build 0/0; `WeatherReworkTests` (7): storm sky only on the avatar and nothing written to the region; sunny
+after a storm gives the sky back; a script's environment is left alone; a saved storm sky is reset at startup and an
+owner's own LightShare sky is not; with the portal a region has no weather until enabled, and off gives the sky back;
+Robust serves the region's switches, then the grid default, and leaves unset ones out (hours clamped). Full Phlox
+suite 5,566 passed, 2 skipped, 0 failed. Not deployed.

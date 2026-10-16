@@ -243,6 +243,11 @@ checked by `Tools/data-backend-check`.)*
   to decide: #315 ZephyrWind and #301 gatekeeper DNS resolver; Halcyon's notice on BotManager/IBotManager (#306).
   Still open from 2026-10-14: Tranquillity's core physics fixes #282/#283/#287/#288/#291/#296/#297 and Legion's Jolt
   work (mesh asset fetch, hulls, edge removal, rotation target).
+- **Weather, next steps** (after the 2026-10-16 rework): coverage on 512 m and 1024 m regions is capped at 384
+  emitter prims (a 19x19 grid, one emitter every ~54 m on 1024 m regions) - precipitation emitted around the avatars
+  present rather than over the whole region would scale; wind could come from Tranquillity's ZephyrWind (#315); the
+  live grid's per-region `[Weather]` sections (four regions, one with keys from an older version) should become
+  small overrides.
 - **Optional creator filter on OAR load (idea from Halcyon's archiver).** Halcyon could load an OAR replacing prims,
   sculpt/mesh shapes and face textures the region owner did not create with plywood and a default prim, marking them
   "(Replaced: Prim created by ...)" - a way for a grid owner to accept a resident's OAR without importing other

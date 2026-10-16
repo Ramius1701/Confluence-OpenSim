@@ -51,8 +51,10 @@ OpenSim process. Use a controlled simulator restart.
 - Particle and surface assets are OpenSim asset UUIDs.
 - `SurfaceEffectsEnabled = true` still requires nonblank `PuddleTexture` and/or
   `SnowSurfaceTexture`.
-- Keep `AllowPersistentEnvironmentChanges = false` until the environment
-  integration has been deliberately approved.
+- `AllowPersistentEnvironmentChanges` is gone (0.4.0): the weather sky is shown per avatar and never stored on
+  the region, so `AdjustEnvironment = true` is safe on its own.
+- With Confluence's web portal, each region's owner turns weather on under My Regions > Weather (0.4.0); a region
+  nobody has turned on has none.
 
 ## Rollback
 

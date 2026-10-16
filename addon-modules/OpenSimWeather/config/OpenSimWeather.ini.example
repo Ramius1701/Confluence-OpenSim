@@ -85,7 +85,6 @@
 
     ;; Region environment and wind changes are opt-in.
     AdjustEnvironment = false
-    AllowPersistentEnvironmentChanges = false
     RestoreCloudsOnClear = true
 
     AdjustWind = false
@@ -98,7 +97,7 @@
 
     ;; Automatic cycling and entry messages are opt-in.
     AutoCycleEnabled = false
-    AutoCycleHours = 6.0
+    AutoCycleHours = 1.0
     AutoCycleChoices = storm,rain,snow,blizzard,sunny,clear
     SendWeatherIMOnEntry = false
     ;; Placeholders: {RegionName} {Weather} {Temperature} {EmitterCount}
