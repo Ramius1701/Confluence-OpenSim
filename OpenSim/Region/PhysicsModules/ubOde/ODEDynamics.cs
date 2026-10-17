@@ -178,6 +178,7 @@ namespace OpenSim.Region.PhysicsModule.ubOde
 
             m_linearMotorDecayTimescale = vd.m_linearMotorDecayTimescale;
             if (m_linearMotorDecayTimescale < m_timestep) m_linearMotorDecayTimescale = m_timestep;
+            else if (m_linearMotorDecayTimescale > 120) m_linearMotorDecayTimescale = 120;   // the record holds the value as sent; this engine's own limit
             m_linearMotorDecayTimescale += 0.2f;
             m_linearMotorDecayTimescale *= m_invtimestep;
 
@@ -193,6 +194,7 @@ namespace OpenSim.Region.PhysicsModule.ubOde
 
             m_angularMotorDecayTimescale = vd.m_angularMotorDecayTimescale;
             if (m_angularMotorDecayTimescale < m_timestep) m_angularMotorDecayTimescale = m_timestep;
+            else if (m_angularMotorDecayTimescale > 120) m_angularMotorDecayTimescale = 120;
             m_angularMotorDecayTimescale *= m_invtimestep;
 
             m_angularFrictionTimescale = vd.m_angularFrictionTimescale;

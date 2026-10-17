@@ -313,9 +313,11 @@ namespace OpenSim.Region.CoreModules
             float value = 0f;
             if (cmdparams.Length == 4)
             {
-                if (!float.TryParse(cmdparams[3], out value))
+                // [Confluence] Tranquillity #321: stop on text that is not a finite number (it used to set 0).
+                if (!float.TryParse(cmdparams[3], out value) || !float.IsFinite(value))
                 {
                     MainConsole.Instance.Output("Invalid value {0}", cmdparams[3]);
+                    return;
                 }
 
                 try
@@ -369,6 +371,15 @@ namespace OpenSim.Region.CoreModules
         {
             if (m_availableWindPlugins.ContainsKey(plugin))
             {
+                // [Confluence] Tranquillity #321: scripts (osSetWindParam) and the console both come through here; a
+                // NaN or infinity would reach the wind arrays and every llWind and vehicle wind sample.
+                if (!float.IsFinite(value))
+                {
+                    m_log.WarnFormat("[WIND] {0}: refused {1} = {2}, which is not a finite number; the value is unchanged.",
+                        plugin, param, value);
+                    return;
+                }
+
                 IWindModelPlugin windPlugin = m_availableWindPlugins[plugin];
                 windPlugin.WindParamSet(param, value);
             }

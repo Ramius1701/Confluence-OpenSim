@@ -613,6 +613,12 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
 - Physics no longer freezes a crossing vehicle/prim before a valid
   destination region is confirmed, shrinking the freeze window and
   removing the old "stuck at the border on a failed crossing" case.
+- The saved vehicle record keeps what a script set through a rez, copy,
+  region restart or crossing: per-axis motor timescales, motor decays
+  above 120 s (each engine applies its own limit), and InWorldz's vehicle
+  types, parameters and wind efficiency vectors (Tranquillity #295/#314;
+  in-world check TESTING 2.7). The record can also carry the motors'
+  running state across a border for an engine that supplies it.
 - Hypergrid teleports retry once on a pure transport failure (no reply
   reached the source at all) instead of failing outright on any single
   transient blip.

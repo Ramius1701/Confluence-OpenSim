@@ -325,6 +325,14 @@ namespace OpenSim.Region.PhysicsModules.SharedBase
         public abstract void VehicleRotationParam(int param, Quaternion rotation);
         public abstract void VehicleFlags(int param, bool remove);
 
+        // [Confluence] Tranquillity #314. Called by core when it starts to cross a vehicle into another region, before the
+        // object is saved for the neighbour: an engine that keeps the vehicle's motors running writes their running state
+        // into the record, so that SetVehicle on the other side can take them up. The default writes nothing, and the
+        // motors start off there, as they do for a vehicle rezzed from inventory.
+        public virtual void CaptureVehicleRunningState(ref VehicleData vd)
+        {
+        }
+
         // This is an overridable version of SetVehicle() that works for all physics engines.
         // This is VERY inefficient. It behoves any physics engine to override this and
         //     implement a more efficient setting of all the vehicle parameters.
@@ -375,6 +383,14 @@ namespace OpenSim.Region.PhysicsModules.SharedBase
             //Attractor properties
             this.VehicleFloatParam((int)Vehicle.VERTICAL_ATTRACTION_EFFICIENCY, vdata.m_verticalAttractionEfficiency);
             this.VehicleFloatParam((int)Vehicle.VERTICAL_ATTRACTION_TIMESCALE, vdata.m_verticalAttractionTimescale);
+
+            // InWorldz properties (Tranquillity #295); an engine without them ignores the codes
+            this.VehicleFloatParam((int)Vehicle.MOUSELOOK_AZIMUTH, vdata.m_mouselookAzimuth);
+            this.VehicleFloatParam((int)Vehicle.MOUSELOOK_ALTITUDE, vdata.m_mouselookAltitude);
+            this.VehicleFloatParam((int)Vehicle.BANKING_AZIMUTH, vdata.m_bankingAzimuth);
+            this.VehicleFloatParam((int)Vehicle.DISABLE_MOTORS_ABOVE, vdata.m_disableMotorsAbove);
+            this.VehicleFloatParam((int)Vehicle.DISABLE_MOTORS_AFTER, vdata.m_disableMotorsAfter);
+            this.VehicleFloatParam((int)Vehicle.INVERTED_BANKING_MODIFIER, vdata.m_invertedBankingModifier);
 
             this.VehicleRotationParam((int)Vehicle.REFERENCE_FRAME, vdata.m_referenceFrame);
         }

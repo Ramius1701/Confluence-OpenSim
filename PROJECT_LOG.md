@@ -28673,3 +28673,52 @@ yet counts as up until its first check a quarter of a second later. The region p
 reachability pill shows Online from the cache and only diagnoses a down region live. Admin start/stop/restart keep their
 live checks. Verified: build 0/0; `WebRegionStatusCacheTests` (unchecked region up, then a closed port down and an open
 one up, reading under 500 ms); full Phlox suite 5,567 passed, 2 skipped, 0 failed. Not deployed.
+
+## Donor fetch 2026-10-18, and the first group ported
+
+Deployed first (2026-10-18): edc5e5fd58 (the weather rework and the web region status cache) to all 16 region bins,
+md5-verified; the 7 running regions restarted after Robust. Each logs YEngine enabled, XFF loopback and "follows its
+owner's weather setting from the web portal (off until turned on)"; `/welcome` answers in 63 ms cold, ~22 ms after
+(was 3 s or more). Errors at the known-missing-asset baseline, plus on one region the scripts of an InWorldz OAR loaded
+there 10-16 (`iw*` functions YEngine does not have, and two scripts with no asset). YEngine stays as upstream has it;
+InWorldz scripts are for Phlox. Then 29fbd9f4ab: the weather module's startup warning that the region environment is
+stored (no longer true since the rework) is a debug line.
+
+**Fetched** (review points in the fork-review notes): opensim-master `58c211829b` (XFF ini comments only);
+Tranquillity develop `cdd22cc15f` (#314 merged) and open PRs up to #323; Legion `lane/jolt` `0fbd531929` and
+`lane/phlox` `ef3dc10b98`; libremetaverse `85429b83be` (NuGet updates only); Firestorm `24158268bc` (translations,
+macOS); opensim-helpers, os-webrtc-janus, Gloebit: nothing new.
+
+**Ported:**
+- **Tranquillity #295 + #314, the saved vehicle record.** #295 had been triaged on 10-14 but not ported (#314 builds on
+  it). The record now holds InWorldz's two vehicle types (sailboat 10001, motorcycle 10002, with Halcyon's presets),
+  its six float parameters 11001-11006 (held to Halcyon's ranges; a record saved before gets its type's defaults) and
+  flags 0x10000-0x200000; a value per axis for the four motor timescales (LMTIMEV, LMDTIMEV, AMTIMEV, AMDTIMEV, written
+  only when set); the motor decays as sent (the record no longer caps them at 120 s - ubODE now caps them itself as
+  Bullet and Jolt already did); the wind efficiency vectors 12001/12002 (-10..10); and the motors' running state across
+  a region crossing (`PhysicsActor.CaptureVehicleRunningState`, default does nothing - no engine here implements it
+  yet; Legion's Jolt lane does; cleared when an engine takes the record or the crossing fails). Elements a simulator
+  does not know are skipped, so older builds read new records as before. Halcyon attribution notes on both files.
+  Tranquillity's four test files (InWorldz types, motor axes, running state, wind efficiency) run in the Phlox suite.
+- **Tranquillity #173 (open):** a mesh upload part named in the upload (`mesh_name`, as Avastar sends) keeps that
+  name (63 characters at most) instead of "Name#n".
+- **Tranquillity #323 (open):** `[Startup] TimerResolutionMs` (Windows, 1-15, off by default): `timeBeginPeriod` for
+  the life of the region, given back at shutdown and on a failed start (`OpenSim.Framework.TimerResolution`, MPL-2.0
+  from Legion, adapted to log4net). Documented in OpenSim.ini.example and OpenSimDefaults.ini (commented out).
+- **Tranquillity #321 (open), core part:** `WindModule.WindParamSet` (osSetWindParam from both engines, and the
+  console) refuses NaN and infinity with one warning; the `wind` command stops on text that is not a finite number
+  (it used to print "Invalid value" and then set 0). The ZephyrWind half waits for ZephyrWind.
+- **Legion's 10-14 notices (lane/phlox and lane/jolt-side), with Tranquillity #311:** Phlox's `funcs.xml` LSL
+  descriptions rewritten in Legion's own words (the old ones stayed too close to the SL wiki) with the Apache-2.0
+  change notice; dated "Copyright (c) 2026 Legion Builds" lines on their files (58 applied file by file onto our paths;
+  OpenSim's holder line kept under it on BSD files); two Halcyon ports marked adapted; the Lua notice dated; the Phlox
+  lamp test fixture (copied from a resident's object, no known source) replaced with one written for the tests. Four
+  Tranquillity-origin files whose headers we had normalised took the Legion line by hand; `DamageEntry.cs` (adapted
+  from Tranquillity #212) now carries Legion's MPL-2.0 header.
+- **opensim-master `58c211829b`:** XFF comment wording in the three ini examples, plus a line that setting
+  `XFFTrustedProxies` replaces Confluence's loopback default.
+
+TESTING.md: 2.7 (vehicle record), 7.11 (mesh part names), 9.6 (timer resolution), 9.7 (non-finite wind values).
+
+Verified: Release build 0 warnings / 0 errors; full Phlox suite 5,685 passed, 2 skipped, 0 failed (the 118 new: vehicle
+record, timer resolution, non-finite wind); Jolt suite 2,099 passed, 8 skipped, 0 failed. Not deployed.

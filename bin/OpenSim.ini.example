@@ -103,6 +103,15 @@
     ;# {ConsoleHistoryTimeStamp} {} {Time stamp commands in history file} {} false
     ;; Time stamp commands in history file (default false)
     ; ConsoleHistoryTimeStamp = false
+
+    ;# {TimerResolutionMs} {} {Windows system timer resolution in milliseconds, 1 to 15 (0 = off)?} {} 0
+    ;; Windows only. Ask Windows for a finer system timer for as long as the region runs.
+    ;; The scene loop sleeps a whole number of milliseconds and Windows wakes a sleeping thread on a timer
+    ;; tick, 15.625 ms by default, so frames come out one or more ticks long. With 1 here the sleep wakes
+    ;; within about 1 ms, which evens out the frames. It matters most with a FrameTime well below the
+    ;; default 0.0909. The cost: Windows runs its timer faster while the region runs (more timer wake-ups,
+    ;; a little more power). 0 leaves the timer alone (default); other systems ignore it with one log line.
+    ; TimerResolutionMs = 0
     
     ;# {save_crashes} {} {Save crashes to disk?} {true false} false
     ;; Set this to true if you want to log crashes to disk
@@ -987,13 +996,14 @@
     ;; Any of these 3 variables above can be overriden in any of the service sections.
 
     ;; If you have a transparent proxy or proxies, you need to configure them to process http header X-Forwarded-For in a secure way
-    ;; In order for OpenSim to trust them add the proxy addresses to this setting
+    ;; In order for OpenSim to trust them add their addresses (as seen by OpenSim) to this setting
     ;; You can specify multiple addresses by separating them with a bar
     ;; Each address can be a hostname (heavier), an IP address or a network range in CIDR format
     ;; example
     ;; Confluence: unset trusts this machine only (127.0.0.0/8 and ::1), as before this option existed, so a reverse
     ;; proxy on the same host keeps passing the visitor's address; "none" trusts no proxy.
-    ;XFFTrustedProxies = 194.32.21.0/24|194.32.100.2|myproxy.org
+    ;; (setting it replaces the loopback default, so list 127.0.0.1 too if a proxy on this machine should stay trusted)
+    ;XFFTrustedProxies = 127.0.0.1|194.32.21.0/24|194.32.100.2|myproxy.org
 
 [XMLRPC]
     ;# {XmlRpcRouterModule} {} {Module used to route incoming llRemoteData calls} {XmlRpcRouterModule XmlRpcGridRouterModule} XmlRpcRouterModule

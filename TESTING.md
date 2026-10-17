@@ -55,6 +55,11 @@ that has `on_damage`, `final_damage` and `on_death` handlers.
 - [ ] 2.5 `llSetSitFlags` / `llSetLinkSitFlags`: each flag (e.g. no-stand, allow-unsit) behaves as on Second Life.
 - [ ] 2.6 A zero-offset sit target set with `PRIM_SIT_TARGET, TRUE, ZERO_VECTOR, ...` still works after a region
       restart, and after saving and loading an OAR.
+- [ ] 2.7 Vehicle record: a vehicle set up with `VEHICLE_TYPE_SAILBOAT` / `VEHICLE_TYPE_MOTORCYCLE`, the InWorldz
+      parameters (11001-11006), `VEHICLE_LINEAR_WIND_EFFICIENCY` / `ANGULAR_WIND_EFFICIENCY`, a per-axis
+      `llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, ...)` or a motor decay above 120 s keeps those settings
+      after take and re-rez, shift-copy and a region restart (the engine still caps a decay at 120 s). The InWorldz
+      names are Phlox constants; a YEngine script uses the numbers (10001, 10002, 11001-11006, 12001, 12002).
 
 ## 3. Returning objects
 
@@ -131,6 +136,8 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 7.9 `llCastRay` with `RC_MAX_HITS` above 16 returns more than 16 hits through a row of prims, and with
       `RC_REJECT_TYPES, RC_REJECT_HOSTGROUP` the caster's own linkset doesn't use up `RC_MAX_HITS, 1`.
 - [ ] 7.6 OAR import with `--lookup-aliases`: creators and owners resolve through user aliases.
+- [ ] 7.11 Upload a multi-part mesh whose parts have their own names (an Avastar or Blender export with named
+      objects): each prim of the linkset keeps its part's name, not "Model#1", "Model#2".
 
 ## 8. Viewer features
 
@@ -155,6 +162,12 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       still get in.
 - [ ] 9.4 Hypergrid export: an object without Export permission cannot be taken to another grid; estate deny-access
       settings refuse a Hypergrid visitor.
+
+- [ ] 9.6 `[Startup] TimerResolutionMs = 1` on a Windows region: the log shows "Windows timer resolution 1 ms
+      requested" with `Thread.Sleep(1)` near 1 ms, and the region's frame times (Statistics bar, sim FPS) are steadier;
+      unset, nothing is logged and nothing changes.
+- [ ] 9.7 Console `wind <plugin> <param> NaN` (or `Infinity`) is refused with "Invalid value" and the wind does not
+      change; `osSetWindParam` with a non-finite value logs one warning and changes nothing.
 
 - [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
       see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,

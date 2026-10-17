@@ -940,6 +940,12 @@ namespace OpenSim.Region.Framework.Scenes
             // the two early-return paths above - this reordering removes that gap by
             // construction rather than adding a cleanup call, and shortens the actual
             // felt freeze window in the success path by the destination-lookup time).
+
+            // [Confluence] Tranquillity #314: a vehicle's motors go on across the border; the engine writes their running
+            // state into the record that is sent (before the crossing freezes the object).
+            if (root.VehicleParams is not null && root.PhysActor is not null)
+                root.PhysActor.CaptureVehicleRunningState(ref root.VehicleParams.vd);
+
             root.PhysActor?.CrossingStart();
 
             if (sog.m_sittingAvatars.Count == 0)
@@ -1206,6 +1212,7 @@ namespace OpenSim.Region.Framework.Scenes
 
             sog.m_rootPart.KeyframeMotion?.CrossingFailure();
             sog.RootPart.PhysActor?.CrossingFailure();
+            sog.RootPart.VehicleParams?.ClearRunningState();
 
             sog.inTransit = false;
             AttachToBackup();

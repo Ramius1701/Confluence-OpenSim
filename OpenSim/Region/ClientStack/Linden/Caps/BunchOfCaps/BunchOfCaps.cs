@@ -961,7 +961,12 @@ namespace OpenSim.Region.ClientStack.Linden
                         prim.RezzerID = creatorID;
                         prim.CreationDate = Util.UnixTimeSinceEpoch();
 
-                        if (grp == null)
+                        // [Confluence] Tranquillity #173: a part the upload names ("mesh_name", as Avastar models
+                        // send) keeps that name, as on Second Life; otherwise the upload's name, numbered.
+                        string meshName = inner_instance_list.TryGetValue("mesh_name", out tmp) ? tmp.AsString() : null;
+                        if (!string.IsNullOrWhiteSpace(meshName))
+                            prim.Name = meshName.Length > 63 ? meshName.Substring(0, 63) : meshName;
+                        else if (grp == null)
                             prim.Name = assetName;
                         else
                             prim.Name = assetName + "#" + i.ToString();

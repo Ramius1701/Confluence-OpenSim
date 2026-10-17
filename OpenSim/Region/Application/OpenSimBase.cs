@@ -112,6 +112,9 @@ namespace OpenSim
 
         private bool m_securePermissionsLoading = true;
 
+        // [Confluence] Tranquillity #323: [Startup] TimerResolutionMs (off by default), given back at shutdown.
+        private TimerResolution m_timerResolution;
+
         /// <value>
         /// The config information passed into the OpenSimulator region server.
         /// </value>
@@ -208,6 +211,21 @@ namespace OpenSim
         /// </summary>
         protected override void StartupSpecific()
         {
+            try
+            {
+                StartupSpecificCore();
+            }
+            catch
+            {
+                // A start that fails after TimerResolutionMs was applied gives the timer back.
+                m_timerResolution?.Dispose();
+                m_timerResolution = null;
+                throw;
+            }
+        }
+
+        private void StartupSpecificCore()
+        {
             IConfig startupConfig = Config.Configs["Startup"];
             if (startupConfig != null)
             {
@@ -225,6 +243,9 @@ namespace OpenSim
                 userStatsURI = startupConfig.GetString("Stats_URI", string.Empty);
 
                 m_securePermissionsLoading = startupConfig.GetBoolean("SecurePermissionsLoading", true);
+
+                // Empty or 0 (the default) leaves the Windows timer alone; see TimerResolution.
+                m_timerResolution = TimerResolution.Apply(startupConfig.GetString("TimerResolutionMs", "0"));
 
                 string permissionModules = Util.GetConfigVarFromSections<string>(Config, "permissionmodules",
                     new string[] { "Startup", "Permissions" }, "DefaultPermissionsModule");
@@ -959,6 +980,9 @@ namespace OpenSim
             {
                 m_log.Error("[SHUTDOWN]: Ignoring failure during shutdown - ", e);
             }
+
+            m_timerResolution?.Dispose();
+            m_timerResolution = null;
 
             base.ShutdownSpecific();
         }

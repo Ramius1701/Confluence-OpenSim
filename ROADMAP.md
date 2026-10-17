@@ -243,6 +243,13 @@ checked by `Tools/data-backend-check`.)*
   to decide: #315 ZephyrWind and #301 gatekeeper DNS resolver; Halcyon's notice on BotManager/IBotManager (#306).
   Still open from 2026-10-14: Tranquillity's core physics fixes #282/#283/#287/#288/#291/#296/#297 and Legion's Jolt
   work (mesh asset fetch, hulls, edge removal, rotation target).
+- **From the 2026-10-18 donor fetch** (ported that day: #295, #314, #173, #323, #321's core part, Legion's 10-14
+  notices with #311, opensim-master's XFF comments). Waiting: Tranquillity's wind series (#315 ZephyrWind, #320 wind
+  volumes, #322 snapshot - still being built; the weather addon's wind could use it); #319 (it replaces #301's DNS
+  lookup with `[UserAgentService] PublicAddress`; take it, not #301, once merged); #302 still open. Legion's
+  `lane/jolt` 10-14..17 (~240 commits: Halcyon vehicle motors on a 15 ms clock, move-to / hover / look-at kept across
+  a crossing, one copy kept when a crossing fails, size limits, mouse drag, spike cut, and an engine side of #314's
+  `CaptureVehicleRunningState`) - its own session, while Jolt stays off live.
 - **Weather, next steps** (after the 2026-10-16 rework): coverage on 512 m and 1024 m regions is capped at 384
   emitter prims (a 19x19 grid, one emitter every ~54 m on 1024 m regions) - precipitation emitted around the avatars
   present rather than over the whole region would scale; wind could come from Tranquillity's ZephyrWind (#315); the
