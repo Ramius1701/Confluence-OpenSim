@@ -286,6 +286,7 @@ namespace OpenSim.Region.Framework.Scenes
                 m_isCrossing = false;
                 m_waitingCrossing = false;
                 m_selected = value;
+                UpdatePhysicsHint();
             }
         }
 
@@ -515,6 +516,19 @@ namespace OpenSim.Region.Framework.Scenes
             m_waitingCrossing = false;
             m_frames.Clear();
             m_keyframes = null;
+            UpdatePhysicsHint();
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #296. Tells the root prim's physics actor whether this motion is moving it now
+        /// (PhysicsActor.MovedByKeyframedMotion): running, and not held still by a selection. Also called when the
+        /// actor is made, which can be after the start.
+        /// </summary>
+        public void UpdatePhysicsHint()
+        {
+            PhysicsActor pa = m_group?.RootPart?.PhysActor;
+            if (pa is not null)
+                pa.MovedByKeyframedMotion = m_running && !m_selected;
         }
 
         public void Start()
@@ -525,12 +539,14 @@ namespace OpenSim.Region.Framework.Scenes
             {
                 StartTimer();
                 m_running = true;
+                UpdatePhysicsHint();
                 m_group.Scene.EventManager.TriggerMovingStartEvent(m_group.RootPart.LocalId);
             }
             else
             {
                 StopTimer();
                 m_running = false;
+                UpdatePhysicsHint();
             }
         }
 
@@ -545,6 +561,7 @@ namespace OpenSim.Region.Framework.Scenes
             m_basePosition = m_group.AbsolutePosition;
             m_baseRotation = m_group.GroupRotation;
 
+            UpdatePhysicsHint();
             m_group.RootPart.Velocity = Vector3.Zero;
             m_group.RootPart.AngularVelocity = Vector3.Zero;
 //            m_group.SendGroupRootTerseUpdate();
@@ -560,6 +577,7 @@ namespace OpenSim.Region.Framework.Scenes
             bool running = m_running;
             m_running = false;
 
+            UpdatePhysicsHint();
             m_group.RootPart.Velocity = Vector3.Zero;
             m_group.RootPart.AngularVelocity = Vector3.Zero;
 //            m_skippedUpdates = 1000;
@@ -712,6 +730,7 @@ namespace OpenSim.Region.Framework.Scenes
             m_basePosition = m_group.AbsolutePosition;
             m_baseRotation = m_group.GroupRotation;
 
+            UpdatePhysicsHint();
             m_group.RootPart.Velocity = Vector3.Zero;
             m_group.RootPart.AngularVelocity = Vector3.Zero;
 //            m_group.SendGroupRootTerseUpdate();

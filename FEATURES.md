@@ -619,6 +619,13 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
   types, parameters and wind efficiency vectors (Tranquillity #295/#314;
   in-world check TESTING 2.7). The record can also carry the motors'
   running state across a border for an engine that supplies it.
+- Physical objects drag and turn as on Second Life (Tranquillity #283,
+  #288, #297): a mouse drag steers the object with its move-to-target, so
+  it can be lifted and stops at the cursor, and a Ctrl-Shift turn steers it
+  to the rotation shown with the look-at controller; scripts' own targets
+  come back after the release. Attachments' llSetBuoyancy /
+  llSetHoverHeight / llStopHover act on the wearer and end on detach
+  (#282); a part unlinked from a moving linkset keeps its motion (#291).
 - Hypergrid teleports retry once on a pure transport failure (no reply
   reached the source at all) instead of failing outright on any single
   transient blip.

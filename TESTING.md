@@ -60,6 +60,18 @@ that has `on_damage`, `final_damage` and `on_death` handlers.
       `llSetVehicleVectorParam(VEHICLE_LINEAR_MOTOR_TIMESCALE, ...)` or a motor decay above 120 s keeps those settings
       after take and re-rez, shift-copy and a region restart (the engine still caps a decay at 120 s). The InWorldz
       names are Phlox constants; a YEngine script uses the numbers (10001, 10002, 11001-11006, 12001, 12002).
+- [ ] 2.8 Grab-drag a physical object (Ctrl-drag, outside the Build floater): it follows the cursor smoothly, can be
+      lifted, stops swinging when the mouse stops, and drops when released; a part of a linkset drags the whole linkset
+      by the point that was grabbed. A script's `llMoveToTarget` / `llSetHoverHeight` running before the drag resumes
+      after it. A sat-on object, a vehicle or `STATUS_BLOCK_GRAB` refuse the drag.
+- [ ] 2.9 Rotate a physical object (Ctrl-Shift drag): it turns to the rotation shown, without overshooting or spinning
+      on after the release; a script's `llRotLookAt` / `llTargetOmega` resumes after it.
+- [ ] 2.10 An attachment with `llSetBuoyancy(1.0)` makes the wearer float, `llSetHoverHeight` holds them at a height and
+      `llStopHover` ends it; detaching the attachment ends both, and they survive a teleport inside the region.
+- [ ] 2.11 Unlinking a part from a moving physical linkset (`llBreakLink` while it flies or spins): the part carries on
+      with the speed it had instead of stopping dead.
+- [ ] 2.12 `llGetMass` on an avatar just after standing up from a seat or a teleport inside the region returns the
+      avatar's mass, not 0; rubber prims bounce as on Second Life (restitution 0.9).
 
 ## 3. Returning objects
 

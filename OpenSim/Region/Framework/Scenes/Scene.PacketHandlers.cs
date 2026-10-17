@@ -323,6 +323,11 @@ namespace OpenSim.Region.Framework.Scenes
 
             SceneObjectGroup obj = part.ParentGroup;
 
+            // [Confluence] Tranquillity #283: a new grab by the agent that holds a drag means the release of the
+            // earlier one never arrived
+            obj.ReleaseGrab(remoteClient.AgentId);
+            obj.ReleaseSpin(remoteClient.AgentId);   // [Confluence] Tranquillity #288
+
             SurfaceTouchEventArgs surfaceArg = null;
             if (surfaceArgs != null && surfaceArgs.Count > 0)
                 surfaceArg = surfaceArgs[0];
@@ -403,6 +408,9 @@ namespace OpenSim.Region.Framework.Scenes
 
             SceneObjectGroup grp = part.ParentGroup;
 
+            grp.ReleaseGrab(remoteClient.AgentId);   // [Confluence] Tranquillity #283: the drag ends
+            grp.ReleaseSpin(remoteClient.AgentId);   // [Confluence] Tranquillity #288: and so does a turn
+
             SurfaceTouchEventArgs surfaceArg = null;
             if (surfaceArgs != null && surfaceArgs.Count > 0)
                 surfaceArg = surfaceArgs[0];
@@ -454,7 +462,7 @@ namespace OpenSim.Region.Framework.Scenes
             {
                 if (Permissions.CanMoveObject(group, remoteClient))// && PermissionsMngr.)
                 {
-                    group.SpinMovement(rotation, remoteClient);
+                    group.SpinMovement(objectID, rotation, remoteClient);
                 }
                 // This is outside the above permissions condition
                 // so that if the object is locked the client moving the object
@@ -464,19 +472,13 @@ namespace OpenSim.Region.Framework.Scenes
             }
         }
 
+        /// <summary>
+        /// [Confluence] Tranquillity #288. The viewer let go of a rotate-drag. Only the agent that holds the turn can
+        /// end it.
+        /// </summary>
         public virtual void ProcessSpinObjectStop(UUID objectID, IClientAPI remoteClient)
         {
-/* no op for now
-            SceneObjectGroup group = GetGroupByPrim(objectID);
-            if (group != null)
-            {
-                if (Permissions.CanMoveObject(group.UUID, remoteClient.AgentId))// && PermissionsMngr.)
-                {
-//                    group.SpinMovement(rotation, remoteClient);
-                }
-                group.SendGroupTerseUpdate();
-            }
-*/
+            GetGroupByPrim(objectID)?.ReleaseSpin(remoteClient.AgentId);
         }
 
         public void ProcessScriptReset(IClientAPI remoteClient, UUID objectID,

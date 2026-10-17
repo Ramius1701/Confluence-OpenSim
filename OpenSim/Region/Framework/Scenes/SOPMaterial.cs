@@ -66,8 +66,8 @@ namespace OpenSim.Region.Framework.Scenes
             new(0.6f,0.5f), // Wood
             new(0.9f,0.3f), // Flesh
             new(0.4f,0.7f), // Plastic
-            new(0.9f,0.95f), // Rubber
-            new(0.0f,0.0f) // light ??
+            new(0.9f,0.9f), // Rubber ([Confluence] Tranquillity #287: Second Life's 0.9 restitution, was 0.95)
+            new(0.6f,0.5f) // Light (deprecated, kept for old viewers; given wood's values, it was 0/0)
         };
 
         public static Material MaxMaterial

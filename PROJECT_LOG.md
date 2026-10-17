@@ -28722,3 +28722,38 @@ TESTING.md: 2.7 (vehicle record), 7.11 (mesh part names), 9.6 (timer resolution)
 
 Verified: Release build 0 warnings / 0 errors; full Phlox suite 5,685 passed, 2 skipped, 0 failed (the 118 new: vehicle
 record, timer resolution, non-finite wind); Jolt suite 2,099 passed, 8 skipped, 0 failed. Not deployed.
+
+## Tranquillity's core physics and scene fixes ported: #282, #283, #287, #288, #291, #296, #297 (2026-10-18)
+
+Triaged 2026-10-14, ported one at a time with Tranquillity's tests (run in the Phlox xunit suite; FluentAssertions
+checks written as xunit asserts - FluentAssertions 8 is not open source - and BasicPhysics' namespace is singular
+here). These change what the live engines (ubODE, BulletSim) do, not only Jolt:
+
+- **#282:** `llSetBuoyancy`, `llSetHoverHeight` and `llStopHover` from a worn attachment act on the wearer. The
+  presence keeps the values and which attachment set them, hands them to every new avatar actor (a teleport inside
+  the region, standing up), and ends them when that attachment is detached, or all of them when the avatar leaves.
+- **#283:** dragging a physical object steers the root actor's move-to-target (tau 0.25 s, the grabbed point kept
+  under the cursor) instead of one undamped push per mouse update - it can be lifted and stops at the cursor; it
+  ends on ObjectDeGrab, a new grab, or the holder leaving. A script's `llMoveToTarget` / `llSetHoverHeight` is only
+  remembered during the drag and put back after. Refused (and nothing asked of the actor) when selected, attached, a
+  vehicle, sat on, or `STATUS_BLOCK_GRAB` on the root or the grabbed part.
+- **#287:** `Util.IsNanOrInfinity` tested Z for NaN twice, never for infinity; rubber restitution 0.9 (was 0.95) and
+  the deprecated Light material wood's values (was 0/0); region shutdown skips a presence whose client went away
+  during the kick (it threw in the scene graph loop); `llGetMass` on an avatar with no actor (just after a teleport
+  inside the region or standing up) returns the last mass, not 0. The shutdown test catches the scene graph's error
+  line with a log4net memory appender here.
+- **#288:** Ctrl-Shift rotate-drag steers the root to the rotation the viewer sends with the look-at controller
+  (strength 1) instead of an undamped angular push per update; ObjectSpinStop now ends it. Scripts' `llRotLookAt`,
+  `llLookAt`, `llStopLookAt` and `llTargetOmega` are remembered during the turn and resume after it. Shares #283's
+  refusal rules.
+- **#291:** a part unlinked from a physical linkset starts with the velocity it had in the linkset (the root's
+  velocity plus its spin crossed with the part's offset) and the root's spin.
+- **#296:** `PhysicsActor.MovedByKeyframedMotion` (virtual, ignored by default) is set while `llSetKeyframedMotion` is
+  moving the object, so an engine can carry what stands on it. No engine here reads it yet.
+- **#297:** `PhysicsScene.SupportsRotationTarget()` (false by default) lets an engine take look-at and rotate-drag
+  targets itself instead of core's controller. No engine here answers true yet; with false nothing changes.
+
+TESTING.md 2.8-2.12 added for the in-world checks.
+
+Verified: Release build 0 warnings / 0 errors; full Phlox suite 5,870 passed, 2 skipped, 0 failed (185 new from these
+seven); Jolt suite 2,099 passed, 8 skipped, 0 failed. Not deployed.

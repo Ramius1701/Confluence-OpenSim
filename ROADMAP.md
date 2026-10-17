@@ -241,8 +241,8 @@ checked by `Tools/data-backend-check`.)*
   llRotTarget across a state change), #316 (parcel access and ban list edits stored), #317 (a teleport request during
   a border crossing answered), #300, #299 (sitters stood up inside the region before an edge-flagged object goes);
   to decide: #315 ZephyrWind and #301 gatekeeper DNS resolver; Halcyon's notice on BotManager/IBotManager (#306).
-  Still open from 2026-10-14: Tranquillity's core physics fixes #282/#283/#287/#288/#291/#296/#297 and Legion's Jolt
-  work (mesh asset fetch, hulls, edge removal, rotation target).
+  Still open from 2026-10-14: Legion's Jolt work (mesh asset fetch, hulls, edge removal, rotation target).
+  Tranquillity's core physics fixes #282/#283/#287/#288/#291/#296/#297 were ported 2026-10-18.
 - **From the 2026-10-18 donor fetch** (ported that day: #295, #314, #173, #323, #321's core part, Legion's 10-14
   notices with #311, opensim-master's XFF comments). Waiting: Tranquillity's wind series (#315 ZephyrWind, #320 wind
   volumes, #322 snapshot - still being built; the weather addon's wind could use it); #319 (it replaces #301's DNS

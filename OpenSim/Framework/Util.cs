@@ -708,7 +708,7 @@ namespace OpenSim.Framework
             if (float.IsNaN(v.X) || float.IsNaN(v.Y) || float.IsNaN(v.Z))
                 return true;
 
-            if (float.IsInfinity(v.X) || float.IsInfinity(v.Y) || float.IsNaN(v.Z))
+            if (float.IsInfinity(v.X) || float.IsInfinity(v.Y) || float.IsInfinity(v.Z))   // [Confluence] Tranquillity #287: Z was tested for NaN twice
                 return true;
 
             return false;
