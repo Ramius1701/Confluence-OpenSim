@@ -28653,3 +28653,23 @@ after a storm gives the sky back; a script's environment is left alone; a saved 
 owner's own LightShare sky is not; with the portal a region has no weather until enabled, and off gives the sky back;
 Robust serves the region's switches, then the grid default, and leaves unset ones out (hours clamped). Full Phlox
 suite 5,566 passed, 2 skipped, 0 failed. Not deployed.
+
+## Web portal: region status from a background check, not live probes per page (2026-10-17)
+
+Reported: Firestorm's login screen (the `/welcome` page) sometimes fails with ERR_TIMED_OUT on first open and loads a
+second or two later. Measured: `/welcome` on Robust's own port took 3.02 s to the first byte on every load, the same
+through the public address - DNS and connect were instant. The page asks the grid service for every registered region
+and probed each one live (`FilterOnlineRegions` -> `IsRegionAlive`: loopback, then the public ServerURI, 1.5 s each,
+the page waiting up to 3.5 s for all), because a crashed or killed region stays registered. Six regions were registered
+but not yet listening (just after a restart); on Windows a connect to a closed loopback port takes ~2 s to be refused,
+then the public address timed out - so the whole budget was spent on every load. With all 15 up it was still 1-1.5 s.
+Firestorm loads the login page when its panel is built and again once the grid is selected (`FSPanelLogin::
+loadLoginPage`); the slow first load is the likely cause of the timeout on a cold start (not reproduced in a viewer).
+The same live probing ran on the home, region list, region and My Regions pages.
+
+Now (`WebInterfaceServiceConnector.RegionStatus.cs`): one background check every 30 s of every region a page asked
+about in the last 10 minutes, in parallel; pages read its last answer (`IsRegionOnlineCached`). A region not checked
+yet counts as up until its first check a quarter of a second later. The region page uses the cache; My Regions'
+reachability pill shows Online from the cache and only diagnoses a down region live. Admin start/stop/restart keep their
+live checks. Verified: build 0/0; `WebRegionStatusCacheTests` (unchecked region up, then a closed port down and an open
+one up, reading under 500 ms); full Phlox suite 5,567 passed, 2 skipped, 0 failed. Not deployed.

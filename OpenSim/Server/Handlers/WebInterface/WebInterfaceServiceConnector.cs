@@ -3040,7 +3040,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 return;
             }
 
-            bool isOnline = IsRegionAlive(region, 1500);
+            bool isOnline = IsRegionOnlineCached(region);   // [Confluence: the background check, not a live probe]
             bool isViewerContext = IsViewerRequest(request, response);
             string teleportUrl = isViewerContext
                     ? "secondlife:///app/teleport/" + Uri.EscapeDataString(region.RegionName) + "/128/128/25"
@@ -7013,47 +7013,7 @@ namespace OpenSim.Server.Handlers.WebInterface
         // is exactly the signal wanted here) with a short timeout, all
         // regions checked in parallel so total latency is one timeout
         // period, not (timeout x region count).
-        private static List<GridRegion> FilterOnlineRegions(List<GridRegion> regions, int timeoutMs = 1500)
-        {
-            if (regions == null || regions.Count == 0)
-                return new List<GridRegion>();
-
-            System.Threading.Tasks.Task<bool>[] probes = new System.Threading.Tasks.Task<bool>[regions.Count];
-            for (int i = 0; i < regions.Count; i++)
-            {
-                // Capture a fresh local copy of the loop index - a `for`
-                // loop's variable is a single shared slot across every
-                // iteration (unlike `foreach`, which gets a new one each
-                // time), so the lambda below would otherwise close over
-                // whatever `i` happens to be by the time it actually runs
-                // on a thread pool thread, not the value at the point
-                // Task.Run was called. Found live: every single probe threw
-                // "Index was out of range" because by the time any of them
-                // executed, the loop had already finished and `i` equaled
-                // regions.Count.
-                int idx = i;
-                probes[idx] = System.Threading.Tasks.Task.Run(() => IsRegionAlive(regions[idx], timeoutMs));
-            }
-
-            // IsRegionAlive can try TWO endpoints in sequence (loopback,
-            // then the public ServerURI as a fallback), each with its own
-            // full `timeoutMs` - so one genuinely-alive-but-slow region can
-            // legitimately take up to 2x timeoutMs to answer. This budget
-            // must cover that real worst case, or a fast-but-arbitrary
-            // subset of otherwise-healthy regions silently gets counted as
-            // offline every time the outer clock runs out first - found
-            // live as the cause of the "regions to explore" count flapping
-            // between 15 and a random smaller number on every page reload.
-            System.Threading.Tasks.Task.WaitAll(probes, (timeoutMs * 2) + 500);
-
-            List<GridRegion> online = new List<GridRegion>();
-            for (int i = 0; i < regions.Count; i++)
-            {
-                if (probes[i].IsCompletedSuccessfully && probes[i].Result)
-                    online.Add(regions[i]);
-            }
-            return online;
-        }
+        // FilterOnlineRegions: WebInterfaceServiceConnector.RegionStatus.cs (from the background check, no live probes).
 
         private static bool IsRegionAlive(GridRegion region, int timeoutMs)
         {
@@ -16165,7 +16125,8 @@ namespace OpenSim.Server.Handlers.WebInterface
         // duplicated in each.
         private static string RenderRegionReachabilityPill(GridRegion region)
         {
-            if (IsRegionAlive(region, 1000))
+            // [Confluence] up by the background check: no live probe; only a down region gets the diagnosis below
+            if (IsRegionOnlineCached(region))
                 return "<span class=\"pill pill-yes\">Online</span>";
 
             bool reachableLocally = Uri.TryCreate(region.ServerURI, UriKind.Absolute, out Uri uri)
