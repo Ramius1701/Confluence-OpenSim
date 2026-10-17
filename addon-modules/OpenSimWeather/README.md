@@ -35,7 +35,7 @@ The complete reference is intentionally conservative:
 - `CoverageMode = Region` with `EmitterGrid = 8` restores full-region coverage across standard and variable-sized regions;
 - automatic cycling, entry IMs, thunder, wind changes, environment changes,
   puddles, and snow accumulation are opt-in;
-- environment changes require a second explicit persistence acknowledgement;
+- the weather sky is each avatar's own override and is never stored on the region;
 - surface effects require configured alpha texture UUIDs and otherwise disable
   themselves;
 - generated emitters, flashes, puddles, and snow patches are inserted as

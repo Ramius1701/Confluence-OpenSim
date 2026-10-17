@@ -133,8 +133,8 @@
     ;; ------------------------------------------------------------------------
 
     ;; Canonical switch. AdjustClouds remains accepted as a legacy alias.
-    ;; OpenSim persists these changes, so the explicit acknowledgement is also
-    ;; required before any profile is applied.
+    ;; The weather sky is each avatar's own override; the region's stored
+    ;; environment is never changed, so nothing is left behind after a crash.
     AdjustEnvironment = false
     RestoreCloudsOnClear = true
 

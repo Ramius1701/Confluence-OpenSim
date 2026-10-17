@@ -624,9 +624,8 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             }
             else if (m_adjustClouds)
             {
-                m_log.WarnFormat(
-                    "[WEATHER]: Cloud adjustment is enabled in {0}. OpenSim persists these region environment changes; "
-                    + "a process crash can prevent automatic restoration.",
+                // The weather sky is each avatar's own override and is never stored on the region, so a crash leaves nothing behind.
+                m_log.DebugFormat("[WEATHER]: Cloud adjustment is enabled in {0} (per avatar; the region environment is not changed).",
                     scene.RegionInfo.RegionName);
             }
 
