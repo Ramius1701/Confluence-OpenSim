@@ -28757,3 +28757,67 @@ TESTING.md 2.8-2.12 added for the in-world checks.
 
 Verified: Release build 0 warnings / 0 errors; full Phlox suite 5,870 passed, 2 skipped, 0 failed (185 new from these
 seven); Jolt suite 2,099 passed, 8 skipped, 0 failed. Not deployed.
+
+## WolfViewer added as a viewer donor; Firestorm-family viewers surveyed (2026-10-18)
+
+Viewer donors are standalone clones in `S:\Github`, not remotes on this repo (C++, and a different licence: LGPL 2.1).
+Added `S:\Github\wolfviewer` (intelligentwolf/wolfviewer, partial clone). Its `master` is old Firestorm (2024) plus
+one CI commit; the work is on the **`wolfviewer` branch** (head `4c4e70e85e`, w69 "Speedy Xenon", 2026-10-17). Both
+WolfViewer and AyaneStorm now carry a `firestorm` remote so `git log firestorm/master..HEAD` shows only their own work.
+
+- **WolfViewer**: forked Firestorm at `fbc9ee9624` (2026-05-11, 7.2.4), own work from 2026-08-27; 259 own commits,
+  1092 behind Firestorm, ~205k lines added over 1466 files. Built `SINGLEGRID` (Wolf Territories only, no grid
+  selector). Adds the WolfGlass skin, native Wolf sky/clouds/aurora (asks the server for weather with `aurora=2`),
+  far terrain and void sea, flight/sailing decks with autopilot and autoland, vehicle HUDs, Wolf DJ / radio, "My
+  Suitcase" for hypergrid trips, a LibreTranslate chat translator, an OpenSim WebRTC voice fix. Much of it calls
+  Wolf's own web services (`wolfstorm.app`, `wolf-grid.com`: ~170 added lines reference them). Mining it means taking
+  ideas and the generic parts (WebRTC voice fix, region-crossing smoothing, hypergrid suitcase), not the service glue.
+- **AyaneStorm** (`S:\Github\ayanestorm`, head `c1b790e08b` 2026-10-06): photography fork, close to Firestorm (434 own
+  commits, 39 behind, ~82k lines): colour grading/LUTs, OIT transparency, god rays, procedural sky/moon/aurora/stars,
+  live depth of field. Viewer-local, so no server work; already the reference for our weather module's aurora.
+- **Firestorm** (`S:\Github\phoenix-firestorm`): the OpenSim build is the same source with `-DOPENSIM:BOOL=ON`
+  (WolfViewer's CI notes `ReleaseOS` alone does not enable it), not a separate fork.
+
+No viewer work started; the question of a Confluence viewer is open (see the fork-review notes).
+
+### Combined viewer: AyaneStorm + WolfViewer on Firestorm (planning, 2026-10-18)
+
+The user wants one viewer carrying AyaneStorm's and WolfViewer's features, with Firestorm as the authority. Survey
+(nothing built yet):
+- **AyaneStorm** is modular: ~80 self-contained `as*.cpp/.h` files plus ~70 `as*` shaders, hooks into 329 Firestorm
+  files (biggest: settings.xml, pipeline.cpp +565, menu_viewer.xml, fsfloaterimcontainer.cpp, lldrawpoolalpha.cpp).
+  All viewer-local. 39 commits behind Firestorm. Cheapest to carry.
+- **WolfViewer** is invasive: 99 new `wolf*` sources, 707 Firestorm files modified (llnetmap +946, llsurface +670/-478,
+  llvoicewebrtc +722, llviewershadermgr, llwindowsdl2, water shaders). 1092 behind Firestorm. Its modules split three
+  ways: generic fixes; viewer-local features (flight deck, dashboards, DJ desk, radio player, compass, lag detector,
+  graphics helper, span screens, ocean FFT/wake/boats, suitcase); and features tied to Wolf's web services or a
+  Wolf-grid check (weather, experiences, adventure/AI, terrain paint, map overlays, radio station list, wave zones,
+  screen share, speech).
+- **Collision:** 159 Firestorm files are modified by both, mostly the sky/water/stars/moon/post shaders and
+  pipeline.cpp. Both bring their own sky, stars and aurora, so one stack must be chosen per area.
+- All three are LGPL 2.1, so combining is allowed; Wolf's sky also carries MIT/BSD/Apache third-party notices
+  (licenses-*.txt) that must travel with it.
+- Wolf's generic fixes worth taking first: OpenSim WebRTC empty ICE list (`bfc0390e29`; Firestorm master `24158268bc`
+  still pushes the empty list), varregion 25,600 m load and huge-region flicker (`b52e9b1850`, `f791aca67e`),
+  big/small neighbour crash (`3e1eb89b9e`), crash after a cross-region teleport (`c6fe6c19c8`), teleport retry
+  (`0133d2b044`), the 09-27 security fixes (`ee7dcce216`), bad map tile crash (`c1e124d3ee`),
+  weak-GPU start (`4167bd4d8b`), corrupt GLB upload crash (`7aa3a40497`). These are also upstream-to-Firestorm
+  candidates.
+
+## Deployed 5eec81a3c9; weather: a starting Robust's 404 no longer switches weather on (2026-10-18)
+
+Deployed 5eec81a3c9 (the vehicle record, timer, wind and notice commits and the core physics fixes) to all region bins,
+md5-verified; the 7 running regions restarted after Robust: DLLs match, YEngine on, errors at the known baseline, no
+exceptions.
+
+Found while looking at the per-region `[Weather]` sections: when Robust started (15:32) each running region's weather
+module asked for its settings while Robust's port already answered but the endpoint was not yet registered, got 404,
+took it for a Robust without the feature, stopped asking for good and switched weather on from the ini - Sandbox
+started a blizzard. (The regions restarted after Robust was ready were unaffected.) Fixed in the addon (0.4.1): a 404
+is "no answer yet" until it has lasted 10 minutes, and polling continues after a fallback so a later answer hands the
+choice back to the owner. `WeatherReworkTests` +2 (a 404 then an answer keeps weather off until the owner's choice
+arrives - this one fails on the old build; a lasting 404 falls back and a later answer hands it back). Not deployed.
+
+Also found: the addon's `config/OpenSimWeather.ini` is read after each region's `OpenSim.ini`, so the four regions'
+own `[Weather]` sections are mostly overridden (only keys the addon file does not set get through). Left as it is:
+the weather module is to be rethought (sky handling, ground effects, a real weather model) rather than patched.

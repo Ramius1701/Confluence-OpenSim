@@ -3249,6 +3249,11 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private const int WebSettingsFirstPollMS = 5000, WebSettingsPollMS = 60000;
         private long m_lastWebSettingsWarnMs;
 
+        // A Robust that is still starting answers 404 for a moment, before its handlers are registered, so a 404 is
+        // "no answer yet" until it has lasted this long; only then is it taken for an older Robust without the endpoint.
+        private long m_webSettings404FallbackMs = 600000;
+        private long m_first404Ms;
+
         private bool UsesWebSettings => m_useWebSettings && m_webSettingsAvailable && m_settingsServerURI.Length > 0;
 
         /// <summary>
@@ -3305,7 +3310,8 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private void PollWebSettings()
         {
             Scene scene = m_scene;
-            if (scene == null || !UsesWebSettings)
+            // polled on after an ini fallback too, so a Robust that later answers hands the choice back to the owner
+            if (scene == null || !m_useWebSettings || m_settingsServerURI.Length == 0)
                 return;
 
             string url = m_settingsServerURI + "/weather/" + scene.RegionInfo.RegionID;
@@ -3314,11 +3320,17 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 using var response = s_settingsHttp.GetAsync(url).GetAwaiter().GetResult();
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    // A Robust without the endpoint (an older build): the ini decides, as before this feature.
+                    // Robust starting up (its handlers not registered yet) or a Robust without the endpoint (an older
+                    // build). Only a 404 that lasts is the second: then the ini decides, as before this feature.
+                    long now404 = Environment.TickCount64;
+                    if (m_first404Ms == 0)
+                        m_first404Ms = now404;
+                    if (!m_webSettingsAvailable || now404 - m_first404Ms < m_webSettings404FallbackMs)
+                        return;
+
                     m_webSettingsAvailable = false;
-                    StopWebSettingsPolling();
-                    m_log.WarnFormat("[WEATHER]: {0} answers 404 for the region weather settings; {1} uses the [Weather] ini settings.",
-                        m_settingsServerURI, scene.RegionInfo.RegionName);
+                    m_log.WarnFormat("[WEATHER]: {0} has answered 404 for the region weather settings for {1} minutes; {2} uses the [Weather] ini settings until it answers.",
+                        m_settingsServerURI, m_webSettings404FallbackMs / 60000, scene.RegionInfo.RegionName);
                     m_autoCycleEnabled = m_iniAutoCycleEnabled;
                     m_autoCycleHours = m_iniAutoCycleHours;
                     SetRegionActive(true, "the [Weather] ini settings");
@@ -3326,6 +3338,13 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 }
                 response.EnsureSuccessStatusCode();
                 string json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                m_first404Ms = 0;
+                if (!m_webSettingsAvailable)
+                {
+                    m_webSettingsAvailable = true;
+                    m_log.InfoFormat("[WEATHER]: {0} answers the region weather settings again; {1} follows its owner's setting.",
+                        m_settingsServerURI, scene.RegionInfo.RegionName);
+                }
                 ApplyWebSettings(OSDParser.DeserializeJson(json) as OSDMap);
             }
             catch (Exception e)

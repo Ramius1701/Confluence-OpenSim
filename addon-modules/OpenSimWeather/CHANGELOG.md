@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 - Confluence: a Robust that is still starting does not switch the weather on (2026-10-18)
+
+- A Robust that is starting answers 404 for a moment before its handlers are registered. The module took any 404
+  for a Robust without the region weather endpoint, stopped asking and switched the weather on from the ini, so every
+  region that asked in that moment had weather (and auto-cycle) whatever its owner had chosen. A 404 now counts as no
+  answer yet; the ini decides only after 404s for 10 minutes, and the module keeps asking, so a Robust that answers
+  later hands the choice back to the owner.
+
 ## 0.4.0 - Confluence: the sky per avatar, on or off per region (2026-10-16)
 
 - The weather sky is each avatar's own environment override built from the region's day cycle, never the region's

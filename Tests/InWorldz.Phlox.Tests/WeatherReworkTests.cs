@@ -65,7 +65,7 @@ public class WeatherReworkTests
         public void Dispose() => Module?.RemoveRegion(Scene);
     }
 
-    private static Rig NewRig(bool webPortal = false, ViewerEnvironment region = null)
+    private static Rig NewRig(bool webPortal = false, ViewerEnvironment region = null, string settingsUri = null)
     {
         var scene = new SceneHelpers().SetupScene();
         var envProxy = DispatchProxy.Create<IEnvironmentModule, RecordingEnvironment>();
@@ -90,7 +90,7 @@ public class WeatherReworkTests
         w.Set("AnnounceWeatherChangesInChat", "false");
         w.Set("EmitterGrid", "2");
         w.Set("UseWebPortalSettings", webPortal ? "true" : "false");
-        if (webPortal) w.Set("SettingsServerURI", "http://127.0.0.1:9");   // nothing listens; the tests set the switches directly
+        if (webPortal) w.Set("SettingsServerURI", settingsUri ?? "http://127.0.0.1:9");   // by default nothing listens; most tests set the switches directly
 
         var module = new WeatherModule();
         SceneHelpers.SetupSceneModules(scene, config, module);
@@ -192,6 +192,79 @@ public class WeatherReworkTests
         WebSettings(r, new OSDMap());                                            // the owner turned it off
         Assert.False(Active(r));
         Assert.Null(r.Avatar.Environment);                                       // and the sky is given back
+    }
+
+    /// <summary>A Robust stand-in: answers 404 (as one that is still starting does) until told to answer.</summary>
+    private sealed class SettingsServer : IDisposable
+    {
+        private readonly System.Net.HttpListener m_listener = new();
+        public volatile string Answer;          // null: 404
+        public readonly string Uri;
+
+        public SettingsServer()
+        {
+            var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            probe.Start();
+            int port = ((System.Net.IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+            Uri = "http://127.0.0.1:" + port;
+            m_listener.Prefixes.Add(Uri + "/");
+            m_listener.Start();
+            _ = Task.Run(Serve);
+        }
+
+        private async Task Serve()
+        {
+            while (m_listener.IsListening)
+            {
+                System.Net.HttpListenerContext ctx;
+                try { ctx = await m_listener.GetContextAsync(); } catch { return; }
+                string answer = Answer;
+                ctx.Response.StatusCode = answer == null ? 404 : 200;
+                if (answer != null)
+                {
+                    byte[] body = System.Text.Encoding.UTF8.GetBytes(answer);
+                    ctx.Response.OutputStream.Write(body, 0, body.Length);
+                }
+                ctx.Response.Close();
+            }
+        }
+
+        public void Dispose() { m_listener.Stop(); m_listener.Close(); }
+    }
+
+    private static void Poll(Rig r)
+        => typeof(WeatherModule).GetMethod("PollWebSettings", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(r.Module, null);
+
+    [Fact]
+    public void ARobustStillStartingThat404sDoesNotTurnTheWeatherOn()
+    {
+        using var server = new SettingsServer();
+        using var r = NewRig(webPortal: true, settingsUri: server.Uri);
+        Assert.False(Active(r));
+
+        Poll(r);                                             // 404 while Robust registers its handlers
+        Poll(r);
+        Assert.False(Active(r));                             // no ini fallback: the weather stays off
+
+        server.Answer = "{\"enabled\":\"true\",\"autocycle\":\"false\"}";
+        Poll(r);
+        Assert.True(Active(r));                              // the owner's choice once Robust answers
+    }
+
+    [Fact]
+    public void A404ThatLastsFallsBackToTheIniAndAnAnswerLaterHandsItBack()
+    {
+        using var server = new SettingsServer();
+        using var r = NewRig(webPortal: true, settingsUri: server.Uri);
+        typeof(WeatherModule).GetField("m_webSettings404FallbackMs", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(r.Module, 0L);
+
+        Poll(r);
+        Assert.True(Active(r));                              // an older Robust without the endpoint: the ini says on
+
+        server.Answer = "{}";                                // the owner has not turned it on
+        Poll(r);
+        Assert.False(Active(r));
     }
 
     /// <summary>A grid settings table in memory.</summary>
