@@ -19,67 +19,36 @@
     EstateManagerOnly = true
 
     ;; ------------------------------------------------------------------------
-    ;; WEATHER COVERAGE AND VAR-REGIONS
+    ;; RAIN AND SNOW (0.6.0: around the avatars present)
     ;; ------------------------------------------------------------------------
 
-    ;; Three coverage modes:
-    ;;   Region     - a grid of emitters spread across the whole region.
-    ;;                Best for small/legacy regions or showcase builds where
-    ;;                weather should be visible from anywhere.
-    ;;   ActiveArea - only maintains emitters around connected avatars. Cheap
-    ;;                regardless of region size; nothing renders where nobody
-    ;;                is standing.
-    ;;   Wandering  - a fixed-size pool of emitters (WanderingBatchSize) that
-    ;;                periodically relocate to new random spots, so weather
-    ;;                looks like drifting, patchy cells rather than a uniform
-    ;;                static grid. Pool size is independent of region size, so
-    ;;                startup stays fast and coverage stays bounded even on
-    ;;                very large var regions - coverage is probabilistic, not
-    ;;                guaranteed everywhere at once. Recommended over Region
-    ;;                for large var regions.
-    CoverageMode = Region
+    ;; Rain and snow fall around each avatar in the region, from emitters a
+    ;; short drop above it, so every flake and drop reaches the ground (or the
+    ;; floor the avatar stands on), on any region size. An avatar under cover,
+    ;; and a spot under a roof, get none. CoverageMode, EmitterGrid,
+    ;; EmitterSpacingMeters, ActiveAreaRadiusMeters, EmitterRadiusScale,
+    ;; Intensity and the Wandering* keys are no longer read.
 
-    ;; Region mode only. EmitterGrid=0 scales the emitter COUNT to
-    ;; RegionSizeX/RegionSizeY using EmitterSpacingMeters below, which keeps
-    ;; each emitter's particle burst radius sane on variable-sized regions.
-    ;; A fixed non-zero EmitterGrid instead scales spacing (and burst radius)
-    ;; up with region size, and radius silently exceeds the viewer's ~50m
-    ;; PSYS_SRC_BURST_RADIUS limit on var regions of 1024m or larger (the
-    ;; module clamps to 50m as a safety net, but coverage gets sparse well
-    ;; before that) - only use a fixed grid count on legacy 256m regions.
-    EmitterGrid = 0
+    ;; The drop: how far above an avatar's floor the emitters sit.
+    PrecipitationHeightMeters = 22
 
-    ;; Used by Region mode when EmitterGrid=0, and always by ActiveArea and
-    ;; Wandering modes. The module calculates independent X and Y cell counts
-    ;; (or pool positions) from the region size and this spacing.
-    EmitterSpacingMeters = 24.0
+    ;; How far round each avatar it rains or snows.
+    PrecipitationRadiusMeters = 32
 
-    ;; Safety ceiling on emitter object count for Region spacing mode and
-    ;; ActiveArea mode. A fixed EmitterGrid is also reduced when its
-    ;; requested object count exceeds this.
+    ;; The particles in the air around one avatar at once (a viewer draws a few
+    ;; thousand); storms and blizzards use half as many again.
+    ParticleBudget = 2500
+
+    ;; More or less rain and snow, 0.25 to 2.
+    PrecipitationDensity = 1.0
+
+    ;; Safety ceiling on emitter objects in the region, and how often the
+    ;; emitters follow the avatars.
     MaxEmitters = 384
-
-    ;; ActiveArea radius around each root agent and refresh interval.
-    ActiveAreaRadiusMeters = 96.0
     ActiveAreaRefreshSeconds = 3
 
-    ;; Wandering mode only. Pool size stays constant regardless of region
-    ;; size; WanderingChurnFraction of the pool relocates every
-    ;; WanderingRefreshSeconds.
-    WanderingBatchSize = 40
-    WanderingRefreshSeconds = 20
-    WanderingChurnFraction = 0.25
-
-    ;; Particle burst radius as a fraction of the calculated cell spacing.
-    ;; Hard-clamped to 50m (the viewer's practical PSYS_SRC_BURST_RADIUS
-    ;; limit) regardless of this scale or the computed spacing.
-    EmitterRadiusScale = 0.62
-
-    ;; Height above local terrain used for the invisible emitter object.
-    EmitterHeight = 18.0
-
-    ;; Global precipitation multiplier. Raise cautiously.
-    Intensity = 1.0
+    ;; Height above the terrain for the lightning flashes.
+    EmitterHeight = 80.0
 
     ;; ------------------------------------------------------------------------
     ;; PARTICLE AND LIGHTNING ASSETS

@@ -20,7 +20,7 @@ OpenSim process. Use a controlled simulator restart.
 3. Copy this package to `addon-modules/OpenSimWeather`.
 4. Compare the old configuration with
    `config/OpenSimWeather.ini.example`. Do not carry forward `AllowDisabled`.
-5. Start with `Enabled = false`, `CoverageMode = Region`, `EmitterGrid = 8`, environment/wind
+5. Start with `Enabled = false`, environment/wind
    disabled and auto-cycle disabled.
 6. Paste valid particle asset UUIDs where available.
 7. Run `runprebuild.bat` from the OpenSim source root.
@@ -45,9 +45,9 @@ OpenSim process. Use a controlled simulator restart.
 
 - Delete `AllowDisabled`; it no longer exists.
 - Prefer `AdjustEnvironment`; `AdjustClouds` is accepted only as a legacy alias.
-- Keep `EmitterGrid = 8` for the compatibility/default full-region layout.
-- Set `EmitterGrid = 0` only when deliberately selecting fixed-metre
-  `EmitterSpacingMeters` plus `MaxEmitters`.
+- Rain and snow fall around the avatars (0.6.0): `CoverageMode`, `EmitterGrid`, `EmitterSpacingMeters`,
+  `ActiveAreaRadiusMeters`, `EmitterRadiusScale`, `Intensity` and `Wandering*` are no longer read; see
+  `PrecipitationHeightMeters`, `PrecipitationRadiusMeters`, `ParticleBudget` and `PrecipitationDensity`.
 - Particle assets are OpenSim asset UUIDs.
 - The ground effects (puddle and snow patches) are gone (0.5.0): `SurfaceEffectsEnabled`, `PuddleTexture`,
   `SnowSurfaceTexture` and the wetness, drying, melt and patch keys are no longer read and can be deleted.

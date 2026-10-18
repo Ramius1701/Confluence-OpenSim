@@ -252,8 +252,8 @@ checked by `Tools/data-backend-check`.)*
   `CaptureVehicleRunningState`) - its own session, while Jolt stays off live.
 - **Weather rethink** (agreed 2026-10-18; the module's sky, ground effects and model were not good enough). Stage 1
   done (addon 0.5.0): the sky changes each sky of the day cycle relative to itself and fades; the ground prims are
-  gone. Next: (2) precipitation emitted around the avatars present instead of a region grid of up to 384 emitter
-  prims (1024 m regions get one every ~54 m today), lightning flashes without prims if possible; (3) a weather model:
+  gone. Stage 2 done (0.6.0): rain and snow fall around the avatars present and reach the ground. Still to look at:
+  lightning flashes without prims, if possible. Next: (3) a weather model:
   a climate per region, believable transitions, temperature / cloud / wind / precipitation linked, wind from
   Tranquillity's ZephyrWind (#315) once its series settles; (4) settings in one place (the web portal per region,
   the ini for grid defaults only) - today the addon's `config/OpenSimWeather.ini` is read after each region's

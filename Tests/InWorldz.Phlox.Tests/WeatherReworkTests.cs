@@ -376,6 +376,60 @@ public class WeatherReworkTests
         Assert.Empty(r.Env.Writes);
     }
 
+    // ── Precipitation around the avatars (0.6.0): it reaches the ground, stays visible, stays within the budget ──
+
+    [Theory]
+    [InlineData("rain")]
+    [InlineData("storm")]
+    [InlineData("snow")]
+    [InlineData("blizzard")]
+    public void EveryFlakeOrDropReachesTheGroundAndStaysVisibleOnTheWay(string weather)
+    {
+        var fall = PrecipitationParticles.For(weather);
+        foreach (float drop in new[] { 6f, 22f, 40f, 60f })
+        {
+            var ps = PrecipitationParticles.Build(fall, drop, 200f, Vector2.Zero, UUID.Random());
+
+            // the slowest particle (the edge of the cone, the slowest speed) must have fallen the whole drop
+            float v = ps.BurstSpeedMin * MathF.Cos(MathF.PI - ps.InnerAngle);
+            float a = -ps.PartAcceleration.Z;
+            float t = ps.PartMaxAge;
+            Assert.True(v * t + 0.5f * a * t * t >= drop, $"{weather} from {drop} m stops at {v * t + 0.5f * a * t * t:0.0} m");
+            Assert.True(t <= 30f, $"{weather} lives {t} s, more than a viewer keeps a particle");
+
+            Assert.Equal(ps.PartStartColor.A, ps.PartEndColor.A);               // no fading on the way down
+            Assert.True(ps.PartStartColor.A >= 0.5f);
+            Assert.Equal(MathF.PI, ps.OuterAngle, 4);                           // a cone round straight down
+            Assert.True(ps.InnerAngle > MathF.PI / 2f);
+
+            float alive = ps.BurstPartCount * ps.PartMaxAge / ps.BurstRate;   // particles in the air at once
+            Assert.InRange(alive, 100f, 400f);
+        }
+        Assert.Null(PrecipitationParticles.For("clear"));
+        Assert.Null(PrecipitationParticles.For("sunny"));
+    }
+
+    [Fact]
+    public void ASnowfallPutsItsEmittersRoundTheAvatarAShortDropAboveIt()
+    {
+        using var r = NewRig();
+        r.Avatar.AbsolutePosition = new Vector3(100f, 120f, 30f);
+
+        Assert.True(Apply(r, "Snow"));
+
+        var emitters = r.Scene.GetSceneObjectGroups().Where(g => g.RootPart.Name.Contains("emitter")).ToList();
+        Assert.NotEmpty(emitters);
+        Assert.True(emitters.Count <= 40, emitters.Count + " emitters for one avatar");
+        foreach (var e in emitters)
+        {
+            Vector3 p = e.AbsolutePosition;
+            float dx = p.X - 100f, dy = p.Y - 120f;
+            Assert.True(MathF.Sqrt(dx * dx + dy * dy) <= 32f + 24f, "an emitter " + MathF.Sqrt(dx * dx + dy * dy) + " m away");
+            Assert.InRange(p.Z, 29f + 22f - 0.5f, 29f + 22f + 0.5f);          // the avatar's floor plus the drop
+            Assert.True(e.RootPart.ParticleSystem.Length > 0);
+        }
+    }
+
     private static SkyData Clone(SkyData s)
     {
         var c = new SkyData();

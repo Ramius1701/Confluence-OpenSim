@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 - Confluence: rain and snow fall around the avatars and reach the ground (2026-10-19)
+
+- Rain and snow fall from emitters a short drop (`PrecipitationHeightMeters`, 22 m) above each avatar, on a grid of
+  cells round it (`PrecipitationRadiusMeters`, 32 m) that follows it, instead of a grid of up to 384 emitters 80 m
+  above the whole region. On a 1024 m region a blizzard reached the ground almost nowhere: particles started 47-113 m
+  up, lived too short to fall that far, faded to 8-14% on the way, followed the region's wind, and 253 emitters
+  overran what a viewer draws.
+- Particles go down a cone at a steady speed (snow 1.3 m/s, rain 8.5) with a gentle drift, live exactly long enough
+  to reach the ground, and do not fade. Rain streaks follow their fall. The particles in the air round one avatar stay
+  near `ParticleBudget` (2,500); `PrecipitationDensity` scales it.
+- An avatar under cover gets none; the cover is probed from the avatar (an avatar on a platform is not "covered" by
+  it), and a cell with a roof between its floor and its emitter is skipped.
+- Removed: the region grid and wandering layouts and their keys (`CoverageMode`, `EmitterGrid`,
+  `EmitterSpacingMeters`, `ActiveAreaRadiusMeters`, `EmitterRadiusScale`, `Intensity`, `Wandering*`).
+
 ## 0.5.0 - Confluence: the weather sky rethought, ground effects removed (2026-10-18)
 
 - The weather sky changes each sky of the region's day cycle relative to its own values, instead of putting the

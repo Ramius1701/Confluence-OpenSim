@@ -28849,3 +28849,30 @@ sky; neutral changes nothing and clear / sunny have no sky; a fade goes from not
 and back, and a change mid-fade continues from what shows; the earlier per-avatar, parcel and portal tests (now with
 an instant fade). Not deployed.
 Full Phlox suite 5,879 passed, 2 skipped, 0 failed; Release build 0/0.
+
+## Weather rethink, stage 2: rain and snow fall around the avatars and reach the ground (2026-10-19)
+
+Reported in-world on UFPGC (1024 m), stage 1 deployed: a blizzard's sky came through but the snow did not reach the
+ground; the owner had to fly up to the emitters to see it. Measured from the code: the 253 emitters sat ~80 m above
+the terrain (`EmitterHeight` in the addon ini), each burst its flakes over a sphere ~33 m in radius, so flakes started
+47-113 m up; a blizzard flake lived 9.2 s and fell ~85 m, so the upper half died in mid-air; every flake faded to 14%
+(snow 8%) on the way; they followed the region's wind (`PSYS_PART_WIND_MASK`); and 253 emitters bursting up to 16
+flakes every few hundredths of a second overran what a viewer draws (Firestorm keeps ~4,096 particles).
+
+Now (addon 0.6.0, `WeatherPrecipitation.cs`): rain and snow fall only around the avatars present - the active-area
+layout rebuilt and made the only one. Cells over a circle of `PrecipitationRadiusMeters` (32) round each avatar,
+spaced 1.5 x the ground spread of a weather's particles (rain ~10 m, snow ~18 m, capped 6-24), each emitter
+`PrecipitationHeightMeters` (22) above the floor its avatar stands on (moved when the avatar climbs or drops 6 m).
+Particles leave a downward cone at a steady speed (snow 1.3 m/s, blizzard 2.6, rain 8.5, storm 11) with a small
+acceleration and a quarter of the weather's drift; their lifetime is solved from the drop so the slowest one ends
+just below the ground; no fading; rain streaks follow their velocity; no region wind. Per-emitter count and rate come
+from `ParticleBudget` (2,500 alive per avatar, x1.5 for storm and blizzard) times `PrecipitationDensity`. The cover
+probe now starts at the avatar (+1.5 m), so an avatar on a platform is not covered by it, and a cell with a roof between
+its floor and its emitter is skipped. Removed: the region grid and wandering layouts, the old particle builder and
+emitter, and `CoverageMode`, `EmitterGrid`, `EmitterSpacingMeters`, `ActiveAreaRadiusMeters`, `EmitterRadiusScale`,
+`Intensity`, `Wandering*` (no longer read; logged once). `EmitterHeight` now only places lightning flashes.
+
+Tests (`WeatherReworkTests`, 21): for every precipitating weather and drops of 6-60 m the slowest particle falls the
+whole drop within a viewer's 30 s particle life, keeps its opacity, leaves a downward cone, and the particles in the air
+stay within 100-400 per emitter; a snowfall in a test region puts its emitters round the avatar, 22 m above its floor.
+Full Phlox suite 5,884 passed, 2 skipped, 0 failed; Release build 0/0. Not deployed.

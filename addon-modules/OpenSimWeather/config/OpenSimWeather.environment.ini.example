@@ -10,9 +10,6 @@
     CommandChannel = 89
     EstateManagerOnly = true
 
-    CoverageMode = Region
-    EmitterGrid = 0
-    EmitterSpacingMeters = 24.0
 
     RainTexture =
     StormTexture =

@@ -167,6 +167,10 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 8.8 Weather sky at night (0.5.0): `weather storm` at midnight leaves the sky dark (darker, with fewer stars),
       not grey; at noon it darkens and greys the sky and adds haze; the change fades in over about two minutes, and
       `weather sunny` fades it back out. No puddle or snow patches appear on the ground any more.
+- [ ] 8.9 Rain and snow around you (0.6.0): standing on the ground during `weather blizzard` (or snow, rain, storm)
+      you are in it - flakes or drops fall past you and reach the ground all around, on a 1024 m region too; walking
+      or flying a distance, it keeps up within a few seconds; under a roof or indoors there is none; standing on a
+      raised platform it falls to the platform. Report your viewer's particle setting if it looks thin.
 
 ## 9. Land, money and admin
 

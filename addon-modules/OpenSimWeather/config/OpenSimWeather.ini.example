@@ -21,52 +21,17 @@
     CommandChannel = 89
     EstateManagerOnly = true
 
-    ;; CoverageMode chooses how emitters are placed:
-    ;;   Region     - fills the whole region with a static grid of emitters.
-    ;;                EmitterGrid=0 scales the emitter COUNT to RegionSizeX/
-    ;;                RegionSizeY using EmitterSpacingMeters, which keeps each
-    ;;                emitter's particle burst radius sane on variable-sized
-    ;;                regions. A fixed non-zero EmitterGrid instead scales
-    ;;                spacing (and burst radius) up with region size, and
-    ;;                radius silently exceeds the viewer's ~50m
-    ;;                PSYS_SRC_BURST_RADIUS limit on var regions of 1024m or
-    ;;                larger - only use a fixed grid count on legacy 256m
-    ;;                regions. Best for small/legacy regions or showcase
-    ;;                builds where weather should be visible from anywhere.
-    ;;   ActiveArea - only maintains emitters around connected avatars.
-    ;;                Cheap regardless of region size; nothing renders where
-    ;;                nobody is standing.
-    ;;   Wandering  - keeps a fixed-size pool of emitters (WanderingBatchSize)
-    ;;                that periodically relocate to new random spots across
-    ;;                the region, so weather looks like drifting, patchy
-    ;;                cells rather than a uniform static grid. Pool size is
-    ;;                independent of region size, so startup stays fast and
-    ;;                coverage stays bounded even on very large var regions -
-    ;;                the tradeoff is that coverage is probabilistic, not
-    ;;                guaranteed everywhere at once. Recommended for large
-    ;;                var regions instead of Region coverage.
-    CoverageMode = Region
-    EmitterGrid = 0
-    EmitterSpacingMeters = 24
-    ;; Meters above TerrainFloor (the higher of water height and local
-    ;; ground, so deep water never leaves an emitter at/under the surface,
-    ;; and terrain that rises above water - hills/mountains - still gets
-    ;; followed so a building on a hilltop can't defeat a flat ceiling).
-    ;; Raised from 18.0 so weather clears real multi-story buildings
-    ;; sim-wide instead of only clearing bare terrain.
-    EmitterHeight = 80.0
-    ;; Scales particle burst counts. Range 0.1-20; rain/storm/snow/blizzard
-    ;; each have their own hardcoded ceiling above which raising this further
-    ;; has no visible effect. 1.0 is intentionally subtle; most operators who
-    ;; want visibly heavy weather will want something in the 4-8 range.
-    Intensity = 1.0
+    ;; Rain and snow fall around the avatars present, from emitters a short
+    ;; drop above each one, and reach the ground. See the RAIN AND SNOW notes
+    ;; in OpenSimWeather.reference.ini.example for the keys; the defaults
+    ;; suit most regions.
+    ;PrecipitationHeightMeters = 22
+    ;PrecipitationRadiusMeters = 32
+    ;ParticleBudget = 2500
+    ;PrecipitationDensity = 1.0
 
-    ;; Wandering coverage only. Pool size stays constant regardless of region
-    ;; size; WanderingChurnFraction of the pool relocates every
-    ;; WanderingRefreshSeconds.
-    WanderingBatchSize = 40
-    WanderingRefreshSeconds = 20
-    WanderingChurnFraction = 0.25
+    ;; Height above the terrain for the lightning flashes.
+    EmitterHeight = 80.0
 
     ;; Upload suitable alpha textures and paste their asset UUIDs here.
     RainTexture =

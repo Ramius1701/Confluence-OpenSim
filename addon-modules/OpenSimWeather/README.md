@@ -1,4 +1,4 @@
-# OpenSimWeather 0.5.0
+# OpenSimWeather 0.6.0
 
 OpenSimWeather is an experimental but production-conscious OpenSimulator region
 module that provides Clear, Sunny, Rain, Storm, Snow, and Blizzard conditions.
@@ -32,7 +32,7 @@ The complete reference is intentionally conservative:
 - a missing `[Weather]` section leaves the module disabled;
 - `Enabled = false` always disables it;
 - the private command channel defaults to 89 and channel 0 is rejected;
-- `CoverageMode = Region` with `EmitterGrid = 8` restores full-region coverage across standard and variable-sized regions;
+- rain and snow fall around the avatars present, so they cost the same on any region size;
 - automatic cycling, entry IMs, thunder, wind changes and environment changes
   are opt-in;
 - the weather sky is each avatar's own override and is never stored on the region;
@@ -108,40 +108,24 @@ region whenever the weather actually changes (`AnnounceWeatherChangesInChat`).
 `weather clear` clears the active condition but does not disable an enabled
 auto-cycle timer.
 
-## Region and varregion coverage
+## Rain and snow around the avatars (Confluence, 0.6.0)
 
-The compatibility/default layout restores the behavior that worked before the
-active-area redesign:
+Rain and snow fall around each avatar in the region instead of from a grid of emitters across the whole region.
+For each avatar the module keeps a few emitters on a grid of cells over a circle `PrecipitationRadiusMeters`
+(32 m) round it, each `PrecipitationHeightMeters` (22 m) above the floor the avatar stands on, and moves them as the
+avatar moves (every `ActiveAreaRefreshSeconds`). The cells are spaced so the ground circles of their particles
+overlap: about 9-10 m apart for rain, 18-24 m for snow.
 
-```ini
-CoverageMode = Region
-EmitterGrid = 8
-EmitterRadiusScale = 0.62
-```
+Each emitter sends its particles down a cone at a steady speed (snow about 1.3 m/s, a blizzard 2.6, rain 8.5, a storm
+11) with little acceleration and a gentle drift, and their lifetime is worked out from the drop so every one ends at
+the ground. They do not fade on the way. The number in the air around one avatar stays near `ParticleBudget` (2,500,
+half as many again for storms and blizzards), within what a viewer draws; `PrecipitationDensity` (0.25-2) scales it.
 
-`EmitterGrid` is a count per axis, not a metre measurement. The module uses the
-actual `RegionSizeX` and `RegionSizeY` to recalculate each cell's spacing,
-position, and particle burst radius. An 8x8 layout therefore remains 64
-temporary emitter objects on a standard region or a varregion while scaling the
-coverage to the full dimensions.
-
-Advanced operators can instead select fixed-metre spacing:
-
-```ini
-CoverageMode = Region
-EmitterGrid = 0
-EmitterSpacingMeters = 24.0
-MaxEmitters = 384
-```
-
-In spacing mode, independent X and Y counts are calculated from the region
-dimensions. When the requested count exceeds `MaxEmitters`, the layout is
-reduced proportionally and the reduction is logged.
-
-`ActiveArea` remains available as an explicit optimization that creates cells
-near root agents and removes cells no longer needed. It is no longer the
-implicit or documented production default because it changes full-region
-behavior and can leave unoccupied portions of a region without weather.
+An avatar whose sky is covered (a roof above it) gets none, and a cell with a roof between its floor and its emitter
+is skipped. Before 0.6.0 the emitters sat 80 m above the terrain, burst particles over a sphere up to 50 m across,
+followed the region's wind and faded to almost nothing, so on a large region most of a blizzard never reached the
+ground; `CoverageMode`, `EmitterGrid`, `EmitterSpacingMeters`, `ActiveAreaRadiusMeters`, `EmitterRadiusScale`,
+`Intensity` and the `Wandering*` keys are no longer read.
 
 ## Particle textures
 
