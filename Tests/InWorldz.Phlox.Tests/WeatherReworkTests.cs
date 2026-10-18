@@ -65,7 +65,7 @@ public class WeatherReworkTests
         public void Dispose() => Module?.RemoveRegion(Scene);
     }
 
-    private static Rig NewRig(bool webPortal = false, ViewerEnvironment region = null, string settingsUri = null)
+    private static Rig NewRig(bool webPortal = false, ViewerEnvironment region = null, string settingsUri = null, float fadeSeconds = 0f)
     {
         var scene = new SceneHelpers().SetupScene();
         var envProxy = DispatchProxy.Create<IEnvironmentModule, RecordingEnvironment>();
@@ -80,7 +80,7 @@ public class WeatherReworkTests
         w.Set("AdjustWind", "false");
         w.Set("AutoCycleEnabled", "false");
         w.Set("CleanupGeneratedObjectsOnStartup", "false");
-        w.Set("SurfaceEffectsEnabled", "false");
+        w.Set("SkyFadeSeconds", fadeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         w.Set("LightningEnabled", "false");
         w.Set("ThunderEnabled", "false");
         w.Set("AuroraEnabled", "false");
@@ -122,8 +122,8 @@ public class WeatherReworkTests
         Assert.True(Apply(r, "Storm"));
 
         Assert.NotNull(r.Avatar.Environment);
-        Assert.Equal(0.94f, CloudCoverage(r.Avatar.Environment), 3);            // the storm profile's clouds
-        Assert.NotEqual(0.94f, CloudCoverage(r.Env.Region), 3);                  // the region's own sky is unchanged
+        Assert.Equal(0.95f, CloudCoverage(r.Avatar.Environment), 3);            // the storm's cloud cover
+        Assert.NotEqual(0.95f, CloudCoverage(r.Env.Region), 3);                  // the region's own sky is unchanged
         Assert.Empty(r.Env.Writes);                                              // nothing stored on the region
         Assert.True(r.Env.Refreshes > 0);
     }
@@ -265,6 +265,123 @@ public class WeatherReworkTests
         server.Answer = "{}";                                // the owner has not turned it on
         Poll(r);
         Assert.False(Active(r));
+    }
+
+    // ── The sky, rethought (2026-10-18): the weather changes each sky of the day cycle relative to itself ──
+
+    /// <summary>A midnight sky of a day cycle: dark colours, little ambient light, stars out.</summary>
+    private static SkyData Midnight() => new SkyData
+    {
+        blue_horizon = new Vector3(0.02f, 0.03f, 0.08f),
+        blue_density = new Vector3(0.01f, 0.02f, 0.06f),
+        cloud_color = new Vector3(0.05f, 0.05f, 0.07f),
+        ambient = new Vector3(0.05f, 0.05f, 0.08f),
+        sunlight_color = new Vector4(0.1f, 0.1f, 0.2f, 0.3f),
+        star_brightness = 1.5f,
+        moon_brightness = 0.6f,
+        cloud_shadow = 0.2f,
+    };
+
+    private static float Lum(Vector3 c) => 0.2126f * c.X + 0.7152f * c.Y + 0.0722f * c.Z;
+
+    [Theory]
+    [InlineData("rain")]
+    [InlineData("storm")]
+    [InlineData("snow")]
+    [InlineData("blizzard")]
+    public void AWeatherNeverBrightensASkyAndMidnightStaysDark(string weather)
+    {
+        foreach (SkyData own in new[] { Midnight(), new SkyData() })            // midnight, and the default noon sky
+        {
+            SkyData sky = Clone(own);
+            SkyEffect.For(weather).ApplyTo(sky);
+
+            Assert.True(Lum(sky.blue_horizon) <= Lum(own.blue_horizon) + 1e-6f, weather + " brightened the horizon");
+            Assert.True(Lum(sky.blue_density) <= Lum(own.blue_density) + 1e-6f, weather + " brightened the blue density");
+            Assert.True(Lum(sky.cloud_color) <= Lum(own.cloud_color) + 1e-6f, weather + " brightened the clouds");
+            Assert.True(Lum(sky.ambient) <= Lum(own.ambient) + 1e-6f, weather + " brightened the ambient light");
+            Assert.True(sky.star_brightness <= own.star_brightness, weather + " brightened the stars");
+            Assert.True(sky.cloud_shadow >= own.cloud_shadow, weather + " took clouds away");
+        }
+
+        SkyData night = Midnight();
+        SkyEffect.For(weather).ApplyTo(night);
+        Assert.True(Lum(night.blue_horizon) < 0.05f, weather + " turned midnight grey: horizon " + night.blue_horizon);
+        Assert.True(Lum(night.ambient) < 0.06f, weather + " lit the midnight scene: ambient " + night.ambient);
+    }
+
+    [Fact]
+    public void ClearAndSunnyHaveNoSkyOfTheirOwnAndNeutralChangesNothing()
+    {
+        Assert.Null(SkyEffect.For("clear"));
+        Assert.Null(SkyEffect.For("sunny"));
+
+        SkyData own = Midnight(), sky = Midnight();
+        SkyEffect.Neutral.ApplyTo(sky);
+        Assert.Equal(own.blue_horizon, sky.blue_horizon);
+        Assert.Equal(own.cloud_color, sky.cloud_color);
+        Assert.Equal(own.star_brightness, sky.star_brightness);
+        Assert.Equal(own.cloud_scale, sky.cloud_scale);
+        Assert.True(SkyEffect.Neutral.IsNeutral);
+    }
+
+    [Fact]
+    public void AFadeGoesFromNothingThroughPartWayToTheWholeSkyAndAChangeMidFadeStartsFromWhatShows()
+    {
+        SkyEffect storm = SkyEffect.For("storm"), snow = SkyEffect.For("snow");
+
+        Assert.True(SkyEffect.Lerp(null, storm, 0f).IsNeutral);
+        SkyEffect half = SkyEffect.Lerp(null, storm, 0.5f);
+        Assert.Equal(storm.CloudCover / 2f, half.CloudCover, 4);
+        Assert.Equal((1f + storm.SkyDarken) / 2f, half.SkyDarken, 4);
+        Assert.Equal(storm.CloudScale, half.CloudScale, 4);                     // shape from the storm, its weight halved
+        Assert.Equal(0.5f, half.CloudShapeWeight, 4);
+        Assert.Equal(storm.SkyDarken, SkyEffect.Lerp(null, storm, 1f).SkyDarken, 4);
+
+        // storm to snow, interrupted at 30%: the new fade starts from exactly what was showing
+        SkyEffect showing = SkyEffect.Lerp(storm, snow, 0.3f);
+        SkyEffect restart = SkyEffect.Lerp(showing, null, 0f);
+        Assert.Equal(showing.CloudCover, restart.CloudCover, 5);
+        Assert.Equal(showing.SkyDarken, restart.SkyDarken, 5);
+        Assert.Equal(showing.HazeDensityAdd, restart.HazeDensityAdd, 5);
+    }
+
+    [Fact]
+    public void TheRegionFadesIntoAStormInStepsAndBackOutAgain()
+    {
+        using var r = NewRig(fadeSeconds: 60f);
+        var module = r.Module;
+        FieldInfo start = typeof(WeatherModule).GetField("m_skyFadeStartUtc", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        MethodInfo step = typeof(WeatherModule).GetMethod("SkyFadeStep", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        float own = CloudCoverage(r.Env.Region);
+
+        Assert.True(Apply(r, "Storm"));
+        Assert.Null(r.Avatar.Environment);                                       // the fade starts from the region's sky
+
+        start.SetValue(module, DateTime.UtcNow.AddSeconds(-30));
+        step.Invoke(module, null);
+        Assert.NotNull(r.Avatar.Environment);
+        float mid = CloudCoverage(r.Avatar.Environment);
+        Assert.True(mid > own && mid < 0.95f, "half way the clouds are " + mid);
+
+        start.SetValue(module, DateTime.UtcNow.AddSeconds(-61));
+        step.Invoke(module, null);
+        Assert.Equal(0.95f, CloudCoverage(r.Avatar.Environment), 3);
+
+        Assert.True(Apply(r, "Sunny"));                                          // and back out, over the same time
+        Assert.NotNull(r.Avatar.Environment);
+        start.SetValue(module, DateTime.UtcNow.AddSeconds(-61));
+        step.Invoke(module, null);
+        Assert.Null(r.Avatar.Environment);
+        Assert.Empty(r.Env.Writes);
+    }
+
+    private static SkyData Clone(SkyData s)
+    {
+        var c = new SkyData();
+        foreach (FieldInfo f in typeof(SkyData).GetFields(BindingFlags.Instance | BindingFlags.Public))
+            f.SetValue(c, f.GetValue(s));
+        return c;
     }
 
     /// <summary>A grid settings table in memory.</summary>

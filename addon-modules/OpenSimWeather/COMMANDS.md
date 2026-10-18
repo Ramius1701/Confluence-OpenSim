@@ -65,8 +65,7 @@ forecast: in 5 hours 39 minutes.
 
 Format: narrative conditions, temperature with a plain-language descriptor
 (bitterly cold / freezing / cold / cool / mild / warm / hot), emitter coverage
-(only shown for active precipitation), ground wetness/snow percentage (only
-shown if `SurfaceEffectsEnabled = true`), active exclusion volumes (only shown
+(only shown for active precipitation), active exclusion volumes (only shown
 if any exist), and time until the next auto-cycle change (or "manual updates
 only" if auto-cycle is off).
 

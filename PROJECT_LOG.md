@@ -28821,3 +28821,31 @@ arrives - this one fails on the old build; a lasting 404 falls back and a later 
 Also found: the addon's `config/OpenSimWeather.ini` is read after each region's `OpenSim.ini`, so the four regions'
 own `[Weather]` sections are mostly overridden (only keys the addon file does not set get through). Left as it is:
 the weather module is to be rethought (sky handling, ground effects, a real weather model) rather than patched.
+
+## Weather rethink, stage 1: the sky changes the region's own skies; ground effects removed (2026-10-18)
+
+The owner's verdict on the weather module: the EEP handling is wrong (grey skies at midnight), the rain and snow
+ground prims look like boxes, and it is not a usable weather system. Plan agreed, in stages: (1) the sky, (2)
+precipitation that follows avatars instead of a region grid of emitter prims, (3) a weather model with climates,
+(4) settings in one place. This is stage 1, addon 0.5.0.
+
+Cause of the grey midnight: each weather profile put the same absolute horizon, blue density, haze, density and
+cloud colour into every sky of the region's day cycle (only ambient, sunlight and gamma were scaled), so the midnight
+sky got noon's storm grey. Now (`WeatherSky.cs`, `SkyEffect`): a weather is a set of changes relative to each sky -
+cloud cover raised to the weather's (never lowered) and its shape blended in, horizon / blue density / cloud colours
+desaturated and multiplied down, ambient / sun / moon scaled down, haze and density added, stars dimmed. Nothing is
+ever brightened. Changes fade over `SkyFadeSeconds` (120) in `SkyFadeStepSeconds` (10) steps by interpolating the
+effect itself (`SkyEffect.Lerp`, neutral = no change), so a change mid-fade starts from exactly what shows; clear /
+off still restore at once. `[Weather.Sky.<Weather>]` replaces the old absolute `[Weather.Environment.*]` profiles
+(no longer read; none were set on the live grid). The saved-sky healing keeps the old profiles' cloud signatures.
+
+Removed: the ground effects - puddle and snow patches (flat textured prims on the terrain), their wetness / drying /
+melt model, ~30 settings, two textures and the example file; the report's ground line. About 600 lines of the module.
+The live `OpenSimWeather.ini` still sets `SurfaceEffectsEnabled = true` and the puddle / snow textures; those keys are
+now ignored (stage 4 will tidy the files).
+
+Tests (`WeatherReworkTests`, 16): every weather leaves a midnight sky dark and brightens no part of a midnight or noon
+sky; neutral changes nothing and clear / sunny have no sky; a fade goes from nothing through part-way to the whole sky
+and back, and a change mid-fade continues from what shows; the earlier per-avatar, parcel and portal tests (now with
+an instant fade). Not deployed.
+Full Phlox suite 5,879 passed, 2 skipped, 0 failed; Release build 0/0.

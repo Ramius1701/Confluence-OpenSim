@@ -26,7 +26,6 @@
 
     AdjustEnvironment = false
     AdjustWind = false
-    SurfaceEffectsEnabled = false
 
     LightningEnabled = true
     ThunderEnabled = false

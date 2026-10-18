@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 - Confluence: the weather sky rethought, ground effects removed (2026-10-18)
+
+- The weather sky changes each sky of the region's day cycle relative to its own values, instead of putting the
+  same absolute horizon, blue density, haze and cloud colours into every one of them: a storm at midnight is a
+  darker midnight, not the mid-grey of noon. Clouds are raised (never lowered), colours desaturated and darkened by
+  a factor, light scaled down, haze and density added, stars and moon dimmed. No weather brightens any part of a sky.
+- A change of weather fades over `SkyFadeSeconds` (default 120) in `SkyFadeStepSeconds` steps (default 10); a change
+  that starts mid-fade continues from what is showing. `weather clear` and turning weather off still restore at once.
+- `[Weather.Sky.<Weather>]` replaces `[Weather.Environment.<Weather>]` (no longer read; logged once if present).
+- Removed: the ground effects (puddle and snow patches, flat prims on the terrain), with their wetness, drying, melt
+  and patch settings, textures and assets. The weather report no longer has a ground line.
+
 ## 0.4.1 - Confluence: a Robust that is still starting does not switch the weather on (2026-10-18)
 
 - A Robust that is starting answers 404 for a moment before its handlers are registered. The module took any 404

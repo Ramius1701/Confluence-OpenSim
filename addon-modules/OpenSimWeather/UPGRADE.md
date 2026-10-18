@@ -21,7 +21,7 @@ OpenSim process. Use a controlled simulator restart.
 4. Compare the old configuration with
    `config/OpenSimWeather.ini.example`. Do not carry forward `AllowDisabled`.
 5. Start with `Enabled = false`, `CoverageMode = Region`, `EmitterGrid = 8`, environment/wind
-   disabled, auto-cycle disabled, and surface effects disabled.
+   disabled and auto-cycle disabled.
 6. Paste valid particle asset UUIDs where available.
 7. Run `runprebuild.bat` from the OpenSim source root.
 8. Perform a clean Debug or Release build and resolve every compiler error
@@ -38,7 +38,7 @@ OpenSim process. Use a controlled simulator restart.
 6. Restart once with precipitation active and verify weather objects do not
    return from region backup.
 7. Test production region sizes and record emitter count/frame time.
-8. Enable environment, wind, auto-cycle, and surface effects separately, with a
+8. Enable environment, wind and auto-cycle separately, with a
    restart/test between subsystems.
 
 ## Configuration migration notes
@@ -48,9 +48,11 @@ OpenSim process. Use a controlled simulator restart.
 - Keep `EmitterGrid = 8` for the compatibility/default full-region layout.
 - Set `EmitterGrid = 0` only when deliberately selecting fixed-metre
   `EmitterSpacingMeters` plus `MaxEmitters`.
-- Particle and surface assets are OpenSim asset UUIDs.
-- `SurfaceEffectsEnabled = true` still requires nonblank `PuddleTexture` and/or
-  `SnowSurfaceTexture`.
+- Particle assets are OpenSim asset UUIDs.
+- The ground effects (puddle and snow patches) are gone (0.5.0): `SurfaceEffectsEnabled`, `PuddleTexture`,
+  `SnowSurfaceTexture` and the wetness, drying, melt and patch keys are no longer read and can be deleted.
+- The weather skies changed meaning (0.5.0): `[Weather.Environment.*]` sections are no longer read; the built-in
+  skies change the region's own skies, and `[Weather.Sky.<Weather>]` holds any changes to their numbers.
 - `AllowPersistentEnvironmentChanges` is gone (0.4.0): the weather sky is shown per avatar and never stored on
   the region, so `AdjustEnvironment = true` is safe on its own.
 - With Confluence's web portal, each region's owner turns weather on under My Regions > Weather (0.4.0); a region

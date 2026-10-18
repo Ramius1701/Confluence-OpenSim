@@ -1,19 +1,9 @@
-;; OpenSimWeather 0.3.4 environment/wind example
+;; OpenSimWeather 0.5.0 environment/wind example
 ;;
-;; OpenSim persists region environment changes. Export or record the current
-;; region environment before enabling this example. Three configurable
-;; weather profiles are included below (Rain/Storm/Snow - Blizzard follows
-;; the same shape) and may be edited per weather type.
-;;
-;; AmbientMultiplier/SunMoonColorMultiplier/SceneGammaMultiplier are
-;; MULTIPLIERS applied to whatever the region's environment currently
-;; already is, not absolute replacements - real weather darkens/brightens
-;; existing daylight, it never replaces day with night or erases the
-;; admin's own tuned look and the region's real day/night cycle. There is
-;; no Sunny profile - a hardcoded "always bright" override made no sense
-;; next to Clear (which already restores the real, saved environment) and
-;; was actively wrong at night. StarBrightness is never touched by weather
-;; at all, by design - it always stays whatever the region already has.
+;; The weather sky is each avatar's own override and is never stored on the
+;; region. Each weather changes the region's own skies (clouds up, colours
+;; greyer and darker, more haze, fewer stars), so a midnight sky stays dark, and
+;; a change of weather fades in over SkyFadeSeconds.
 
 [Weather]
     Enabled = false
@@ -46,76 +36,10 @@
     StormWindStrength = 1.35
     SnowWindStrength = 0.22
 
-    SurfaceEffectsEnabled = false
     LightningEnabled = true
     ThunderEnabled = false
     AutoCycleEnabled = false
 
-[Weather.Environment.Rain]
-    CloudCoverage = 0.82
-    CloudScale = 0.64
-    CloudColor = 0.16,0.18,0.22,1.0
-    CloudXYDensity = 1.18,0.60,0.96
-    CloudDetailXYDensity = 1.32,0.64,0.24
-    CloudScrollX = 0.28
-    CloudScrollY = 0.05
-    Horizon = 0.15,0.17,0.20,1.0
-    BlueDensity = 0.07,0.09,0.13,1.0
-    AmbientMultiplier = 0.85
-    SunMoonColorMultiplier = 0.85
-    HazeHorizon = 0.40
-    HazeDensity = 0.82
-    DensityMultiplier = 0.28
-    DistanceMultiplier = 0.90
-    SunGlowFocus = 0.08
-    SunGlowSize = 1.40
-    SceneGammaMultiplier = 0.88
-    DrawClassicClouds = true
-    CloudScrollXLock = false
-    CloudScrollYLock = false
-
-[Weather.Environment.Storm]
-    CloudCoverage = 0.94
-    CloudScale = 0.72
-    CloudColor = 0.06,0.07,0.085,1.0
-    CloudXYDensity = 1.35,0.64,1.00
-    CloudDetailXYDensity = 1.55,0.72,0.28
-    CloudScrollX = 0.48
-    CloudScrollY = 0.10
-    Horizon = 0.08,0.09,0.11,1.0
-    BlueDensity = 0.04,0.055,0.08,1.0
-    AmbientMultiplier = 0.55
-    SunMoonColorMultiplier = 0.5
-    HazeHorizon = 0.45
-    HazeDensity = 0.92
-    DensityMultiplier = 0.32
-    DistanceMultiplier = 0.80
-    SunGlowFocus = 0.05
-    SunGlowSize = 1.20
-    SceneGammaMultiplier = 0.8
-    DrawClassicClouds = true
-    CloudScrollXLock = false
-    CloudScrollYLock = false
-
-[Weather.Environment.Snow]
-    CloudCoverage = 0.86
-    CloudScale = 0.70
-    CloudColor = 0.38,0.40,0.44,1.0
-    CloudXYDensity = 1.18,0.60,0.96
-    CloudDetailXYDensity = 1.28,0.62,0.22
-    CloudScrollX = 0.14
-    CloudScrollY = 0.035
-    Horizon = 0.26,0.28,0.32,1.0
-    BlueDensity = 0.13,0.15,0.20,1.0
-    AmbientMultiplier = 0.75
-    SunMoonColorMultiplier = 0.75
-    HazeHorizon = 0.36
-    HazeDensity = 0.72
-    DensityMultiplier = 0.24
-    DistanceMultiplier = 0.95
-    SunGlowFocus = 0.10
-    SunGlowSize = 1.60
-    SceneGammaMultiplier = 0.92
-    DrawClassicClouds = true
-    CloudScrollXLock = false
-    CloudScrollYLock = false
+;; The weather skies are changes to the region's own skies; see the
+;; WEATHER SKIES notes in OpenSimWeather.reference.ini.example for the
+;; [Weather.Sky.<Weather>] keys. The built-in skies need no section.

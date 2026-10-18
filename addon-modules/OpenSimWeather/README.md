@@ -1,11 +1,11 @@
-# OpenSimWeather 0.3.4
+# OpenSimWeather 0.5.0
 
 OpenSimWeather is an experimental but production-conscious OpenSimulator region
 module that provides Clear, Sunny, Rain, Storm, Snow, and Blizzard conditions.
 It uses
 viewer-visible particle systems and can optionally coordinate wind,
-LightShare/EEP-style region environment profiles, lightning, thunder, forecast
-messages, and temporary terrain surface effects.
+weather skies made from the region's own EEP day cycle, lightning, thunder and
+forecast messages.
 
 This release replaces the initial OpenSim Enhanced Weather implementation.
 It retains the useful multiple-emitter architecture while correcting unsafe,
@@ -19,8 +19,8 @@ The module models weather as related systems instead of one visual effect:
 - different sky/cloud profiles for sunny, rain, storm, and snow;
 - lightning and spatial thunder during storms;
 - roof/interior suppression at the weather-cell level;
-- temperature-aware wetness, drying, snowfall, and melting;
-- optional puddle and snow overlays on suitable outdoor terrain.
+- a sky that each weather changes relative to the region's own skies, fading in
+  and out, so night stays night.
 
 It does **not** retrieve live meteorological data. Weather is selected manually
 or by the configured automatic cycle. No external web service is required.
@@ -33,12 +33,10 @@ The complete reference is intentionally conservative:
 - `Enabled = false` always disables it;
 - the private command channel defaults to 89 and channel 0 is rejected;
 - `CoverageMode = Region` with `EmitterGrid = 8` restores full-region coverage across standard and variable-sized regions;
-- automatic cycling, entry IMs, thunder, wind changes, environment changes,
-  puddles, and snow accumulation are opt-in;
+- automatic cycling, entry IMs, thunder, wind changes and environment changes
+  are opt-in;
 - the weather sky is each avatar's own override and is never stored on the region;
-- surface effects require configured alpha texture UUIDs and otherwise disable
-  themselves;
-- generated emitters, flashes, puddles, and snow patches are inserted as
+- generated emitters and flashes are inserted as
   non-backup objects and marked temporary;
 - non-persistent weather objects left by an interrupted module instance can be
   removed automatically during region load.
@@ -62,7 +60,7 @@ A Visual Studio build can be used after `runprebuild.bat`. The included project
 and prebuild files use repository-relative paths and contain no local drive
 references.
 
-Place `[Weather]` and any `[Weather.Environment.*]` sections in `OpenSim.ini` or
+Place `[Weather]` and any `[Weather.Sky.*]` sections in `OpenSim.ini` or
 an INI file included by `OpenSim.ini`. Do not place module configuration in
 `Regions.ini`.
 
@@ -75,10 +73,8 @@ into a running simulator process.
 - `config/OpenSimWeather.reference.ini.example` — complete disabled reference.
 - `config/OpenSimWeather.manual.ini.example` — controlled first test.
 - `config/OpenSimWeather.autocycle.ini.example` — automatic particle weather.
-- `config/OpenSimWeather.environment.ini.example` — persistent environment and
-  wind integration example.
-- `config/OpenSimWeather.surface.ini.example` — experimental puddle and snow
-  accumulation example.
+- `config/OpenSimWeather.environment.ini.example` — weather sky and wind
+  integration example.
 - `assets/README.md` — texture and sound asset requirements.
 
 ## Commands
@@ -104,8 +100,8 @@ When `EstateManagerOnly = true`, only estate managers/owners can change the
 weather.
 
 `weather status` reports a narrative weather report: current conditions,
-temperature (with a plain-language descriptor), emitter coverage, ground
-wetness/snow level, active exclusion volumes, and time until the next
+temperature (with a plain-language descriptor), emitter coverage, active
+exclusion volumes, and time until the next
 auto-cycle change. The same report is broadcast publicly to everyone in the
 region whenever the weather actually changes (`AnnounceWeatherChangesInChat`).
 
@@ -203,25 +199,22 @@ Even with these controls, particles near a cell boundary can occasionally be
 visible through an adjacent wall or overhang. That is a viewer particle-system
 limitation, not real collision simulation.
 
-## Configurable environment profiles
+## The weather sky (Confluence, 0.5.0)
 
-`AdjustEnvironment` applies configurable weather-specific sky/cloud values from:
+`AdjustEnvironment = true` gives each weather a sky. A region's day cycle has a sky for each part of the day; a
+weather changes every one of them **relative to that sky's own values** instead of putting the same storm colours
+into all of them (before 0.5.0 midnight turned the same mid-grey as noon):
 
-- `[Weather.Environment.Sunny]`
-- `[Weather.Environment.Rain]`
-- `[Weather.Environment.Storm]`
-- `[Weather.Environment.Snow]`
+- clouds are raised to the weather's cover (a cloudier sky keeps its own) and take its scale, density and scroll;
+- the horizon, blue density and cloud colours go part of the way to grey and are darkened by a factor;
+- ambient, sun and moon light are scaled down; haze and atmosphere density are added; the clouds hide the stars.
 
-All fields changed by the module are exposed in those sections. The module
-starts with the current region LightShare data, applies the complete configured
-weather sky/cloud profile including `SunMoonPosition`, `EastAngle`, and
-`MaxAltitude`, and preserves water fields and other unmanaged environment
-values.
-
-Each missing profile or missing individual key uses the built-in profile value.
-The built-in sun-position values come from OpenSim's `RegionLightShareData`
-defaults, preventing a dark pre-weather sun position from leaking into Sunny.
-The shipped complete example exposes every applied field.
+A dark sky stays dark, only darker; no weather brightens any part of a sky. Clear and sunny show the region's own
+sky. A change of weather fades over `SkyFadeSeconds` (default 120, 0 for at once), one step every
+`SkyFadeStepSeconds` (default 10); a change that starts mid-fade continues from what is showing. The built-in
+numbers can be changed per weather in `[Weather.Sky.Rain]`, `[Weather.Sky.Storm]`, `[Weather.Sky.Snow]` and
+`[Weather.Sky.Blizzard]` (keys in `config/OpenSimWeather.reference.ini.example`); the `[Weather.Environment.*]`
+profiles of earlier versions are no longer read.
 
 ### The weather sky is per avatar (Confluence, 0.4.0)
 

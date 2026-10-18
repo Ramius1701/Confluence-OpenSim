@@ -23,17 +23,6 @@ asset service.
 Blank particle texture settings use OpenSim's blank texture. This is safe but
 visually crude—especially for snow, which appears as square billboards.
 
-## Surface textures
-
-- `PuddleTexture`: irregular puddle shape with feathered transparent edges;
-  avoid a solid circular alpha mask.
-- `SnowSurfaceTexture`: mottled/feathered white snow coverage with transparent
-  breakup around the edge.
-
-Surface effects automatically disable an individual effect when its required
-texture is blank. This prevents the blank texture from producing a conspicuous
-solid disk.
-
 ## Thunder sound
 
 Upload a thunder sound supported by the grid/viewer and configure its asset UUID

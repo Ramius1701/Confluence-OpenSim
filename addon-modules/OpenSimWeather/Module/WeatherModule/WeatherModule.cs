@@ -64,65 +64,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             Wandering
         }
 
-        private enum SurfaceKind
-        {
-            Puddle,
-            Snow
-        }
-
-        private sealed class EnvironmentProfile
-        {
-            public float CloudCoverage;
-            public float CloudScale;
-            public Vector4 CloudColor;
-            public Vector3 CloudXYDensity;
-            public Vector3 CloudDetailXYDensity;
-            public float CloudScrollX;
-            public float CloudScrollY;
-            public Vector4 Horizon;
-            public Vector4 BlueDensity;
-            // Multipliers applied to the CURRENT environment's own values,
-            // not absolute replacements - real weather darkens/brightens
-            // whatever daylight already exists, it doesn't replace day with
-            // night or erase the admin's own tuned look and the region's
-            // real day/night cycle. Cloud*/Horizon/BlueDensity/Haze*/
-            // Density/DistanceMultiplier/SunGlow* stay absolute below since
-            // those genuinely ARE what the weather is, not a brightness
-            // question. StarBrightness is deliberately left out entirely -
-            // weather never touches it, so night stars are never erased.
-            public float AmbientMultiplier = 1f;
-            public float SunMoonColorMultiplier = 1f;
-            public float SceneGammaMultiplier = 1f;
-            public float HazeHorizon;
-            public float HazeDensity;
-            public float DensityMultiplier;
-            public float DistanceMultiplier;
-            public float SunGlowFocus;
-            public float SunGlowSize;
-            public bool DrawClassicClouds = true;
-            public bool CloudScrollXLock;
-            public bool CloudScrollYLock;
-
-            public EnvironmentProfile Clone()
-            {
-                return (EnvironmentProfile)MemberwiseClone();
-            }
-        }
-
-        private sealed class SurfacePatch
-        {
-            public SurfaceKind Kind;
-            public SceneObjectGroup Group;
-        }
-
-        private sealed class SurfaceCandidate
-        {
-            public SurfaceKind Kind;
-            public Vector3 Position;
-            public float Size;
-            public float Level;
-        }
-
         private sealed class ExclusionVolume
         {
             public float MinX;
@@ -281,12 +222,9 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private bool m_sendWeatherIMOnEntry;
         private int m_weatherIMDelaySeconds;
         private string m_weatherIMMessage;
-        private readonly Dictionary<WeatherKind, EnvironmentProfile> m_environmentProfiles = new Dictionary<WeatherKind, EnvironmentProfile>();
-        private bool m_surfaceEffectsEnabled;
-        private bool m_puddlesEnabled;
-        private bool m_snowAccumulationEnabled;
-        private UUID m_puddleTexture = Util.BLANK_TEXTURE_UUID;
-        private UUID m_snowSurfaceTexture = Util.BLANK_TEXTURE_UUID;
+        private readonly Dictionary<WeatherKind, SkyEffect> m_skyEffects = new Dictionary<WeatherKind, SkyEffect>();
+        private float m_skyFadeSeconds = 120f;
+        private float m_skyFadeStepSeconds = 10f;
         private float m_temperatureC;
         private float m_clearTemperatureC;
         private float m_sunnyTemperatureC;
@@ -319,29 +257,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private bool m_autoCyclePressureDriven;
         private float m_simulatedPressureHPa = 1013.25f;
         private float m_simulatedPressureTargetHPa = 1013.25f;
-        private float m_freezingPointC;
-        private float m_wetnessLevel;
-        private float m_snowLevel;
-        private float m_rainWetnessPerHour;
-        private float m_stormWetnessPerHour;
-        private float m_snowAccumulationPerHour;
-        private float m_clearDryingPerHour;
-        private float m_sunnyDryingPerHour;
-        private float m_clearSnowMeltPerHour;
-        private float m_sunnySnowMeltPerHour;
-        private float m_rainSnowMeltPerHour;
-        private float m_puddleStartLevel;
-        private float m_snowPatchStartLevel;
-        private float m_surfacePatchSpacingMeters;
-        private float m_surfaceRadiusMeters;
-        private int m_maxSurfacePatches;
-        private float m_maxSurfaceSlopeDegrees;
-        private float m_puddleLowPointToleranceMeters;
-        private int m_surfaceUpdateSeconds;
-        private Timer m_surfaceTimer;
-        private int m_surfaceBusy;
-        private DateTime m_lastSurfaceUpdateUtc;
-        private readonly Dictionary<long, SurfacePatch> m_surfacePatches = new Dictionary<long, SurfacePatch>();
 
         public string Name { get { return "Weather Module"; } }
 
@@ -493,11 +408,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 "WeatherIMMessage",
                 "Weather forecast for {RegionName}: current conditions are {Weather}, {Temperature}C. Next forecast: {NextForecast}. Stay tuned for further regional updates.").Trim();
 
-            m_surfaceEffectsEnabled = config.GetBoolean("SurfaceEffectsEnabled", false);
-            m_puddlesEnabled = config.GetBoolean("PuddlesEnabled", true);
-            m_snowAccumulationEnabled = config.GetBoolean("SnowAccumulationEnabled", true);
-            m_puddleTexture = ReadTexture(config, "PuddleTexture", Util.BLANK_TEXTURE_UUID);
-            m_snowSurfaceTexture = ReadTexture(config, "SnowSurfaceTexture", Util.BLANK_TEXTURE_UUID);
             m_temperatureC = Clamp(config.GetFloat("TemperatureC", 10f), -100f, 100f);
             m_clearTemperatureC = Clamp(config.GetFloat("ClearTemperatureC", m_temperatureC), -100f, 100f);
             m_sunnyTemperatureC = Clamp(config.GetFloat("SunnyTemperatureC", 22f), -100f, 100f);
@@ -511,44 +421,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             m_weatherBroadcastChannel = config.GetInt("WeatherBroadcastChannel", -910088);
             m_autoCyclePressureDriven = string.Equals(
                     config.GetString("AutoCyclePacing", "Random"), "Pressure", StringComparison.OrdinalIgnoreCase);
-            m_freezingPointC = Clamp(config.GetFloat("FreezingPointC", 0f), -20f, 20f);
-            m_rainWetnessPerHour = Math.Max(0f, config.GetFloat("RainWetnessPerHour", 0.35f));
-            m_stormWetnessPerHour = Math.Max(0f, config.GetFloat("StormWetnessPerHour", 0.75f));
-            m_snowAccumulationPerHour = Math.Max(0f, config.GetFloat("SnowAccumulationPerHour", 0.3f));
-            m_clearDryingPerHour = Math.Max(0f, config.GetFloat("ClearDryingPerHour", 0.08f));
-            m_sunnyDryingPerHour = Math.Max(0f, config.GetFloat("SunnyDryingPerHour", 0.25f));
-            m_clearSnowMeltPerHour = Math.Max(0f, config.GetFloat("ClearSnowMeltPerHour", 0.05f));
-            m_sunnySnowMeltPerHour = Math.Max(0f, config.GetFloat("SunnySnowMeltPerHour", 0.22f));
-            m_rainSnowMeltPerHour = Math.Max(0f, config.GetFloat("RainSnowMeltPerHour", 0.45f));
-            m_puddleStartLevel = Clamp(config.GetFloat("PuddleStartLevel", 0.12f), 0f, 1f);
-            m_snowPatchStartLevel = Clamp(config.GetFloat("SnowPatchStartLevel", 0.08f), 0f, 1f);
-            m_surfacePatchSpacingMeters = Clamp(config.GetFloat("SurfacePatchSpacingMeters", 20f), 4f, 128f);
-            m_surfaceRadiusMeters = Clamp(config.GetFloat("SurfaceRadiusMeters", 80f), 8f, 512f);
-            m_maxSurfacePatches = Clamp(config.GetInt("MaxSurfacePatches", 128), 1, 4096);
-            m_maxSurfaceSlopeDegrees = Clamp(config.GetFloat("MaxSurfaceSlopeDegrees", 8f), 0f, 45f);
-            m_puddleLowPointToleranceMeters = Clamp(config.GetFloat("PuddleLowPointToleranceMeters", 0.08f), 0f, 2f);
-            m_surfaceUpdateSeconds = Clamp(config.GetInt("SurfaceUpdateSeconds", 60), 10, 3600);
-
-            if (m_surfaceEffectsEnabled)
-            {
-                if (m_puddlesEnabled && m_puddleTexture == Util.BLANK_TEXTURE_UUID)
-                {
-                    m_puddlesEnabled = false;
-                    m_log.Warn("[WEATHER]: PuddlesEnabled=true ignored because PuddleTexture is blank. Upload an alpha puddle texture and configure its UUID.");
-                }
-
-                if (m_snowAccumulationEnabled && m_snowSurfaceTexture == Util.BLANK_TEXTURE_UUID)
-                {
-                    m_snowAccumulationEnabled = false;
-                    m_log.Warn("[WEATHER]: SnowAccumulationEnabled=true ignored because SnowSurfaceTexture is blank. Upload a feathered snow overlay and configure its UUID.");
-                }
-
-                if (!m_puddlesEnabled && !m_snowAccumulationEnabled)
-                {
-                    m_surfaceEffectsEnabled = false;
-                    m_log.Warn("[WEATHER]: SurfaceEffectsEnabled=true but no usable puddle or snow surface texture is configured; surface effects disabled.");
-                }
-            }
 
             if (m_rainTexture == Util.BLANK_TEXTURE_UUID)
                 m_log.Warn("[WEATHER]: RainTexture is blank; rain will use viewer billboards and may look rectangular.");
@@ -591,7 +463,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             StopAutoCycle();
             StopActiveAreaRefresh();
             StopWanderingRefresh();
-            StopSurfaceTimer();
             StopAuroraTimer();
             StopLightningSweepTimer();
             RemoveAuroraEmitters();
@@ -660,11 +531,11 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
         public void Close()
         {
+            StopSkyFadeTimer();
             StopWebSettingsPolling();
             StopAutoCycle();
             StopActiveAreaRefresh();
             StopWanderingRefresh();
-            StopSurfaceTimer();
             StopAuroraTimer();
             StopLightningSweepTimer();
             RemoveAuroraEmitters();
@@ -690,9 +561,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
             if (m_coverageMode == CoverageMode.ActiveArea && IsPrecipitationWeather(CurrentWeather()))
                 QueueActiveAreaRefresh();
-
-            if (m_surfaceEffectsEnabled)
-                QueueSurfaceUpdate(true);
 
             if (!m_sendWeatherIMOnEntry)
                 return;
@@ -835,7 +703,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                         }
                     }
 
-                    BoostSurfaceForWeather(weather);
                     if (weather == WeatherKind.Storm)
                         StartStormEffects(ownerId);
 
@@ -1895,11 +1762,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     RestoreWind(forceRestore);
                 }
 
-                if (forceRestore)
-                    ClearSurfacePatches(true);
-                else if (m_surfaceEffectsEnabled)
-                    QueueSurfaceUpdate(true);
-
                 if (log && m_scene != null)
                     m_log.InfoFormat("[WEATHER]: Cleared weather in {0}", m_scene.RegionInfo.RegionName);
             }
@@ -2174,157 +2036,34 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
         private void LoadEnvironmentProfiles(IConfigSource source)
         {
-            // No Sunny entry - see CreateDefaultEnvironmentProfile's note;
-            // Sunny now behaves like Clear (no environment override at all).
-            m_environmentProfiles[WeatherKind.Rain] = LoadEnvironmentProfile(
-                source.Configs["Weather.Environment.Rain"], CreateDefaultEnvironmentProfile(WeatherKind.Rain));
-            m_environmentProfiles[WeatherKind.Storm] = LoadEnvironmentProfile(
-                source.Configs["Weather.Environment.Storm"], CreateDefaultEnvironmentProfile(WeatherKind.Storm));
-            m_environmentProfiles[WeatherKind.Snow] = LoadEnvironmentProfile(
-                source.Configs["Weather.Environment.Snow"], CreateDefaultEnvironmentProfile(WeatherKind.Snow));
-            m_environmentProfiles[WeatherKind.Blizzard] = LoadEnvironmentProfile(
-                source.Configs["Weather.Environment.Blizzard"], CreateDefaultEnvironmentProfile(WeatherKind.Blizzard));
+            // [Confluence] The weather skies are changes to the region's own skies (WeatherSky.cs). Clear and sunny have
+            // none: they show the region's sky. [Weather.Sky.<Weather>] sections can change a weather's numbers.
+            foreach (WeatherKind kind in new[] { WeatherKind.Rain, WeatherKind.Storm, WeatherKind.Snow, WeatherKind.Blizzard })
+            {
+                SkyEffect effect = SkyEffect.For(kind.ToString(), source.Configs["Weather.Sky." + kind]);
+                if (effect != null)
+                    m_skyEffects[kind] = effect;
+                if (source.Configs["Weather.Environment." + kind] != null)
+                    m_log.InfoFormat("[WEATHER]: [Weather.Environment.{0}] is no longer read: the weather sky now changes the region's own sky; see [Weather.Sky.{0}].", kind);
+            }
+
+            IConfig config = source.Configs["Weather"];
+            if (config != null)
+            {
+                m_skyFadeSeconds = Clamp(config.GetFloat("SkyFadeSeconds", m_skyFadeSeconds), 0f, 1800f);
+                m_skyFadeStepSeconds = Clamp(config.GetFloat("SkyFadeStepSeconds", m_skyFadeStepSeconds), 2f, 60f);
+            }
         }
 
-        private EnvironmentProfile LoadEnvironmentProfile(IConfig config, EnvironmentProfile defaults)
+        // The cloud signature of the skies the module stored on regions before 0.4.0 (cover, scale, cloud colour R, G),
+        // to recognise one left saved (HealSavedWeatherSky).
+        private static readonly (WeatherKind Kind, float Cover, float Scale, float R, float G)[] s_legacySavedSkies =
         {
-            EnvironmentProfile profile = defaults.Clone();
-            if (config == null)
-                return profile;
-
-            profile.CloudCoverage = Clamp(config.GetFloat("CloudCoverage", profile.CloudCoverage), 0f, 1f);
-            profile.CloudScale = Math.Max(0f, config.GetFloat("CloudScale", profile.CloudScale));
-            profile.CloudColor = ReadVector4(config, "CloudColor", profile.CloudColor);
-            profile.CloudXYDensity = ReadVector3(config, "CloudXYDensity", profile.CloudXYDensity);
-            profile.CloudDetailXYDensity = ReadVector3(config, "CloudDetailXYDensity", profile.CloudDetailXYDensity);
-            profile.CloudScrollX = config.GetFloat("CloudScrollX", profile.CloudScrollX);
-            profile.CloudScrollY = config.GetFloat("CloudScrollY", profile.CloudScrollY);
-            profile.Horizon = ReadVector4(config, "Horizon", profile.Horizon);
-            profile.BlueDensity = ReadVector4(config, "BlueDensity", profile.BlueDensity);
-            profile.AmbientMultiplier = Math.Max(0f, config.GetFloat("AmbientMultiplier", profile.AmbientMultiplier));
-            profile.SunMoonColorMultiplier = Math.Max(0f, config.GetFloat("SunMoonColorMultiplier", profile.SunMoonColorMultiplier));
-            profile.HazeHorizon = Math.Max(0f, config.GetFloat("HazeHorizon", profile.HazeHorizon));
-            profile.HazeDensity = Math.Max(0f, config.GetFloat("HazeDensity", profile.HazeDensity));
-            profile.DensityMultiplier = Math.Max(0f, config.GetFloat("DensityMultiplier", profile.DensityMultiplier));
-            profile.DistanceMultiplier = Math.Max(0f, config.GetFloat("DistanceMultiplier", profile.DistanceMultiplier));
-            profile.SunGlowFocus = config.GetFloat("SunGlowFocus", profile.SunGlowFocus);
-            profile.SunGlowSize = Math.Max(0f, config.GetFloat("SunGlowSize", profile.SunGlowSize));
-            profile.SceneGammaMultiplier = Math.Max(0.01f, config.GetFloat("SceneGammaMultiplier", profile.SceneGammaMultiplier));
-            profile.DrawClassicClouds = config.GetBoolean("DrawClassicClouds", profile.DrawClassicClouds);
-            profile.CloudScrollXLock = config.GetBoolean("CloudScrollXLock", profile.CloudScrollXLock);
-            profile.CloudScrollYLock = config.GetBoolean("CloudScrollYLock", profile.CloudScrollYLock);
-            return profile;
-        }
-
-        // No WeatherKind.Sunny branch: "Sunny" was a separate hardcoded
-        // bright-daytime override, which is redundant with Clear (which
-        // already restores the real, saved environment - correct on its
-        // own during the day, and the only correct choice at night, which
-        // a hardcoded "sunny" look can never be). Sunny is no longer
-        // registered in m_environmentProfiles at all, so it now behaves
-        // exactly like Clear for environment purposes (see ApplyClouds's
-        // early-return on a missing profile).
-        private static EnvironmentProfile CreateDefaultEnvironmentProfile(WeatherKind weather)
-        {
-            if (weather == WeatherKind.Storm)
-            {
-                return new EnvironmentProfile
-                {
-                    CloudCoverage = 0.94f,
-                    CloudScale = 0.72f,
-                    CloudColor = new Vector4(0.06f, 0.07f, 0.085f, 1f),
-                    CloudXYDensity = new Vector3(1.35f, 0.64f, 1.0f),
-                    CloudDetailXYDensity = new Vector3(1.55f, 0.72f, 0.28f),
-                    CloudScrollX = 0.48f,
-                    CloudScrollY = 0.1f,
-                    Horizon = new Vector4(0.08f, 0.09f, 0.11f, 1f),
-                    BlueDensity = new Vector4(0.04f, 0.055f, 0.08f, 1f),
-                    AmbientMultiplier = 0.55f,
-                    SunMoonColorMultiplier = 0.5f,
-                    HazeHorizon = 0.45f,
-                    HazeDensity = 0.78f,
-                    DensityMultiplier = 0.32f,
-                    DistanceMultiplier = 0.8f,
-                    SunGlowFocus = 0.05f,
-                    SunGlowSize = 1.2f,
-                    SceneGammaMultiplier = 0.8f,
-                };
-            }
-
-            if (weather == WeatherKind.Snow)
-            {
-                return new EnvironmentProfile
-                {
-                    CloudCoverage = 0.86f,
-                    CloudScale = 0.7f,
-                    CloudColor = new Vector4(0.38f, 0.4f, 0.44f, 1f),
-                    CloudXYDensity = new Vector3(1.18f, 0.6f, 0.96f),
-                    CloudDetailXYDensity = new Vector3(1.28f, 0.62f, 0.22f),
-                    CloudScrollX = 0.14f,
-                    CloudScrollY = 0.035f,
-                    Horizon = new Vector4(0.26f, 0.28f, 0.32f, 1f),
-                    BlueDensity = new Vector4(0.13f, 0.15f, 0.2f, 1f),
-                    AmbientMultiplier = 0.75f,
-                    SunMoonColorMultiplier = 0.75f,
-                    HazeHorizon = 0.36f,
-                    HazeDensity = 0.6f,
-                    DensityMultiplier = 0.24f,
-                    DistanceMultiplier = 0.95f,
-                    SunGlowFocus = 0.1f,
-                    SunGlowSize = 1.6f,
-                    SceneGammaMultiplier = 0.92f,
-                };
-            }
-
-            if (weather == WeatherKind.Blizzard)
-            {
-                return new EnvironmentProfile
-                {
-                    CloudCoverage = 0.96f,
-                    CloudScale = 0.78f,
-                    CloudColor = new Vector4(0.3f, 0.32f, 0.36f, 1f),
-                    CloudXYDensity = new Vector3(1.42f, 0.68f, 1.02f),
-                    CloudDetailXYDensity = new Vector3(1.6f, 0.74f, 0.3f),
-                    CloudScrollX = 0.52f,
-                    CloudScrollY = 0.12f,
-                    Horizon = new Vector4(0.22f, 0.23f, 0.26f, 1f),
-                    BlueDensity = new Vector4(0.1f, 0.12f, 0.16f, 1f),
-                    AmbientMultiplier = 0.55f,
-                    SunMoonColorMultiplier = 0.55f,
-                    HazeHorizon = 0.5f,
-                    HazeDensity = 0.85f,
-                    DensityMultiplier = 0.34f,
-                    DistanceMultiplier = 0.7f,
-                    SunGlowFocus = 0.05f,
-                    SunGlowSize = 1.2f,
-                    SceneGammaMultiplier = 0.85f,
-                };
-            }
-
-            // Rain (the only remaining fall-through case now that Sunny is
-            // gone and Clear never reaches this function at all).
-            return new EnvironmentProfile
-            {
-                CloudCoverage = 0.75f,
-                CloudScale = 0.64f,
-                CloudColor = new Vector4(0.16f, 0.18f, 0.22f, 1f),
-                CloudXYDensity = new Vector3(1.18f, 0.6f, 0.96f),
-                CloudDetailXYDensity = new Vector3(1.32f, 0.64f, 0.24f),
-                CloudScrollX = 0.28f,
-                CloudScrollY = 0.05f,
-                Horizon = new Vector4(0.15f, 0.17f, 0.2f, 1f),
-                BlueDensity = new Vector4(0.07f, 0.09f, 0.13f, 1f),
-                AmbientMultiplier = 0.85f,
-                SunMoonColorMultiplier = 0.85f,
-                HazeHorizon = 0.4f,
-                HazeDensity = 0.62f,
-                DensityMultiplier = 0.28f,
-                DistanceMultiplier = 0.9f,
-                SunGlowFocus = 0.08f,
-                SunGlowSize = 1.4f,
-                SceneGammaMultiplier = 0.88f,
-            };
-        }
+            (WeatherKind.Storm, 0.94f, 0.72f, 0.06f, 0.07f),
+            (WeatherKind.Snow, 0.86f, 0.7f, 0.38f, 0.4f),
+            (WeatherKind.Blizzard, 0.96f, 0.78f, 0.3f, 0.32f),
+            (WeatherKind.Rain, 0.75f, 0.64f, 0.16f, 0.18f),
+        };
 
         private static Vector3 ReadVector3(IConfig config, string key, Vector3 fallback)
         {
@@ -2357,24 +2096,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 return fallback;
 
             return new Vector4(x, y, z, w);
-        }
-
-        private void StartSurfaceTimer()
-        {
-            if (!m_surfaceEffectsEnabled || m_scene == null)
-                return;
-
-            StopSurfaceTimer();
-            m_lastSurfaceUpdateUtc = DateTime.UtcNow;
-            int period = m_surfaceUpdateSeconds * 1000;
-            m_surfaceTimer = new Timer(SurfaceTimerElapsed, null, 1000, period);
-        }
-
-        private void StopSurfaceTimer()
-        {
-            Timer timer = Interlocked.Exchange(ref m_surfaceTimer, null);
-            if (timer != null)
-                timer.Dispose();
         }
 
         private void StartAuroraTimer()
@@ -2604,360 +2325,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             m_auroraEmitters.Clear();
         }
 
-        private void QueueSurfaceUpdate(bool immediate)
-        {
-            if (!m_surfaceEffectsEnabled)
-                return;
-
-            Timer timer = m_surfaceTimer;
-            if (timer != null && immediate)
-                timer.Change(0, m_surfaceUpdateSeconds * 1000);
-        }
-
-        private void SurfaceTimerElapsed(object state)
-        {
-            if (Interlocked.Exchange(ref m_surfaceBusy, 1) != 0)
-                return;
-
-            try
-            {
-                lock (m_weatherChangeSync)
-                    UpdateSurfaceStateAndPatches();
-            }
-            catch (Exception e)
-            {
-                m_log.WarnFormat("[WEATHER]: Surface-effect update failed: {0}", e.Message);
-            }
-            finally
-            {
-                Interlocked.Exchange(ref m_surfaceBusy, 0);
-            }
-        }
-
-        private void BoostSurfaceForWeather(WeatherKind weather)
-        {
-            if (!m_surfaceEffectsEnabled)
-                return;
-
-            if (weather == WeatherKind.Rain)
-                m_wetnessLevel = Clamp(m_wetnessLevel + 0.04f, 0f, 1f);
-            else if (weather == WeatherKind.Storm)
-                m_wetnessLevel = Clamp(m_wetnessLevel + 0.08f, 0f, 1f);
-            else if (weather == WeatherKind.Snow)
-            {
-                if (m_temperatureC <= m_freezingPointC + 0.5f)
-                    m_snowLevel = Clamp(m_snowLevel + 0.05f, 0f, 1f);
-                else
-                    m_wetnessLevel = Clamp(m_wetnessLevel + 0.025f, 0f, 1f);
-            }
-            else if (weather == WeatherKind.Blizzard)
-            {
-                if (m_temperatureC <= m_freezingPointC + 0.5f)
-                    m_snowLevel = Clamp(m_snowLevel + 0.1f, 0f, 1f);
-                else
-                    m_wetnessLevel = Clamp(m_wetnessLevel + 0.05f, 0f, 1f);
-            }
-
-            QueueSurfaceUpdate(true);
-        }
-
-        private void UpdateSurfaceStateAndPatches()
-        {
-            DateTime now = DateTime.UtcNow;
-            double elapsedHours = Math.Max(0d, (now - m_lastSurfaceUpdateUtc).TotalHours);
-            m_lastSurfaceUpdateUtc = now;
-            WeatherKind weather = CurrentWeather();
-
-            if (weather == WeatherKind.Rain)
-            {
-                m_wetnessLevel += (float)(m_rainWetnessPerHour * elapsedHours);
-                m_snowLevel -= (float)(m_rainSnowMeltPerHour * elapsedHours);
-            }
-            else if (weather == WeatherKind.Storm)
-            {
-                m_wetnessLevel += (float)(m_stormWetnessPerHour * elapsedHours);
-                m_snowLevel -= (float)(m_rainSnowMeltPerHour * 1.25f * elapsedHours);
-            }
-            else if (weather == WeatherKind.Snow)
-            {
-                if (m_temperatureC <= m_freezingPointC + 0.5f)
-                    m_snowLevel += (float)(m_snowAccumulationPerHour * elapsedHours);
-                else
-                    m_wetnessLevel += (float)(m_rainWetnessPerHour * 0.5f * elapsedHours);
-            }
-            else if (weather == WeatherKind.Blizzard)
-            {
-                if (m_temperatureC <= m_freezingPointC + 0.5f)
-                    m_snowLevel += (float)(m_snowAccumulationPerHour * 1.75f * elapsedHours);
-                else
-                    m_wetnessLevel += (float)(m_rainWetnessPerHour * elapsedHours);
-            }
-            else if (weather == WeatherKind.Sunny)
-            {
-                m_wetnessLevel -= (float)(m_sunnyDryingPerHour * elapsedHours);
-                float meltFactor = m_temperatureC > m_freezingPointC ? 1f + (m_temperatureC - m_freezingPointC) * 0.08f : 0.2f;
-                m_snowLevel -= (float)(m_sunnySnowMeltPerHour * meltFactor * elapsedHours);
-            }
-            else
-            {
-                m_wetnessLevel -= (float)(m_clearDryingPerHour * elapsedHours);
-                float meltFactor = m_temperatureC > m_freezingPointC ? 1f + (m_temperatureC - m_freezingPointC) * 0.05f : 0.1f;
-                m_snowLevel -= (float)(m_clearSnowMeltPerHour * meltFactor * elapsedHours);
-            }
-
-            m_wetnessLevel = Clamp(m_wetnessLevel, 0f, 1f);
-            m_snowLevel = Clamp(m_snowLevel, 0f, 1f);
-            RebuildSurfacePatches();
-        }
-
-        private void RebuildSurfacePatches()
-        {
-            Scene scene = m_scene;
-            if (!m_surfaceEffectsEnabled || scene == null)
-                return;
-
-            SurfaceKind kind;
-            float level;
-            float startLevel;
-            if (m_snowAccumulationEnabled && m_snowLevel >= m_snowPatchStartLevel)
-            {
-                kind = SurfaceKind.Snow;
-                level = m_snowLevel;
-                startLevel = m_snowPatchStartLevel;
-            }
-            else if (m_puddlesEnabled && m_wetnessLevel >= m_puddleStartLevel)
-            {
-                kind = SurfaceKind.Puddle;
-                level = m_wetnessLevel;
-                startLevel = m_puddleStartLevel;
-            }
-            else
-            {
-                ClearSurfacePatches(false);
-                return;
-            }
-
-            RefreshExclusionVolumes(false);
-
-            int sizeX = Math.Max(1, (int)scene.RegionInfo.RegionSizeX);
-            int sizeY = Math.Max(1, (int)scene.RegionInfo.RegionSizeY);
-            float spacing = m_surfacePatchSpacingMeters;
-            float normalized = Clamp((level - startLevel) / Math.Max(0.01f, 1f - startLevel), 0f, 1f);
-            HashSet<long> candidateKeys = new HashSet<long>();
-
-            scene.ForEachRootScenePresence(sp =>
-            {
-                if (sp == null || sp.IsDeleted || sp.IsNPC || sp.IsChildAgent)
-                    return;
-
-                Vector3 avatarPosition = sp.AbsolutePosition;
-                int minCellX = Math.Max(0, (int)Math.Floor((avatarPosition.X - m_surfaceRadiusMeters) / spacing));
-                int maxCellX = Math.Min((int)Math.Ceiling(sizeX / spacing) - 1, (int)Math.Floor((avatarPosition.X + m_surfaceRadiusMeters) / spacing));
-                int minCellY = Math.Max(0, (int)Math.Floor((avatarPosition.Y - m_surfaceRadiusMeters) / spacing));
-                int maxCellY = Math.Min((int)Math.Ceiling(sizeY / spacing) - 1, (int)Math.Floor((avatarPosition.Y + m_surfaceRadiusMeters) / spacing));
-
-                for (int cellX = minCellX; cellX <= maxCellX && candidateKeys.Count < m_maxSurfacePatches; cellX++)
-                {
-                    for (int cellY = minCellY; cellY <= maxCellY && candidateKeys.Count < m_maxSurfacePatches; cellY++)
-                    {
-                        float centerX = Math.Min(sizeX - 1f, (cellX + 0.5f) * spacing);
-                        float centerY = Math.Min(sizeY - 1f, (cellY + 0.5f) * spacing);
-                        float dx = centerX - avatarPosition.X;
-                        float dy = centerY - avatarPosition.Y;
-                        if (dx * dx + dy * dy > m_surfaceRadiusMeters * m_surfaceRadiusMeters)
-                            continue;
-
-                        long key = SurfaceCellKey(cellX, cellY, kind);
-                        if (Hash01(key) <= normalized * (kind == SurfaceKind.Snow ? 0.9f : 0.55f))
-                            candidateKeys.Add(key);
-                    }
-                }
-            });
-
-            Dictionary<long, SurfaceCandidate> desired = new Dictionary<long, SurfaceCandidate>();
-            float waterHeight = (float)scene.RegionInfo.RegionSettings.WaterHeight;
-
-            foreach (long key in candidateKeys)
-            {
-                DecodeSurfaceCellKey(key, out int cellX, out int cellY, out SurfaceKind cellKind);
-                float x = Math.Min(sizeX - 1f, (cellX + 0.5f) * spacing);
-                float y = Math.Min(sizeY - 1f, (cellY + 0.5f) * spacing);
-                float ground = scene.GetGroundHeight(x, y);
-
-                if (ground <= waterHeight + 0.05f)
-                    continue;
-                if (TerrainSlopeDegrees(x, y) > m_maxSurfaceSlopeDegrees)
-                    continue;
-                if (IsCoveredFromSky(x, y, ground, ground + m_emitterHeight))
-                    continue;
-                if (cellKind == SurfaceKind.Puddle && !IsTerrainLowPoint(x, y))
-                    continue;
-
-                float sizeVariance = 0.65f + Hash01(key ^ 0x5f3759dfL) * 0.45f;
-                float patchSize = Clamp(spacing * (cellKind == SurfaceKind.Snow ? 0.8f : 0.55f) * sizeVariance, 1.5f, 18f);
-                float thickness = cellKind == SurfaceKind.Snow ? 0.045f : 0.02f;
-                Vector3 position = new Vector3(x, y, ground + thickness * 0.5f + 0.003f);
-                desired[key] = new SurfaceCandidate
-                {
-                    Kind = cellKind,
-                    Position = position,
-                    Size = patchSize,
-                    Level = level
-                };
-            }
-
-            List<SceneObjectGroup> obsolete = new List<SceneObjectGroup>();
-            List<long> obsoleteKeys = new List<long>();
-            foreach (KeyValuePair<long, SurfacePatch> pair in m_surfacePatches)
-            {
-                if (!desired.ContainsKey(pair.Key))
-                {
-                    obsoleteKeys.Add(pair.Key);
-                    if (pair.Value != null && pair.Value.Group != null)
-                        obsolete.Add(pair.Value.Group);
-                }
-            }
-
-            foreach (long key in obsoleteKeys)
-                m_surfacePatches.Remove(key);
-            DeleteEmitters(obsolete);
-
-            foreach (KeyValuePair<long, SurfaceCandidate> pair in desired)
-            {
-                if (m_surfacePatches.ContainsKey(pair.Key))
-                    continue;
-
-                SurfaceCandidate candidate = pair.Value;
-                SceneObjectGroup patch = CreateSurfacePatch(
-                    candidate.Kind,
-                    candidate.Position,
-                    candidate.Size,
-                    candidate.Level);
-
-                if (!scene.AddNewSceneObject(patch, false))
-                    continue;
-
-                patch.RootPart.SendFullUpdateToAllClients();
-                patch.ScheduleGroupForUpdate(PrimUpdateFlags.FullUpdate);
-                m_surfacePatches[pair.Key] = new SurfacePatch
-                {
-                    Kind = candidate.Kind,
-                    Group = patch
-                };
-            }
-        }
-
-        private SceneObjectGroup CreateSurfacePatch(SurfaceKind kind, Vector3 position, float size, float level)
-        {
-            PrimitiveBaseShape shape = PrimitiveBaseShape.CreateCylinder();
-            shape.Scale = new Vector3(size, size, kind == SurfaceKind.Snow ? 0.045f : 0.02f);
-            Primitive.TextureEntry textures = shape.Textures;
-            textures.DefaultTexture.TextureID = kind == SurfaceKind.Snow ? m_snowSurfaceTexture : m_puddleTexture;
-            textures.DefaultTexture.RGBA = kind == SurfaceKind.Snow
-                ? new Color4(0.96f, 0.98f, 1f, Clamp(0.2f + level * 0.75f, 0f, 0.95f))
-                : new Color4(0.55f, 0.64f, 0.72f, Clamp(0.08f + level * 0.35f, 0f, 0.5f));
-            textures.DefaultTexture.Fullbright = false;
-            shape.Textures = textures;
-
-            SceneObjectPart root = new SceneObjectPart(m_weatherOwnerId, shape, position, Quaternion.Identity, Vector3.Zero);
-            root.Name = kind == SurfaceKind.Snow
-                ? GeneratedNamePrefix + " snow accumulation"
-                : GeneratedNamePrefix + " puddle";
-            root.Description = GeneratedDescription;
-            root.Scale = shape.Scale;
-            root.AddFlag(PrimFlags.Phantom);
-            root.AddFlag(PrimFlags.TemporaryOnRez);
-            SceneObjectGroup group = new SceneObjectGroup(root);
-            group.TemporaryInstance = true;
-            group.SetGroup(UUID.Zero, null);
-            return group;
-        }
-
-        private void ClearSurfacePatches(bool resetLevels)
-        {
-            List<SceneObjectGroup> patches = new List<SceneObjectGroup>();
-            foreach (SurfacePatch patch in m_surfacePatches.Values)
-            {
-                if (patch != null && patch.Group != null)
-                    patches.Add(patch.Group);
-            }
-            m_surfacePatches.Clear();
-            DeleteEmitters(patches);
-
-            if (resetLevels)
-            {
-                m_wetnessLevel = 0f;
-                m_snowLevel = 0f;
-            }
-        }
-
-        private float TerrainSlopeDegrees(float x, float y)
-        {
-            Scene scene = m_scene;
-            if (scene == null)
-                return 90f;
-
-            float sizeX = scene.RegionInfo.RegionSizeX;
-            float sizeY = scene.RegionInfo.RegionSizeY;
-            float x0 = Clamp(x - 1f, 0f, sizeX - 1f);
-            float x1 = Clamp(x + 1f, 0f, sizeX - 1f);
-            float y0 = Clamp(y - 1f, 0f, sizeY - 1f);
-            float y1 = Clamp(y + 1f, 0f, sizeY - 1f);
-            float dzdx = (scene.GetGroundHeight(x1, y) - scene.GetGroundHeight(x0, y)) / Math.Max(0.1f, x1 - x0);
-            float dzdy = (scene.GetGroundHeight(x, y1) - scene.GetGroundHeight(x, y0)) / Math.Max(0.1f, y1 - y0);
-            return (float)(Math.Atan(Math.Sqrt(dzdx * dzdx + dzdy * dzdy)) * 180d / Math.PI);
-        }
-
-        private bool IsTerrainLowPoint(float x, float y)
-        {
-            Scene scene = m_scene;
-            if (scene == null)
-                return false;
-
-            float center = scene.GetGroundHeight(x, y);
-            float sum = 0f;
-            int count = 0;
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                for (int dy = -1; dy <= 1; dy++)
-                {
-                    if (dx == 0 && dy == 0)
-                        continue;
-                    float sx = Clamp(x + dx * 2f, 0f, scene.RegionInfo.RegionSizeX - 1f);
-                    float sy = Clamp(y + dy * 2f, 0f, scene.RegionInfo.RegionSizeY - 1f);
-                    sum += scene.GetGroundHeight(sx, sy);
-                    count++;
-                }
-            }
-
-            return count > 0 && center <= sum / count + m_puddleLowPointToleranceMeters;
-        }
-
-        private static long SurfaceCellKey(int x, int y, SurfaceKind kind)
-        {
-            return (CellKey(x, y) << 1) | (kind == SurfaceKind.Snow ? 1L : 0L);
-        }
-
-        private static void DecodeSurfaceCellKey(long key, out int x, out int y, out SurfaceKind kind)
-        {
-            kind = (key & 1L) == 1L ? SurfaceKind.Snow : SurfaceKind.Puddle;
-            DecodeCellKey(key >> 1, out x, out y);
-        }
-
-        private static float Hash01(long key)
-        {
-            unchecked
-            {
-                ulong value = (ulong)key;
-                value ^= value >> 33;
-                value *= 0xff51afd7ed558ccdUL;
-                value ^= value >> 33;
-                value *= 0xc4ceb9fe1a85ec53UL;
-                value ^= value >> 33;
-                return (value & 0x00ffffffUL) / 16777215f;
-            }
-        }
-
         private void CleanupGeneratedObjects()
         {
             Scene scene = m_scene;
@@ -3100,66 +2467,117 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         /// <summary>The override the module last gave avatars; null when no weather sky is showing.</summary>
         private ViewerEnvironment m_weatherEnvironment;
 
+        // The sky that is showing (m_skyShown) and the one it is fading to. Each step builds the override from the
+        // region's environment as it is then, so an owner's change to the day cycle shows through.
+        private readonly object m_skySync = new object();
+        private SkyEffect m_skyFrom;
+        private SkyEffect m_skyTo;
+        private SkyEffect m_skyShown;
+        private DateTime m_skyFadeStartUtc;
+        private Timer m_skyFadeTimer;
+
         private void ApplyClouds(WeatherKind weather)
         {
             if (!m_adjustClouds || m_environmentModule == null)
                 return;
 
-            // A weather without a sky of its own (sunny, clear) shows the region's normal sky. Before, it changed
-            // nothing, so the sky of the previous weather stayed (a storm sky under "sunny").
-            if (!m_environmentProfiles.TryGetValue(weather, out EnvironmentProfile profile))
-            {
-                RestoreClouds(true);
-                return;
-            }
-
-            ViewerEnvironment regionEnvironment = m_environmentModule.GetRegionEnvironment();
-            if (regionEnvironment == null)
-                return;
-
-            ViewerEnvironment weatherEnvironment = regionEnvironment.Clone();
-            foreach (SkyData sky in weatherEnvironment.SkyFrames)
-                ApplyProfileToSky(sky, profile);
-
-            ViewerEnvironment previous = m_weatherEnvironment;
-            m_weatherEnvironment = weatherEnvironment;
-            ForEachWeatherAvatar(sp => SetAvatarSky(sp, previous, weatherEnvironment));
+            // A weather without a sky of its own (sunny, clear) fades back to the region's sky.
+            m_skyEffects.TryGetValue(weather, out SkyEffect target);
+            StartSkyFade(target, false);
         }
 
         /// <summary>
-        /// The profile on one sky of the day cycle, with the same meaning the LightShare form of it had: the clouds,
-        /// horizon, haze and glow are the weather's own; ambient light, sunlight and gamma are scaled from the sky's
-        /// (weather darkens the daylight there is, it does not replace day with night); stars are not touched.
+        /// Fade from what is showing to <paramref name="target"/> (null: the region's own sky) over SkyFadeSeconds, or
+        /// at once.
         /// </summary>
-        private static void ApplyProfileToSky(SkyData sky, EnvironmentProfile profile)
+        private void StartSkyFade(SkyEffect target, bool immediate)
         {
-            sky.cloud_shadow = profile.CloudCoverage;
-            sky.cloud_scale = profile.CloudScale;
-            sky.cloud_color = new Vector3(profile.CloudColor.X, profile.CloudColor.Y, profile.CloudColor.Z);
-            sky.cloud_pos_density1 = profile.CloudXYDensity;
-            sky.cloud_pos_density2 = profile.CloudDetailXYDensity;
-            sky.cloud_scroll_rate = new Vector2(
-                profile.CloudScrollXLock ? 0f : profile.CloudScrollX,
-                profile.CloudScrollYLock ? 0f : profile.CloudScrollY);
-            sky.blue_horizon = new Vector3(profile.Horizon.X * 2f, profile.Horizon.Y * 2f, profile.Horizon.Z * 2f);
-            sky.blue_density = new Vector3(profile.BlueDensity.X * 2f, profile.BlueDensity.Y * 2f, profile.BlueDensity.Z * 2f);
-            sky.haze_horizon = profile.HazeHorizon;
-            sky.haze_density = profile.HazeDensity;
-            sky.density_multiplier = profile.DensityMultiplier / 1000f;
-            sky.distance_multiplier = profile.DistanceMultiplier;
-            sky.glow = new Vector3((2f - profile.SunGlowSize) * 20f, 0f, -profile.SunGlowFocus * 5f);
-            sky.ambient *= profile.AmbientMultiplier;
-            sky.sunlight_color *= profile.SunMoonColorMultiplier;
-            sky.gamma *= profile.SceneGammaMultiplier;
+            lock (m_skySync)
+            {
+                m_skyFrom = m_skyShown;
+                m_skyTo = target;
+                m_skyFadeStartUtc = DateTime.UtcNow;
+
+                if (immediate || m_skyFadeSeconds <= 0f || (m_skyFrom == null && m_skyTo == null))
+                {
+                    StopSkyFadeTimer();
+                    ShowSky(target);
+                    return;
+                }
+
+                ShowSky(SkyEffect.Lerp(m_skyFrom, m_skyTo, 0f));
+                if (m_skyFadeTimer == null)
+                {
+                    int step = (int)(m_skyFadeStepSeconds * 1000f);
+                    m_skyFadeTimer = new Timer(_ => SkyFadeStep(), null, step, step);
+                }
+            }
         }
 
+        private void SkyFadeStep()
+        {
+            try
+            {
+                lock (m_skySync)
+                {
+                    if (m_skyFadeTimer == null)
+                        return;
+                    float t = (float)((DateTime.UtcNow - m_skyFadeStartUtc).TotalSeconds / m_skyFadeSeconds);
+                    if (t >= 1f)
+                    {
+                        StopSkyFadeTimer();
+                        ShowSky(m_skyTo);
+                        return;
+                    }
+                    ShowSky(SkyEffect.Lerp(m_skyFrom, m_skyTo, t));
+                }
+            }
+            catch (Exception e)
+            {
+                m_log.WarnFormat("[WEATHER]: sky fade step failed: {0}", e.Message);
+            }
+        }
+
+        private void StopSkyFadeTimer()
+        {
+            Timer timer = m_skyFadeTimer;
+            m_skyFadeTimer = null;
+            timer?.Dispose();
+        }
+
+        /// <summary>Give the avatars the region's sky with <paramref name="effect"/> applied (null or neutral: no override).</summary>
+        private void ShowSky(SkyEffect effect)
+        {
+            if (effect != null && effect.IsNeutral)
+                effect = null;
+            m_skyShown = effect;
+
+            ViewerEnvironment next = null;
+            if (effect != null && m_environmentModule != null)
+            {
+                ViewerEnvironment regionEnvironment = m_environmentModule.GetRegionEnvironment();
+                if (regionEnvironment != null)
+                {
+                    next = regionEnvironment.Clone();
+                    foreach (SkyData sky in next.SkyFrames)
+                        effect.ApplyTo(sky);
+                }
+            }
+
+            ViewerEnvironment previous = m_weatherEnvironment;
+            m_weatherEnvironment = next;
+            if (previous != null || next != null)
+                ForEachWeatherAvatar(sp => SetAvatarSky(sp, previous, next));
+        }
+
+        /// <summary>Back to the region's own sky: at once when <paramref name="force"/>, else faded.</summary>
         private void RestoreClouds(bool force)
         {
-            ViewerEnvironment previous = m_weatherEnvironment;
-            m_weatherEnvironment = null;
-            if (previous == null || m_environmentModule == null)
+            if (m_environmentModule == null)
                 return;
-            ForEachWeatherAvatar(sp => SetAvatarSky(sp, previous, null));
+            if (m_skyShown == null && m_skyTo == null && m_weatherEnvironment == null)
+                return;
+            StartSkyFade(null, force);
         }
 
         /// <summary>The avatars the weather sky is for: root, not NPCs.</summary>
@@ -3222,15 +2640,14 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     return;
                 foreach (SkyData sky in env.SkyFrames)
                 {
-                    foreach (KeyValuePair<WeatherKind, EnvironmentProfile> kv in m_environmentProfiles)
+                    foreach (var p in s_legacySavedSkies)
                     {
-                        EnvironmentProfile p = kv.Value;
-                        if (Math.Abs(sky.cloud_shadow - p.CloudCoverage) < 0.0005f && Math.Abs(sky.cloud_scale - p.CloudScale) < 0.0005f
-                            && Math.Abs(sky.cloud_color.X - p.CloudColor.X) < 0.0005f && Math.Abs(sky.cloud_color.Y - p.CloudColor.Y) < 0.0005f)
+                        if (Math.Abs(sky.cloud_shadow - p.Cover) < 0.0005f && Math.Abs(sky.cloud_scale - p.Scale) < 0.0005f
+                            && Math.Abs(sky.cloud_color.X - p.R) < 0.0005f && Math.Abs(sky.cloud_color.Y - p.G) < 0.0005f)
                         {
                             m_environmentModule.ResetEnvironmentSettings(m_scene.RegionInfo.RegionID);
                             m_log.InfoFormat("[WEATHER]: {0} had a {1} sky saved by an earlier weather version; put back to the region default.",
-                                m_scene.RegionInfo.RegionName, kv.Key);
+                                m_scene.RegionInfo.RegionName, p.Kind);
                             return;
                         }
                     }
@@ -3272,7 +2689,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 if (active)
                 {
                     StartAutoCycle(true);
-                    StartSurfaceTimer();
                     StartAuroraTimer();
                     StartLightningSweepTimer();
                     m_log.InfoFormat("[WEATHER]: Weather on in {0} ({1}).", region, why);
@@ -3282,7 +2698,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     StopAutoCycle();
                     StopActiveAreaRefresh();
                     StopWanderingRefresh();
-                    StopSurfaceTimer();
                     StopAuroraTimer();
                     StopLightningSweepTimer();
                     RemoveAuroraEmitters();
@@ -3597,7 +3012,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private void SendStatus(IClientAPI client)
         {
             int emitterCount;
-            int surfacePatchCount;
             int exclusionVolumeCount;
             WeatherKind weather;
 
@@ -3609,14 +3023,12 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     exclusionVolumeCount = m_exclusionVolumes.Count;
                     weather = m_currentWeather;
                 }
-
-                surfacePatchCount = m_surfacePatches.Count;
             }
 
-            SendReply(client, BuildWeatherReport(weather, emitterCount, exclusionVolumeCount, surfacePatchCount));
+            SendReply(client, BuildWeatherReport(weather, emitterCount, exclusionVolumeCount));
         }
 
-        private string BuildWeatherReport(WeatherKind weather, int emitterCount, int exclusionVolumeCount, int surfacePatchCount)
+        private string BuildWeatherReport(WeatherKind weather, int emitterCount, int exclusionVolumeCount)
         {
             Scene scene = m_scene;
             string regionName = scene == null ? "the region" : scene.RegionInfo.RegionName;
@@ -3638,15 +3050,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     " Coverage: {0} ({1} emitters).",
                     CoverageModeName(m_coverageMode),
                     emitterCount);
-            }
-
-            if (m_surfaceEffectsEnabled)
-            {
-                sb.AppendFormat(
-                    CultureInfo.InvariantCulture,
-                    " Ground: {0:0}% wet, {1:0}% snow-covered.",
-                    Clamp(m_wetnessLevel, 0f, 1f) * 100f,
-                    Clamp(m_snowLevel, 0f, 1f) * 100f);
             }
 
             if (exclusionVolumeCount > 0)
@@ -3710,7 +3113,6 @@ namespace OpenSim.Region.OptionalModules.World.Weather
 
             int emitterCount;
             int exclusionVolumeCount;
-            int surfacePatchCount;
             lock (m_weatherChangeSync)
             {
                 lock (m_sync)
@@ -3718,11 +3120,9 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     emitterCount = m_emitters.Count;
                     exclusionVolumeCount = m_exclusionVolumes.Count;
                 }
-
-                surfacePatchCount = m_surfacePatches.Count;
             }
 
-            string report = BuildWeatherReport(weather, emitterCount, exclusionVolumeCount, surfacePatchCount);
+            string report = BuildWeatherReport(weather, emitterCount, exclusionVolumeCount);
             scene.ForEachRootScenePresence(sp =>
             {
                 if (sp != null && !sp.IsDeleted && sp.ControllingClient != null)

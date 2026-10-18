@@ -220,132 +220,36 @@
     BroadcastWeatherToScripts = true
     WeatherBroadcastChannel = -910088
 
-    ;; ------------------------------------------------------------------------
-    ;; EXPERIMENTAL TERRAIN SURFACE EFFECTS
-    ;; ------------------------------------------------------------------------
-
-    ;; These are temporary, non-persistent terrain overlays near active avatars.
-    ;; They do not rewrite terrain textures and do not accumulate on buildings.
-    SurfaceEffectsEnabled = false
-    PuddlesEnabled = true
-    SnowAccumulationEnabled = true
-
-    ;; Alpha textures are required. Blank values automatically disable the
-    ;; corresponding effect to avoid solid default disks.
-    PuddleTexture =
-    SnowSurfaceTexture =
-
-    ;; Static regional temperature used by the accumulation/melt model.
+    ;; Base regional temperature in Celsius (reports and the weather broadcast).
     TemperatureC = 10.0
-    FreezingPointC = 0.0
-
-    RainWetnessPerHour = 0.35
-    StormWetnessPerHour = 0.75
-    SnowAccumulationPerHour = 0.30
-
-    ClearDryingPerHour = 0.08
-    SunnyDryingPerHour = 0.25
-
-    ClearSnowMeltPerHour = 0.05
-    SunnySnowMeltPerHour = 0.22
-    RainSnowMeltPerHour = 0.45
-
-    PuddleStartLevel = 0.12
-    SnowPatchStartLevel = 0.08
-
-    SurfacePatchSpacingMeters = 20.0
-    SurfaceRadiusMeters = 80.0
-    MaxSurfacePatches = 128
-    MaxSurfaceSlopeDegrees = 8.0
-    PuddleLowPointToleranceMeters = 0.08
-    SurfaceUpdateSeconds = 60
-
 
 ;; ---------------------------------------------------------------------------
-;; ENVIRONMENT PROFILES
+;; WEATHER SKIES
 ;; ---------------------------------------------------------------------------
-;; These values are fallbacks and are fully configurable. The module copies the
-;; current region LightShare state, applies the listed sky/cloud and sun-position
-;; fields, and preserves the current water fields. SunMoonPosition and EastAngle
-;; are LightShare fractions of a full circle from 0.0 through 1.0. MaxAltitude
-;; is the LightShare atmosphere altitude. Clear restores the saved region
-;; environment when RestoreCloudsOnClear=true.
+;; A weather changes each sky of the region's day cycle relative to that sky's
+;; own values (it does not put its own colours into every sky): clouds are raised
+;; to the weather's cover and never lowered, the horizon, blue density and cloud
+;; colours are made greyer and darker by a factor, haze and density are added,
+;; and the stars and moon are dimmed. A midnight sky stays dark. Clear and sunny
+;; show the region's own sky. The built-in numbers suit most regions; a
+;; [Weather.Sky.<Rain|Storm|Snow|Blizzard>] section changes any of them:
+;;
+;;   CloudCover      0..1  the cover the weather brings (a cloudier sky keeps its own)
+;;   CloudScale            the cloud scale it brings
+;;   CloudDarken           multiplier on the cloud colour (storms 0.35, snow 0.95)
+;;   SkyDarken             multiplier on the horizon and blue density colours
+;;   Desaturate      0..1  how far those colours go to grey
+;;   AmbientScale, SunScale, MoonScale   multipliers on the light
+;;   HazeDensityAdd, HazeHorizonAdd      added to the sky's haze
+;;   DensityScale, DistanceScale         multipliers on the atmosphere (visibility)
+;;   StarDim         0..1  how much of the stars the clouds hide
+;;
+;; [Weather.Environment.*] sections from earlier versions are no longer read.
+;;
+;; A change of weather fades the sky over SkyFadeSeconds (in [Weather], default
+;; 120; 0 changes it at once), one step every SkyFadeStepSeconds (default 10).
 
-;; AmbientMultiplier/SunMoonColorMultiplier/SceneGammaMultiplier are
-;; MULTIPLIERS applied to whatever the region's environment currently
-;; already is, not absolute replacements - real weather darkens/brightens
-;; existing daylight, it never replaces day with night or erases the
-;; admin's own tuned look and the region's real day/night cycle. There is
-;; no Sunny profile - a hardcoded "always bright" override made no sense
-;; next to Clear (which already restores the real, saved environment) and
-;; was actively wrong at night. StarBrightness is never touched by weather
-;; at all, by design - it always stays whatever the region already has.
-
-[Weather.Environment.Rain]
-    CloudCoverage = 0.82
-    CloudScale = 0.64
-    CloudColor = 0.16,0.18,0.22,1.0
-    CloudXYDensity = 1.18,0.60,0.96
-    CloudDetailXYDensity = 1.32,0.64,0.24
-    CloudScrollX = 0.28
-    CloudScrollY = 0.05
-    Horizon = 0.15,0.17,0.20,1.0
-    BlueDensity = 0.07,0.09,0.13,1.0
-    AmbientMultiplier = 0.85
-    SunMoonColorMultiplier = 0.85
-    HazeHorizon = 0.40
-    HazeDensity = 0.82
-    DensityMultiplier = 0.28
-    DistanceMultiplier = 0.90
-    SunGlowFocus = 0.08
-    SunGlowSize = 1.40
-    SceneGammaMultiplier = 0.88
-    DrawClassicClouds = true
-    CloudScrollXLock = false
-    CloudScrollYLock = false
-
-[Weather.Environment.Storm]
-    CloudCoverage = 0.94
-    CloudScale = 0.72
-    CloudColor = 0.06,0.07,0.085,1.0
-    CloudXYDensity = 1.35,0.64,1.00
-    CloudDetailXYDensity = 1.55,0.72,0.28
-    CloudScrollX = 0.48
-    CloudScrollY = 0.10
-    Horizon = 0.08,0.09,0.11,1.0
-    BlueDensity = 0.04,0.055,0.08,1.0
-    AmbientMultiplier = 0.55
-    SunMoonColorMultiplier = 0.5
-    HazeHorizon = 0.45
-    HazeDensity = 0.92
-    DensityMultiplier = 0.32
-    DistanceMultiplier = 0.80
-    SunGlowFocus = 0.05
-    SunGlowSize = 1.20
-    SceneGammaMultiplier = 0.8
-    DrawClassicClouds = true
-    CloudScrollXLock = false
-    CloudScrollYLock = false
-
-[Weather.Environment.Snow]
-    CloudCoverage = 0.86
-    CloudScale = 0.70
-    CloudColor = 0.38,0.40,0.44,1.0
-    CloudXYDensity = 1.18,0.60,0.96
-    CloudDetailXYDensity = 1.28,0.62,0.22
-    CloudScrollX = 0.14
-    CloudScrollY = 0.035
-    Horizon = 0.26,0.28,0.32,1.0
-    BlueDensity = 0.13,0.15,0.20,1.0
-    AmbientMultiplier = 0.75
-    SunMoonColorMultiplier = 0.75
-    HazeHorizon = 0.36
-    HazeDensity = 0.72
-    DensityMultiplier = 0.24
-    DistanceMultiplier = 0.95
-    SunGlowFocus = 0.10
-    SunGlowSize = 1.60
-    SceneGammaMultiplier = 0.92
-    DrawClassicClouds = true
-    CloudScrollXLock = false
-    CloudScrollYLock = false
+;[Weather.Sky.Storm]
+;    CloudDarken = 0.35
+;    SkyDarken = 0.5
+;    HazeDensityAdd = 0.5

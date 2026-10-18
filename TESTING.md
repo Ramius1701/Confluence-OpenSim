@@ -164,6 +164,9 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 8.7 Weather sky: a storm darkens the sky for everyone in the region, someone arriving during it sees it too,
       the sun still moves; after sunny or clear the normal sky is back; a region restart during a storm comes back with
       the normal sky (no `weather clear` needed); a parcel with its own environment keeps it.
+- [ ] 8.8 Weather sky at night (0.5.0): `weather storm` at midnight leaves the sky dark (darker, with fewer stars),
+      not grey; at noon it darkens and greys the sky and adds haze; the change fades in over about two minutes, and
+      `weather sunny` fades it back out. No puddle or snow patches appear on the ground any more.
 
 ## 9. Land, money and admin
 

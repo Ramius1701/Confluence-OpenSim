@@ -123,4 +123,3 @@
     AnnounceWeatherChangesInChat = true
 
     ;; Experimental temporary terrain overlays are opt-in.
-    SurfaceEffectsEnabled = false

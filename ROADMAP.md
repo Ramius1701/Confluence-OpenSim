@@ -250,11 +250,14 @@ checked by `Tools/data-backend-check`.)*
   `lane/jolt` 10-14..17 (~240 commits: Halcyon vehicle motors on a 15 ms clock, move-to / hover / look-at kept across
   a crossing, one copy kept when a crossing fails, size limits, mouse drag, spike cut, and an engine side of #314's
   `CaptureVehicleRunningState`) - its own session, while Jolt stays off live.
-- **Weather, next steps** (after the 2026-10-16 rework): coverage on 512 m and 1024 m regions is capped at 384
-  emitter prims (a 19x19 grid, one emitter every ~54 m on 1024 m regions) - precipitation emitted around the avatars
-  present rather than over the whole region would scale; wind could come from Tranquillity's ZephyrWind (#315); the
-  live grid's per-region `[Weather]` sections (four regions, one with keys from an older version) should become
-  small overrides.
+- **Weather rethink** (agreed 2026-10-18; the module's sky, ground effects and model were not good enough). Stage 1
+  done (addon 0.5.0): the sky changes each sky of the day cycle relative to itself and fades; the ground prims are
+  gone. Next: (2) precipitation emitted around the avatars present instead of a region grid of up to 384 emitter
+  prims (1024 m regions get one every ~54 m today), lightning flashes without prims if possible; (3) a weather model:
+  a climate per region, believable transitions, temperature / cloud / wind / precipitation linked, wind from
+  Tranquillity's ZephyrWind (#315) once its series settles; (4) settings in one place (the web portal per region,
+  the ini for grid defaults only) - today the addon's `config/OpenSimWeather.ini` is read after each region's
+  `OpenSim.ini`, so the four regions' own `[Weather]` sections are mostly overridden.
 - **Optional creator filter on OAR load (idea from Halcyon's archiver).** Halcyon could load an OAR replacing prims,
   sculpt/mesh shapes and face textures the region owner did not create with plywood and a default prim, marking them
   "(Replaced: Prim created by ...)" - a way for a grid owner to accept a resident's OAR without importing other
