@@ -28910,3 +28910,5 @@ Report upstream (opensim-master's code has faults 1 and 3). The access log has ~
 since 2026-07; their replies and Robust's log at those times show no sign of a control-plane call, but accepted calls
 are not logged, so it cannot be ruled out.
 Full Phlox suite 5,900 passed, 2 skipped, 0 failed; Release build 0/0. On the live web server the vhost now unsets the client's X-Forwarded-For and Forwarded before proxying (interim). Not deployed.
+
+Also fixed by the same change: a request that starts on the grid host itself and goes through the proxy (X-Forwarded-For of loopback only) made the old CheckXFF index one past the start of its list and throw, so the proxy got no answer (502). Verified after the web server restart: forged X-Forwarded-For / Forwarded from this host no longer reach Robust (no parse failure; the old build's loopback crash instead), outside visitors get 200. XffSpoofingTests 18.

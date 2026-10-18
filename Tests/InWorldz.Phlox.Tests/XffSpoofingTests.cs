@@ -72,6 +72,16 @@ public class XffSpoofingTests
         }
     }
 
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("127.0.0.1, 127.0.0.1")]
+    public void ARequestFromThisMachineThroughTheProxyIsThisMachineAndDoesNotThrow(string chain)
+    {
+        // what the proxy sends for a request that starts on this machine; the old code indexed addrs[-1] and threw,
+        // so the proxy got no answer (502) for every request from the grid's own host
+        Assert.Equal(IPAddress.Loopback, ClientOf(chain));
+    }
+
     [Fact]
     public void AnUntrustedPeerCannotForwardAtAll()
     {
