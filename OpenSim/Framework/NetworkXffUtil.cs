@@ -33,6 +33,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Linq;
 using System.Text;
 
 namespace OpenSim.Framework
@@ -169,36 +170,92 @@ namespace OpenSim.Framework
            return false;
         }
 
-        public static bool CheckXFF(IPEndPoint LocalIPEndPoint, string header, out IPEndPoint xffremote, out string shortheader)
+        /// <summary>[Confluence] A further X-Forwarded-For header (or value) after the ones before it, as one chain.</summary>
+        public static string AppendChain(string existing, string value)
         {
-            if(!string.IsNullOrEmpty(header) && Contains(LocalIPEndPoint.Address))
-            {
-                IPAddress lastproxy = LocalIPEndPoint.Address;
-                string[] addrs = header.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if(addrs.Length > 0)
-                {
-                    IPAddress addrip = null;
-                    int i = addrs.Length - 1;
-                    while (i >= 0)
-                    {
-                        addrip = GetIP(addrs[i]);
-                        if(!Contains(addrip))
-                            break;
-                        lastproxy = addrip;
-                        i--;
-                    }
-                    // TODO private ips
-                    if(addrip != null && (!Util.IsPrivateNetwork(addrip) || Util.IsPrivateNetwork(lastproxy)))
-                    {
-                        xffremote = new IPEndPoint(addrip, LocalIPEndPoint.Port);
-                        shortheader = addrs[i];
-                        return true;
-                    }
-                }
-            }
+            value = value?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(existing))
+                return value;
+            if (value.Length == 0)
+                return existing;
+            return existing + ", " + value;
+        }
 
+        /// <summary>
+        /// [Confluence] One X-Forwarded-For entry as an address: an IPv4 or IPv6 address, with a port or IPv6 brackets
+        /// allowed. No DNS: the entries come from the client. Null when it is not an address.
+        /// </summary>
+        public static IPAddress ParseEntry(string entry)
+        {
+            if (string.IsNullOrWhiteSpace(entry))
+                return null;
+            string s = entry.Trim().Trim('"');
+            if (s.StartsWith('['))
+            {
+                int close = s.IndexOf(']');
+                if (close < 0)
+                    return null;
+                s = s.Substring(1, close - 1);
+            }
+            else if (s.Count(c => c == ':') == 1)
+                s = s.Substring(0, s.IndexOf(':'));         // IPv4 with a port
+            if (!IPAddress.TryParse(s, out IPAddress ip))
+                return null;
+            return ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip;
+        }
+
+        /// <summary>The address a request is taken to be from when its forwarding chain names no address that can be used.</summary>
+        public static readonly IPAddress UnknownClient = IPAddress.None;
+
+        /// <summary>
+        /// The client address of a request that arrived from <paramref name="peer"/> with the X-Forwarded-For chain
+        /// <paramref name="header"/>.
+        /// </summary>
+        /// <remarks>
+        /// [Confluence] 2026-10-19. Only a peer that is a trusted proxy (XFFTrustedProxies) is asked; the chain is read
+        /// from the right, past the trusted proxies, and the first address that is not one is the client. A trusted
+        /// proxy appends the address it saw to the right, so nothing the client wrote to the left can be chosen. When
+        /// an entry there is not an address the client is unknown (<see cref="UnknownClient"/>), never the proxy's own
+        /// address: a loopback proxy's address is trusted, and an unreadable entry must not make a request trusted. A
+        /// chain of trusted proxies only names the left-most of them. A private client address behind a public proxy
+        /// is not believed (the request stays the proxy's).
+        /// </remarks>
+        public static bool CheckXFF(IPEndPoint peer, string header, out IPEndPoint xffremote, out string shortheader)
+        {
             xffremote = null;
             shortheader = string.Empty;
+            if (string.IsNullOrEmpty(header) || peer == null || !Contains(peer.Address))
+                return false;
+
+            string[] addrs = header.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (addrs.Length == 0)
+                return false;
+
+            IPAddress lastproxy = peer.Address;
+            for (int i = addrs.Length - 1; i >= 0; i--)
+            {
+                IPAddress addrip = ParseEntry(addrs[i]);
+                if (addrip == null)
+                {
+                    m_log.Debug($"[NetworkXffUtil] unreadable X-Forwarded-For entry \"{addrs[i]}\" from {peer.Address}; client unknown");
+                    xffremote = new IPEndPoint(UnknownClient, peer.Port);
+                    shortheader = string.Empty;
+                    return true;
+                }
+
+                if (Contains(addrip) && i > 0)
+                {
+                    lastproxy = addrip;
+                    continue;
+                }
+
+                if (Util.IsPrivateNetwork(addrip) && !Util.IsPrivateNetwork(lastproxy))
+                    return false;
+
+                xffremote = new IPEndPoint(addrip, peer.Port);
+                shortheader = addrs[i];
+                return true;
+            }
             return false;
         }
     }

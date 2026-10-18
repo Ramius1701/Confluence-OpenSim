@@ -28876,3 +28876,37 @@ Tests (`WeatherReworkTests`, 21): for every precipitating weather and drops of 6
 whole drop within a viewer's 30 s particle life, keeps its opacity, leaves a downward cone, and the particles in the air
 stay within 100-400 per emitter; a snowfall in a test region puts its emitters round the avatar, 22 m above its floor.
 Full Phlox suite 5,884 passed, 2 skipped, 0 failed; Release build 0/0. Not deployed.
+
+## Security: a client could choose the address it was seen from behind the local reverse proxy (2026-10-19)
+
+Found from the owner's console paste: Robust logging `[NetworkXffUtil]: failed to parse host entry =8.8.8.8` (and
+`=127.0.0.1`, `=10.0.0.1`, `=192.168.1.1`, ...) three times a second for a minute. The web server's access log shows
+one outside address running an automated vulnerability scan through the public site (186 requests: `.env` files,
+`id_rsa`, adminer, phpMyAdmin, config files; 184 answered 404, the other two the public home page and a stylesheet),
+each request with forged forwarding headers. The public site's web server proxies `/` to Robust's public port from
+loopback, and loopback is a trusted proxy by default, so Robust read those headers. Three faults, together letting any
+client choose its apparent address - including a trusted one:
+
+1. `HttpRequest.AddHeader("x-forwarded-for")` kept only the first entry of the chain. A reverse proxy appends the
+   address it saw at the right; the left-most entry is whatever the client sent. So `X-Forwarded-For: 8.8.8.8` made
+   the request 8.8.8.8 (since the embedded HTTP server, 2020; Confluence's 2026-09-23 "only from a loopback peer" fix
+   and upstream's 3e74fda8d7 "only from XFFTrustedProxies", merged 2026-10-16, both kept it).
+2. Control-plane trust (`ControlPlaneAccess`) covers loopback and this machine's own interfaces and gateways, so a
+   forged gateway address (the scan tried 192.168.1.1) could pass the profile JSON-RPC control-plane methods, the
+   privileged IM dialogs (god teleports) and the user agent's login-server-only calls on the public port.
+3. The `Forwarded: for=` header was mapped to X-Forwarded-For - the web server passes it on untouched - with an
+   off-by-one that kept the `=` (the log lines); an unreadable chain left the request at the proxy's own loopback
+   address, which is trusted.
+
+Fixed: the whole chain is kept (several headers are one chain, in order); `NetworkXffUtil.CheckXFF` reads it from the
+right past the trusted proxies, and an unreadable entry makes the client unknown (`IPAddress.None`), never the
+proxy's address; a chain of trusted hops names its left-most; `Forwarded` is not read; entries are parsed as IPv4 /
+IPv6 with optional port or brackets, no DNS (the old code did DNS lookups on client-written names); a bad entry is a
+debug line, not an error per request. `XffSpoofingTests` (16): every forged entry the scan used, followed by the
+proxy's appended address, gives the appended address; two headers are one chain; an unreadable entry is an unknown,
+untrusted client; an untrusted peer cannot forward; real IPv4/IPv6 visitors with ports are seen as themselves; the
+request parser keeps the chain and ignores `Forwarded`. HARDENING.md updated, with the interim web-server mitigation.
+Report upstream (opensim-master's code has faults 1 and 3). The access log has ~8,000 POSTs to `/` through the proxy
+since 2026-07; their replies and Robust's log at those times show no sign of a control-plane call, but accepted calls
+are not logged, so it cannot be ruled out.
+Full Phlox suite 5,900 passed, 2 skipped, 0 failed; Release build 0/0. On the live web server the vhost now unsets the client's X-Forwarded-For and Forwarded before proxying (interim). Not deployed.

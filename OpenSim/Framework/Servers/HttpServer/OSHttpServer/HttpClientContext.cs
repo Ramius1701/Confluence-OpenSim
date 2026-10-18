@@ -484,7 +484,11 @@ namespace OSHttpServer
             {
                 if(NetworkXffUtil.CheckXFF(m_currentRequest.LocalIPEndPoint, xff, out IPEndPoint xffremote, out string header))
                 {
-                    m_currentRequest.Headers["x-forwarded-for"] = header;
+                    // [Confluence] the header now holds only the client address chosen (none when it is unknown)
+                    if (string.IsNullOrEmpty(header))
+                        m_currentRequest.Headers.Remove("x-forwarded-for");
+                    else
+                        m_currentRequest.Headers["x-forwarded-for"] = header;
                     m_currentRequest.RemoteIPEndPoint = xffremote;
                 }
                 else

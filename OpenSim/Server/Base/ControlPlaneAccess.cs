@@ -55,9 +55,13 @@ namespace OpenSim.Server.Base
     // refuse any caller that isn't one of this grid's own configured
     // server addresses (plus loopback), fail closed.
     //
-    // Depends on HttpRequest.RemoteIPEndPoint actually reflecting the real
-    // TCP peer rather than an unverified X-Forwarded-For claim - see that
-    // property's own fix, applied first for exactly this reason.
+    // Depends on HttpRequest.RemoteIPEndPoint never being an address the
+    // caller chose. Behind a trusted reverse proxy it is the address the proxy
+    // appended to X-Forwarded-For (NetworkXffUtil.CheckXFF reads the chain from
+    // the right, and an unreadable chain is an unknown, untrusted client - never
+    // the proxy's own loopback address); from anywhere else it is the TCP peer.
+    // [Confluence] 2026-10-19: before, the left-most (client-written) entry was
+    // believed from the proxy, so a forged header could claim a trusted address.
     //
     // Configure via:
     //   [Network]

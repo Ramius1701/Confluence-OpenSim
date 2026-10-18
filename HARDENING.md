@@ -90,6 +90,17 @@ working; `none` trusts no proxy. From any other peer the header is removed and t
 socket address is used, so a forged header cannot fake a trusted or unblocked source.
 A proxy on another machine must be listed there, or it is seen as the proxy's address.
 
+From a trusted proxy the chain is read from the right: the proxy appends the address it saw, and the first
+address that is not itself a trusted proxy is the client, so nothing the client wrote to the left of it counts.
+An entry there that is not an address makes the client unknown (an address no check trusts), never the proxy's own
+address. Several `X-Forwarded-For` headers are one chain, in order. The RFC 7239 `Forwarded` header is not read:
+proxies such as Apache pass it on as the client sent it. Header entries are parsed as addresses only (no DNS).
+(2026-10-19: before this the left-most, client-written entry was believed from a loopback proxy, so a forged
+`X-Forwarded-For: 192.168.1.1` or `Forwarded: for=...` sent to a site fronted by a proxy on the same machine could
+claim this machine's or its gateway's address and pass the control-plane checks. Update; and on Apache, until then,
+`RequestHeader unset X-Forwarded-For early` and `RequestHeader unset Forwarded early` in the virtual host strip the
+client's own copies before the proxy adds its own.)
+
 ## Hypergrid behavior
 
 - **Returning home** to this grid over Hypergrid (not a fresh login) is allowed only

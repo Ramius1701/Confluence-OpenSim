@@ -351,39 +351,17 @@ namespace OSHttpServer
                         m_headers.Add(name, value);
                     break;
 
+                // [Confluence] 2026-10-19: the RFC 7239 "Forwarded" header is not used. A reverse proxy such as Apache
+                // appends the client's address to X-Forwarded-For but passes "Forwarded" on as the client sent it, so
+                // reading it let any client choose the address it was seen from (and a parse that kept the "=" made
+                // it unreadable, which fell back to the proxy's own, trusted, loopback address).
                 case "forwarded":
-                    string[] parts = value.Split(Util.SplitSemicolonArray);
-                    string addr = string.Empty;
-                    for(int i = 0; i < parts.Length; ++i)
-                    {
-                        string s = parts[i].TrimStart();
-                        if(s.Length < 10)
-                            continue;
-                        if(s.StartsWith("for", StringComparison.InvariantCultureIgnoreCase))
-                        {
-                            int indx = s.IndexOf("=", 3);
-                            if(indx < 0 || indx >= s.Length - 1)
-                                continue;
-                            s = s[indx..];
-                            addr = s.Trim();
-                        }
-                    }
-                    if(addr.Length >= 7)
-                    {
-                        m_headers.Add("x-forwarded-for", addr);
-                    }
                     break;
                 case "x-forwarded-for":
-                    if (value.Length >= 7)
-                    {
-                        string[] xparts = value.Split(Util.SplitCommaArray);
-                        if(xparts.Length > 0)
-                        {
-                            string xs = xparts[0].Trim();
-                            if(xs.Length >= 7)
-                                m_headers.Add("x-forwarded-for", xs);
-                        }
-                    }
+                    // [Confluence] The whole chain is kept, every header of it in order: the client's own entries come
+                    // first and the proxy's appended one last, so keeping only the first entry (as before) believed the
+                    // client. NetworkXffUtil.CheckXFF reads it from the right.
+                    m_headers["x-forwarded-for"] = NetworkXffUtil.AppendChain(m_headers["x-forwarded-for"], value);
                     break;
                 case "connection":
                     if (string.Compare(value, "close", true) == 0)
