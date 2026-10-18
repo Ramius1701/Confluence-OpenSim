@@ -398,6 +398,10 @@ public class WeatherReworkTests
             Assert.True(t <= 30f, $"{weather} lives {t} s, more than a viewer keeps a particle");
 
             Assert.Equal(ps.PartStartColor.A, ps.PartEndColor.A);               // no fading on the way down
+            var flags = (uint)ps.PartDataFlags;
+            Assert.True((flags & 256u) != 0, "not emissive: lit by a dark weather sky the particles turn grey and vanish");
+            Assert.True((flags & 16u) == 0, "follows its source: the particles would move with the emitter");
+            Assert.True(ps.PartStartScaleX >= (fall.StreakLength > 0f ? 0.05f : 0.3f), "too small to see from 20 m");
             Assert.True(ps.PartStartColor.A >= 0.5f);
             Assert.Equal(MathF.PI, ps.OuterAngle, 4);                           // a cone round straight down
             Assert.True(ps.InnerAngle > MathF.PI / 2f);

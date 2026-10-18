@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 - Confluence: snow you can see (2026-10-19)
+
+- Seen in-world on 0.6.0: the flakes were dark grey specks, visible only against the sky, so over buildings, water and
+  the ground they seemed never to come down. They were lit by the scene (the emissive flag of earlier versions had been
+  dropped) and 0.18 m across. They are emissive again and about twice the size (snow 0.35 m, blizzard 0.32 m); rain
+  streaks are wider and longer.
+- Rain streaks follow their velocity (`PSYS_PART_FOLLOW_VELOCITY_MASK`, 32); 0.6.0 set 16, which is follow-source.
+
 ## 0.6.0 - Confluence: rain and snow fall around the avatars and reach the ground (2026-10-19)
 
 - Rain and snow fall from emitters a short drop (`PrecipitationHeightMeters`, 22 m) above each avatar, on a grid of

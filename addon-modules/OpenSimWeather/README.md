@@ -1,4 +1,4 @@
-# OpenSimWeather 0.6.0
+# OpenSimWeather 0.6.1
 
 OpenSimWeather is an experimental but production-conscious OpenSimulator region
 module that provides Clear, Sunny, Rain, Storm, Snow, and Blizzard conditions.

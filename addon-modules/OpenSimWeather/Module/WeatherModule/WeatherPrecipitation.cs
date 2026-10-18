@@ -23,8 +23,10 @@ namespace OpenSim.Region.OptionalModules.World.Weather
     /// </remarks>
     public static class PrecipitationParticles
     {
-        // PSYS_PART_* flags: interpolate colour and scale, follow velocity (rain streaks point along their fall).
-        private const uint InterpColor = 1u, InterpScale = 2u, FollowVelocity = 16u;
+        // PSYS_PART_* flags: interpolate colour and scale, follow velocity (rain streaks point along their fall), and
+        // emissive: lit by the scene, flakes under a dark weather sky turn grey and vanish against buildings, water and
+        // the ground, so they looked as if they never came down (seen in-world 2026-10-19).
+        private const uint InterpColor = 1u, InterpScale = 2u, FollowVelocity = 32u, Emissive = 256u;
         private const byte PatternAngleCone = 8;    // PSYS_SRC_PATTERN_ANGLE_CONE
         private const float MaxLifetime = 30f;      // the most a viewer keeps a particle
 
@@ -47,16 +49,16 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             switch ((weather ?? string.Empty).ToLowerInvariant())
             {
                 case "rain":
-                    return new Fall { Speed = 8.5f, Accel = 1.5f, ConeHalfAngle = 0.3f, StartScale = 0.03f, EndScale = 0.03f,
-                        StreakLength = 0.45f, Color = new Color4(0.72f, 0.75f, 0.8f, 0.55f) };
+                    return new Fall { Speed = 8.5f, Accel = 1.5f, ConeHalfAngle = 0.3f, StartScale = 0.05f, EndScale = 0.05f,
+                        StreakLength = 0.8f, Color = new Color4(0.78f, 0.82f, 0.88f, 0.6f) };
                 case "storm":
-                    return new Fall { Speed = 11f, Accel = 2f, ConeHalfAngle = 0.35f, StartScale = 0.035f, EndScale = 0.035f,
-                        StreakLength = 0.6f, Color = new Color4(0.68f, 0.71f, 0.76f, 0.65f) };
+                    return new Fall { Speed = 11f, Accel = 2f, ConeHalfAngle = 0.35f, StartScale = 0.06f, EndScale = 0.06f,
+                        StreakLength = 1.0f, Color = new Color4(0.74f, 0.78f, 0.84f, 0.65f) };
                 case "snow":
-                    return new Fall { Speed = 1.3f, Accel = 0.04f, ConeHalfAngle = 0.55f, StartScale = 0.18f, EndScale = 0.22f,
+                    return new Fall { Speed = 1.3f, Accel = 0.04f, ConeHalfAngle = 0.55f, StartScale = 0.35f, EndScale = 0.35f,
                         Color = new Color4(1f, 1f, 1f, 0.85f) };
                 case "blizzard":
-                    return new Fall { Speed = 2.6f, Accel = 0.15f, ConeHalfAngle = 0.75f, StartScale = 0.16f, EndScale = 0.2f,
+                    return new Fall { Speed = 2.6f, Accel = 0.15f, ConeHalfAngle = 0.75f, StartScale = 0.32f, EndScale = 0.32f,
                         Color = new Color4(0.97f, 0.98f, 1f, 0.9f) };
                 default:
                     return null;
@@ -104,7 +106,7 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             return new Primitive.ParticleSystem
             {
                 CRC = 1,
-                PartDataFlags = (Primitive.ParticleSystem.ParticleDataFlags)(InterpColor | InterpScale | (streak ? FollowVelocity : 0u)),
+                PartDataFlags = (Primitive.ParticleSystem.ParticleDataFlags)(InterpColor | InterpScale | Emissive | (streak ? FollowVelocity : 0u)),
                 Pattern = (Primitive.ParticleSystem.SourcePattern)PatternAngleCone,
                 Texture = texture,
                 BurstRadius = 0.5f,

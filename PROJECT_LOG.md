@@ -28912,3 +28912,17 @@ are not logged, so it cannot be ruled out.
 Full Phlox suite 5,900 passed, 2 skipped, 0 failed; Release build 0/0. On the live web server the vhost now unsets the client's X-Forwarded-For and Forwarded before proxying (interim). Not deployed.
 
 Also fixed by the same change: a request that starts on the grid host itself and goes through the proxy (X-Forwarded-For of loopback only) made the old CheckXFF index one past the start of its list and throw, so the proxy got no answer (502). Verified after the web server restart: forged X-Forwarded-For / Forwarded from this host no longer reach Robust (no parse failure; the old build's loopback crash instead), outside visitors get 200. XffSpoofingTests 18.
+
+## Weather 0.6.1: snow you can see (2026-10-19)
+
+Deployed 20ef000870 (weather 0.6.0, the forwarding fix) to all region bins, md5-verified; the 7 running regions
+restarted after Robust (DLLs match, errors at the baseline, no exceptions); through the public site a request from
+this machine now gets 200 (was the old build's 502) and forged X-Forwarded-For / Forwarded headers log nothing.
+
+In-world on UFPGC the snow still "did not reach the ground". A screenshot showed why: the flakes were there but dark
+grey specks, visible only against the sky - over buildings, water and terrain they vanished, so the lowest ones seen
+were at the horizon. The particles' wire form was checked (lifetime, cone angles, speed and acceleration arrive as
+sent through libomv's packing). 0.6.0 had dropped the emissive flag (lit by the darkened weather sky they turn grey)
+and made flakes 0.18 m (below a pixel from 20-30 m). Now emissive, snow 0.35 m, blizzard 0.32 m, rain streaks
+0.05 x 0.8 m (storm 0.06 x 1.0); and rain's follow-velocity flag is 32 (0.6.0 set 16, follow-source). Tests assert
+emissive, not follow-source, and a visible size. Weather tests 21 pass.
