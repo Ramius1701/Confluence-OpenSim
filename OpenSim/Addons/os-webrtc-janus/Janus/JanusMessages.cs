@@ -142,6 +142,11 @@ namespace osWebRtcVoice
                 case OSDType.Integer:
                     ret = (long)(pIn as OSDInteger).AsInteger();
                     break;
+                case OSDType.Long:
+                    // [Confluence] Tranquillity #345: the JSON parser returns OSDType.Long for any number that does
+                    // not fit in an int32, which includes every Janus session and handle id (they read as 0).
+                    ret = pIn.AsLong();
+                    break;
                 case OSDType.Binary:
                     byte[] value = (pIn as OSDBinary).value;
                     if (value.Length == 4)

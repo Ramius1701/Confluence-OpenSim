@@ -123,6 +123,12 @@ namespace osWebRtcVoice
                             m_Enabled = false;
                         }
                     }
+                    else
+                    {
+                        // [Confluence] Tranquillity #345: the same DLL names both roles, so one service serves both.
+                        // Share the instance; otherwise the first non-local provision dereferences a null service.
+                        m_nonSpatialVoiceService = m_spatialVoiceService;
+                    }
 
                     if (m_Enabled)
                     {

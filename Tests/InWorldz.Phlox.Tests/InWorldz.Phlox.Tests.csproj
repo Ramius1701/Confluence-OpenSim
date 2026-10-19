@@ -62,6 +62,10 @@
   <ItemGroup>
     <!-- The scene tests reach CoreModules, OptionalModules and the rest of Confluence. -->
     <Reference Include="..\..\bin\OpenSim*.dll" Exclude="..\..\bin\OpenSim.Tests*.dll;..\..\bin\OpenSim.Region.ScriptEngine.YEngine.dll" />
+    <!-- [Confluence] Tranquillity #345 tests: the Janus voice service and the module that loads it. -->
+    <Reference Include="WebRtcJanusService"><HintPath>..\..\bin\WebRtcJanusService.dll</HintPath></Reference>
+    <Reference Include="WebRtcVoice"><HintPath>..\..\bin\WebRtcVoice.dll</HintPath></Reference>
+    <Reference Include="WebRtcVoiceServiceModule"><HintPath>..\..\bin\WebRtcVoiceServiceModule.dll</HintPath></Reference>
     <Reference Include="C5"><HintPath>..\..\bin\C5.dll</HintPath></Reference>
     <Reference Include="XMLRPC"><HintPath>..\..\bin\XMLRPC.dll</HintPath></Reference>
     <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>

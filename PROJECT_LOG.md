@@ -28999,3 +28999,23 @@ Not taken this round: Tranquillity #324 (their own log formatter), #335 (test-on
 (an unmerged BulletSim delete that is not safe as written), #65/#67, #58 (already done in our own form), #61
 (standalone only). Held for the user: Tranquillity #302 (viewer addresses; a regions-table migration), #337
 (standing riders crossing borders; open PR) and the Jolt upstreaming series #325-#344. Not deployed.
+
+## Tranquillity PRs #346 and #345 (open upstream), 2026-10-20
+
+Taken from the open PRs while the grid was down; both are small and fix bugs present here.
+
+- **#346, group chat:** `GroupsMessagingModule` treated every SessionSend as a group's. A line in an ad-hoc
+  (multi-person) chat came back to its sender as an echo, and a chat session was registered for an id that is no
+  group. It now returns early unless the session id has a group record, as SessionGroupStart already did.
+- **#346, NPCs:** `NPCModule.CreateNPC` refuses a caller-chosen agent id that a presence in the scene already holds,
+  instead of registering a second circuit for it. The random-id paths are unchanged.
+- **#345, Janus voice add-on:** `JanusMessage.OSDToLong` had no case for `OSDType.Long`, so every Janus session and
+  handle id (64-bit) read as 0 and the service disabled itself on its first request. When `SpatialVoiceService` and
+  `NonSpatialVoiceService` name the same DLL, the one service now serves both (the non-spatial one was left null).
+  Casperia uses ConfluenceVoice, not Janus, so this only matters to grids on Janus. Their opt-in test against a real
+  gateway is not taken.
+
+Tests in the Phlox suite: GroupsMessagingSessionSendTests and NPCCreateAgentIdTests (from the PR) and
+JanusSessionIdAndSharedServiceTests (written for xunit from the PR's two NUnit files; the test project now references
+the three Janus DLLs). Checked against the unfixed code: the conference-echo test and 7 of the 11 Janus tests fail
+there. Still open upstream and not taken: #347-#350 (Janus settings, hardening, secrets, parcel voice checks).
