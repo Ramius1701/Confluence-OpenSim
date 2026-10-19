@@ -29,6 +29,7 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private const uint InterpColor = 1u, InterpScale = 2u, FollowVelocity = 32u, Emissive = 256u;
         private const byte PatternAngleCone = 8;    // PSYS_SRC_PATTERN_ANGLE_CONE
         private const float MaxLifetime = 30f;      // the most a viewer keeps a particle
+        private const float LifetimeDropFactor = 1.5f;
 
         /// <summary>The emitter prim's rotation: upside down, so its +Z, the cone's axis, points at the ground.</summary>
         public static readonly Quaternion EmitterRotation = new Quaternion(1f, 0f, 0f, 0f);
@@ -75,14 +76,16 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         public static float Spread(Fall fall, float drop) => Math.Max(0.5f, drop) * MathF.Tan(fall.ConeHalfAngle);
 
         /// <summary>
-        /// The time a particle takes to fall <paramref name="drop"/> metres: the slowest one, leaving at the edge of the
-        /// cone, plus a little so it ends just below the ground rather than above it.
+        /// The time a particle lives: long enough for the slowest one, leaving at the edge of the cone, to fall one and a
+        /// half times <paramref name="drop"/> plus 2 m. A particle that lives on below the ground is not seen; one that
+        /// dies above it is, and in-world the snow's fall came out a little shorter than worked out (2026-10-19), so the
+        /// margin is wide.
         /// </summary>
         public static float Lifetime(Fall fall, float drop)
         {
             float v = fall.Speed * MathF.Cos(fall.ConeHalfAngle);
             float a = fall.Accel;
-            float d = Math.Max(0.5f, drop) * 1.08f + 0.5f;
+            float d = Math.Max(0.5f, drop) * LifetimeDropFactor + 2f;
             float t = a > 1e-4f ? (-v + MathF.Sqrt(v * v + 2f * a * d)) / a : d / Math.Max(0.05f, v);
             return Math.Clamp(t, 0.5f, MaxLifetime);
         }
@@ -98,7 +101,7 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             // A drop longer than a particle can live (a very slow fall from very high) is sped up to fit.
             float speed = fall.Speed;
             if (lifetime >= MaxLifetime)
-                speed = Math.Max(speed, (Math.Max(0.5f, drop) * 1.08f) / (MaxLifetime * MathF.Cos(fall.ConeHalfAngle)) - 0.5f * fall.Accel * MaxLifetime);
+                speed = Math.Max(speed, (Math.Max(0.5f, drop) * LifetimeDropFactor + 2f) / (MaxLifetime * MathF.Cos(fall.ConeHalfAngle)) - 0.5f * fall.Accel * MaxLifetime);
 
             // particles alive = count per burst * lifetime / burst interval
             float perSecond = Math.Max(1f, particlesAlive) / lifetime;

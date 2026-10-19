@@ -28939,3 +28939,5 @@ this time it was checked in-world with a scripted copy of one rain emitter (same
 acceleration and an upside-down prim): it falls, and reaches the ground from up to ~24 m above it and not from ~29 m,
 which matches the lifetime worked out for the module's 22 m drop (+8%). Tests: the cone is 0..half-angle and a
 placed emitter's +Z points at the ground. Weather tests 21 pass.
+
+Then the snow's scripted copy reached the ground from 25 m and not from 30 m above it (slowest flakes ~22 m over 16.8 s): the lifetime now covers 1.5 x the drop + 2 m for the slowest particle (snow ~22.5 s, rain ~3.3 s at 22 m); tests require 1.4 x the drop.

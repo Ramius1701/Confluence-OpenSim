@@ -394,7 +394,8 @@ public class WeatherReworkTests
             float v = ps.BurstSpeedMin * MathF.Cos(ps.OuterAngle);              // the edge of the cone
             float a = -ps.PartAcceleration.Z;
             float t = ps.PartMaxAge;
-            Assert.True(v * t + 0.5f * a * t * t >= drop, $"{weather} from {drop} m stops at {v * t + 0.5f * a * t * t:0.0} m");
+            // with a wide margin: in-world the fall came out shorter than worked out, and below the ground is unseen
+            Assert.True(v * t + 0.5f * a * t * t >= drop * 1.4f, $"{weather} from {drop} m stops at {v * t + 0.5f * a * t * t:0.0} m");
             Assert.True(t <= 30f, $"{weather} lives {t} s, more than a viewer keeps a particle");
 
             Assert.Equal(ps.PartStartColor.A, ps.PartEndColor.A);               // no fading on the way down

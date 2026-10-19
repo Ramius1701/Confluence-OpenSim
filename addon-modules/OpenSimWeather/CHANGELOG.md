@@ -7,6 +7,9 @@
   and died in the air. The emitter prim is now upside down and the cone is 0 to its half-angle round the prim's +Z,
   which points at the ground. Checked in-world with a scripted copy of one rain emitter: it falls, and reaches the
   ground from a drop of up to ~24 m (the emitters sit 22 m above their avatar's floor) and not from 29 m.
+- The snow's copy reached the ground from 25 m and not from 30 m - the slowest flakes had almost no margin over the
+  22 m drop. Every particle now lives long enough for the slowest to fall 1.5 times the drop plus 2 m (snow ~22.5 s,
+  rain ~3.3 s for 22 m); below the ground they are not seen.
 
 ## 0.6.1 - Confluence: snow you can see (2026-10-19)
 
