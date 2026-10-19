@@ -72,7 +72,11 @@ namespace OpenSim.Services.HypergridService
 
         protected static string m_GridName;
         protected static string m_HomeURI;
-        protected static string m_MyExternalIP = "";
+        // [Confluence] Tranquillity #301/#319: the grid's public address for the NAT fallback in VerifyClient, looked
+        // up again every [UserAgentService] ExternalIPRefreshMinutes (dynamic DNS heals without a restart);
+        // [UserAgentService] PublicAddress can name it when this machine resolves its own gatekeeper name privately.
+        protected static ExternalIPResolver m_ExternalIPResolver;
+        protected static string m_MyExternalIP => m_ExternalIPResolver?.CurrentIP ?? string.Empty;
 
         protected static int m_LevelOutsideContacts;
         protected static bool m_ShowDetails;
@@ -155,10 +159,13 @@ namespace OpenSim.Services.HypergridService
                     if (!Uri.TryCreate(m_GridName, UriKind.Absolute, out Uri gateURI))
                         throw new Exception("[UserAgentService] could not parse gatekeeper uri");
                     string host = gateURI.DnsSafeHost;
-                    IPAddress ip = Util.GetHostFromDNS(host);
-                    if(ip is null)
-                        throw new Exception("[UserAgentService] failed to resolve gatekeeper host");
-                    m_MyExternalIP = ip.ToString();
+
+                    // A failed lookup logs a warning and never throws here (it used to stop the service starting).
+                    m_ExternalIPResolver?.Dispose();
+                    m_ExternalIPResolver = ExternalIPResolver.FromConfig(config, host, m_log);
+                    if (string.IsNullOrEmpty(m_ExternalIPResolver.CurrentIP))
+                        m_log.WarnFormat("[USER AGENT SERVICE]: could not resolve {0}; the NAT fallback in client verification is unavailable until a refresh succeeds",
+                            m_ExternalIPResolver.Host);
                 }
 
                 m_HomeURI = Util.GetConfigVarFromSections<string>(config, "HomeURI",

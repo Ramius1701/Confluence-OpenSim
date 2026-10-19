@@ -28972,3 +28972,30 @@ test host); a region server is unchanged. Tests run in the Phlox suite: ZephyrWi
 OSSL_ApiWindVolumeTests, WindVolumeFunctionTests, and a config test for the non-finite `[Wind]` values in all three
 plugins (Tranquillity's WindParamValueTests captured Microsoft.Extensions.Logging lines; not taken). Wind and dispatch
 tests 129 pass. Documented in OpenSimDefaults.ini `[Wind]` and `[WindVolumes]`. Not deployed.
+
+## Donor batch: opensim #68 and #63, Tranquillity #336 and #301/#319 (2026-10-19)
+
+- **opensim #68** (DynamicTextureModule): a failed image URL whose prim has gone no longer throws a null reference
+  when it tries to say the error from the prim; it logs a warning instead. The PR's other change (LoadImageURL
+  tidying) is not taken: that part of our module has diverged.
+- **opensim #63** (EntityTransferModule, ScenePresence): a teleport to a hypergrid region is no longer marked as
+  local transit, so the child agents near the old region are closed as they should be after a hypergrid jump.
+  `IsHypergridRegion` checks the region's Hyperlink flag, then the grid service's flags, then the hyperlink
+  placeholder row (y = 0); `GetChildAgentsToClose` closes them when the transit is not local or the new region's
+  y is 0. Tests: HypergridChildAgentCloseTests.
+- **Tranquillity #336** (OutboundUrlFilter): host names in `OutboundDisallowForUserScriptsExcept` are kept as names
+  and looked up again every `OutboundDisallowForUserScriptsExceptRefreshMinutes` (default 30; 0 = only at start), so
+  an excepted host on dynamic DNS is not refused after its address changes. A failed lookup keeps the last good
+  addresses; a refresh in progress does not hold up other requests. Address and network entries are unchanged.
+  Documented in OpenSim.ini.example. Tests: Tranquillity's OutboundExceptionRefreshTests.
+- **Tranquillity #301/#319** (UserAgentService): the grid's public address for the NAT fallback in hypergrid client
+  verification comes from the new `ExternalIPResolver`: `[UserAgentService] PublicAddress` (for a host that resolves
+  its own gatekeeper name to a LAN address, which made every hypergrid arrival elsewhere fail), else the gatekeeper's
+  host, looked up again every `ExternalIPRefreshMinutes` (default 30). A failed first lookup warns instead of stopping
+  Robust. Taken as their merged result, adapted to log4net; documented in Robust.HG.ini.example. Tests: own
+  ExternalIPResolverTests (theirs capture Microsoft.Extensions.Logging lines).
+
+Not taken this round: Tranquillity #324 (their own log formatter), #335 (test-only, for a library bump); opensim #66
+(an unmerged BulletSim delete that is not safe as written), #65/#67, #58 (already done in our own form), #61
+(standalone only). Held for the user: Tranquillity #302 (viewer addresses; a regions-table migration), #337
+(standing riders crossing borders; open PR) and the Jolt upstreaming series #325-#344. Not deployed.

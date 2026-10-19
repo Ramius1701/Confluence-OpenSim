@@ -950,6 +950,11 @@
     ;
     ; OutboundDisallowForUserScriptsExcept = 192.168.1.2/32
     ;
+    ; Host names in OutboundDisallowForUserScriptsExcept are looked up again every
+    ; OutboundDisallowForUserScriptsExceptRefreshMinutes minutes, so a host on dynamic DNS keeps working; the
+    ; default is 30 and 0 looks them up only at start.
+    ; OutboundDisallowForUserScriptsExceptRefreshMinutes = 30
+    ;
     ; See http://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing#CIDR_notation for more information on CIDR notation
 
     ;# {HttpBodyMaxLenMAX} {} {Maximum bytes allowed for HTTP_BODY_MAXLENGTH} {} 16384
