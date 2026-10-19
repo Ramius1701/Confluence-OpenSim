@@ -7164,6 +7164,29 @@ namespace InWorldz.Phlox.Types
                 ParamNames = new string[] { "avatar", "disabled" },
                 TableIndex = 1008
             }},
+            // [Confluence] Tranquillity #320, wind volumes: a rule list in, a handle or a negative error out; see
+            // WindVolumeRules. Slots 1009-1011 here (969-971 in Tranquillity, where Confluence's own functions are).
+            {"iwWindVolumeCreate", new FunctionSig {
+                FunctionName = "iwWindVolumeCreate",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.List },
+                ParamNames = new string[] { "rules" },
+                TableIndex = 1009
+            }},
+            {"iwWindVolumeRemove", new FunctionSig {
+                FunctionName = "iwWindVolumeRemove",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Integer },
+                ParamNames = new string[] { "handle" },
+                TableIndex = 1010
+            }},
+            {"iwWindVolumes", new FunctionSig {
+                FunctionName = "iwWindVolumes",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] { },
+                ParamNames = new string[] { },
+                TableIndex = 1011
+            }},
          };
 
         /// <summary>

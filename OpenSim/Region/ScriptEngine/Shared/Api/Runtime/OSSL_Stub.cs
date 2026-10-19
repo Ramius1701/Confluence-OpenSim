@@ -125,6 +125,24 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public LSL_Integer osWindVolumeCreate(LSL_List rules)
+        {
+            return m_OSSL_Functions.osWindVolumeCreate(rules);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public LSL_Integer osWindVolumeRemove(LSL_Integer handle)
+        {
+            return m_OSSL_Functions.osWindVolumeRemove(handle);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public LSL_List osWindVolumes()
+        {
+            return m_OSSL_Functions.osWindVolumes();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public LSL_Integer osGetParcelDwell(vector pos)
         {
             return m_OSSL_Functions.osGetParcelDwell(pos);

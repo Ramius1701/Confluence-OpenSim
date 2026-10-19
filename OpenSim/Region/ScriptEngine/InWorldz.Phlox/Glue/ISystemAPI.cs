@@ -792,6 +792,13 @@ namespace InWorldz.Phlox.Glue
         string llList2Json(string type, LSLList values);
         LSLList llJson2List(string src);
         void iwSetWind(int type, Vector3 offset, Vector3 speed);
+        // [Confluence] Tranquillity #320 (slots 1009-1011 here; Tranquillity has them at 969-971, where Confluence's own are)
+        /// <summary>Creates a wind volume from a rule list; its handle (1 or more) or a negative WindVolumeError. Estate owner, estate manager or god only.</summary>
+        int iwWindVolumeCreate(LSLList rules);
+        /// <summary>Removes a volume this object made; 0 or a negative WindVolumeError.</summary>
+        int iwWindVolumeRemove(int handle);
+        /// <summary>The handles of the volumes this object made, as integers.</summary>
+        LSLList iwWindVolumes();
         Vector3 iwWind(Vector3 offset);
         int iwHasParcelPowers(int groupPower);
         Vector3 iwGroundSurfaceNormal(Vector3 offset);

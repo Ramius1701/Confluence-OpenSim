@@ -304,5 +304,26 @@ namespace InWorldz.Phlox.Glue
             string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
             self._systemAPI.osSetAvatarWalkDisabled(p0, p1);
         }
+
+        // [Confluence] Tranquillity #320: the wind volumes (slots 1009-1011)
+        static private void Shim_iwWindVolumeCreate(SyscallShim self)
+        {
+            LSLList p0 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            int ret = self._systemAPI.iwWindVolumeCreate(p0);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_iwWindVolumeRemove(SyscallShim self)
+        {
+            int p0 = ConvToInt(self._interpreter.ScriptState.Operands.Pop());
+            int ret = self._systemAPI.iwWindVolumeRemove(p0);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_iwWindVolumes(SyscallShim self)
+        {
+            LSLList ret = self._systemAPI.iwWindVolumes();
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
     }
 }

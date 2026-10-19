@@ -619,6 +619,11 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
   types, parameters and wind efficiency vectors (Tranquillity #295/#314;
   in-world check TESTING 2.7). The record can also carry the motors'
   running state across a border for an engine that supplies it.
+- Wind: the ZephyrWind plugin (Tranquillity #315/#321/#322, from Halcyon) -
+  terrain-shaped surface wind, wind aloft and underwater currents on 16 m
+  cells, `[Wind] wind_plugin = ZephyrWind`; Phlox `iwSetWind`; `llWind` reads
+  the wind at the object's height; non-finite wind values refused. Script wind
+  volumes (#320, `[WindVolumes]`, off by default) are stored but not yet used.
 - Physical objects drag and turn as on Second Life (Tranquillity #283,
   #288, #297): a mouse drag steers the object with its move-to-target, so
   it can be lifted and stops at the cursor, and a Ctrl-Shift turn steers it

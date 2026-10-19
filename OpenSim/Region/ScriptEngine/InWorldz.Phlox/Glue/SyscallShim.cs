@@ -1100,6 +1100,9 @@ private static string ConvToString(object o)
 								Shim_osSetAvatarFlyDisabled,          //1006
 								Shim_osSetAvatarForceFly,             //1007
 								Shim_osSetAvatarWalkDisabled,         //1008
+								Shim_iwWindVolumeCreate,              //1009  [Confluence] Tranquillity #320 (969 there)
+								Shim_iwWindVolumeRemove,              //1010
+								Shim_iwWindVolumes,                   //1011
         };
 
         /// <summary>

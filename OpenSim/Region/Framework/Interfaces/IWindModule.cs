@@ -29,6 +29,17 @@ using OpenMetaverse;
 
 namespace OpenSim.Region.Framework.Interfaces
 {
+    /// <summary>
+    /// [Confluence] From OpenSim-Tranquillity #315. How a wind setter treats a cell. The values are those of the LSL
+    /// constants WIND_SPEED_DEFAULT, WIND_SPEED_FIXED and WIND_SPEED_TERRAIN_TURBULENCE.
+    /// </summary>
+    public enum WindConstants : int
+    {
+        WindSpeedDefault = 0,
+        WindSpeedFixed = 1,
+        WindSpeedTurbulence = 2,
+    }
+
     public interface IWindModule : INonSharedRegionModule
     {
 
@@ -43,6 +54,16 @@ namespace OpenSim.Region.Framework.Interfaces
         void WindParamSet(string plugin, string param, float value);
 
         /// <summary>
+        /// [Confluence] Tranquillity #315. Sets (or unsets) the wind at the given region coordinates, for the wind
+        /// plugins that support it. The plugin treats the setting as in-memory state: it is not kept across a region
+        /// restart.
+        /// </summary>
+        /// <param name="type">A <see cref="WindConstants"/> value</param>
+        /// <param name="loc">Region coordinates; the cell containing them is changed</param>
+        /// <param name="speed">The wind to hold in the cell when the type is fixed</param>
+        void WindSet(int type, Vector3 loc, Vector3 speed);
+
+        /// <summary>
         /// Get Wind Plugin Parameter
         /// </summary>
         float WindParamGet(string plugin, string param);
@@ -51,5 +72,12 @@ namespace OpenSim.Region.Framework.Interfaces
         /// Current active wind model plugin or String.Empty
         /// </summary>
         string WindActiveModelPluginName { get; }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #320. The region's wind volumes (the [WindVolumes] section), or null for a module
+        /// that has none. When <see cref="IWindVolumeStore.Enabled"/> is false the store accepts no volumes and nothing
+        /// about the wind changes.
+        /// </summary>
+        IWindVolumeStore WindVolumes => null;
     }
 }

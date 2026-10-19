@@ -72,6 +72,9 @@ that has `on_damage`, `final_damage` and `on_death` handlers.
       with the speed it had instead of stopping dead.
 - [ ] 2.12 `llGetMass` on an avatar just after standing up from a seat or a teleport inside the region returns the
       avatar's mass, not 0; rubber prims bounce as on Second Life (restitution 0.9).
+- [ ] 2.13 ZephyrWind (`[Wind] wind_plugin = ZephyrWind` on a test region): the wind (viewer's wind display, a
+      sailboat or a flag script using `llWind`) is stronger aloft than at the ground, follows the terrain, and changes
+      through the region's day; a Phlox `iwSetWind` by an estate manager holds a cell's wind until reset.
 
 ## 3. Returning objects
 

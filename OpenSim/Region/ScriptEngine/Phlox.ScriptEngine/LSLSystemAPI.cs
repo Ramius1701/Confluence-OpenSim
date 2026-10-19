@@ -10082,16 +10082,67 @@ public void llRezObject(string inventory, Vector3 pos, Vector3 vel, Quaternion r
             return (float)(World?.RegionInfo?.RegionSettings?.WaterHeight ?? 20.0);
         }
         /// <summary>
-        /// Not implemented: core's IWindModule has no way to set the wind at a point (Halcyon's WindSet). Halcyon let
-        /// estate managers and gods call it (:1459-1472) and ignored everyone else, so those callers are told on
-        /// DEBUG_CHANNEL; anyone else still gets nothing.
+        /// [Confluence] Tranquillity #315. Sets the wind in the 16 m cell at the object's position plus offset, as
+        /// Halcyon's iwSetWind does (LSLSystemAPI.cs:1459-1472): only when the object's owner may issue estate commands
+        /// or is a god; anyone else is ignored. The type is WIND_SPEED_DEFAULT (back to the wind model's own wind, with
+        /// terrain turbulence), WIND_SPEED_FIXED (hold the given speed) or WIND_SPEED_TERRAIN_TURBULENCE (add the
+        /// terrain's influence). A wind model without wind setters, such as the default one, ignores the call. The
+        /// setting is in memory only and is gone after a region restart.
         /// </summary>
         public void iwSetWind(int type, Vector3 offset, Vector3 speed)
         {
             if (m_host == null || World == null) return;
-            if (World.Permissions.CanIssueEstateCommand(m_host.OwnerID, false) || World.Permissions.IsGod(m_host.OwnerID))
-                NotImplemented("iwSetWind");
+            if (!World.Permissions.CanIssueEstateCommand(m_host.OwnerID, false) && !World.Permissions.IsGod(m_host.OwnerID))
+                return;
+            IWindModule module = World.RequestModuleInterface<IWindModule>();
+            if (module == null) return;
+            module.WindSet(type, m_host.GetWorldPosition() + offset, speed);
         }
+        /// <summary>
+        /// [Confluence] Tranquillity #320. Creates a wind volume, a place where wind is added to the base field. The
+        /// rules are pairs of a WV_ number and a value (WindVolumeRules). Returns the handle (1 or more), or a negative
+        /// WindVolumeError: WV_ERR_DISABLED when [WindVolumes] is not enabled, WV_ERR_NOT_ALLOWED unless the object's
+        /// owner may issue estate commands or is a god (the iwSetWind rule), and the store's errors for bad or over-cap
+        /// values.
+        /// </summary>
+        public int iwWindVolumeCreate(LSLList rules)
+        {
+            IWindVolumeStore store = WindVolumesFor(out int error);
+            if (store == null) return error;
+            if (!WindVolumeAccess.MayChangeWind(World, m_host.OwnerID)) return WindVolumeError.NotAllowed;
+            int bad = WindVolumeRules.TryParse(rules?.Data, out WindVolumeSpec spec);
+            if (bad != WindVolumeError.Ok) return bad;
+            return store.Create(m_host.ParentGroup.UUID, m_host.OwnerID, spec);
+        }
+
+        /// <summary>Removes a volume this object made: 0, or a negative WindVolumeError (not allowed, or no such volume).</summary>
+        public int iwWindVolumeRemove(int handle)
+        {
+            IWindVolumeStore store = WindVolumesFor(out int error);
+            if (store == null) return error;
+            if (!WindVolumeAccess.MayChangeWind(World, m_host.OwnerID)) return WindVolumeError.NotAllowed;
+            return store.Remove(handle, m_host.ParentGroup.UUID);
+        }
+
+        /// <summary>The handles of the volumes this object made, oldest first. Empty when volumes are off or the owner may not use them.</summary>
+        public LSLList iwWindVolumes()
+        {
+            var handles = new List<object>();
+            IWindVolumeStore store = WindVolumesFor(out _);
+            if (store != null && WindVolumeAccess.MayChangeWind(World, m_host.OwnerID))
+                foreach (WindVolume v in store.List(m_host.ParentGroup.UUID))
+                    handles.Add(v.Id);
+            return new LSLList(handles);
+        }
+
+        // The region's store when wind volumes are switched on; otherwise null and the error to return.
+        private IWindVolumeStore WindVolumesFor(out int error)
+        {
+            IWindVolumeStore store = m_host == null || World == null ? null : World.RequestModuleInterface<IWindModule>()?.WindVolumes;
+            error = store != null && store.Enabled ? WindVolumeError.Ok : WindVolumeError.Disabled;
+            return error == WindVolumeError.Ok ? store : null;
+        }
+
         public Vector3 iwWind(Vector3 offset)
         {
             IWindModule module = World?.RequestModuleInterface<IWindModule>();
@@ -13029,6 +13080,9 @@ public void llRezObject(string inventory, Vector3 pos, Vector3 vel, Quaternion r
             OsslCheck(TlVeryLow, "osSetWindParam");
             IWindModule wind = World?.RequestModuleInterface<IWindModule>();
             if (wind == null) return;
+            // [Confluence] Tranquillity #320: with [WindVolumes] enabled, only an estate owner, estate manager or god
+            // may change the region's wind from a script
+            if (wind.WindVolumes?.Enabled == true && !WindVolumeAccess.MayChangeWind(World, m_host.OwnerID)) return;
             try { wind.WindParamSet(plugin, param, value); } catch (Exception) { }
         }
 

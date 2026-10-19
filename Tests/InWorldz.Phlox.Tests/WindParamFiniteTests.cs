@@ -1,4 +1,6 @@
 using System.Reflection;
+using Nini.Config;
+using OpenSim.Region.CoreModules.World.Wind.Plugins;
 using OpenSim.Region.CoreModules;
 using OpenSim.Region.Framework.Interfaces;
 using Xunit;
@@ -40,5 +42,36 @@ public class WindParamFiniteTests
 
         module.WindParamSet("recording", "strength", 3.5f);
         Assert.Equal(new[] { ("strength", 3.5f) }, sets);
+    }
+
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-Infinity")]
+    [InlineData("1e40")]
+    public void ANonFiniteWindSettingFallsBackToItsDefaultInEveryPlugin(string bad)
+    {
+        // [Confluence] Tranquillity #321's config half: [Wind] values that are not finite numbers give the default
+        var config = new IniConfigSource();
+        IConfig wind = config.AddConfig("Wind");
+        foreach (string key in new[] { "strength", "avg_strength", "avg_direction", "var_strength", "var_direction",
+                                       "rate_change", "rate_change_aloft", "rate_change_flutter" })
+            wind.Set(key, bad);
+
+        var simple = (IWindModelPlugin)Activator.CreateInstance(typeof(ZephyrWind).Assembly
+            .GetType("OpenSim.Region.CoreModules.World.Wind.Plugins.SimpleRandomWind", true), true)!;
+        simple.WindConfig(new OpenSim.Tests.Common.SceneHelpers().SetupScene(), wind);
+        Assert.Equal(1f, simple.WindParamGet("strength"));
+
+        var configurable = (IWindModelPlugin)Activator.CreateInstance(typeof(ZephyrWind).Assembly
+            .GetType("OpenSim.Region.CoreModules.World.Wind.Plugins.ConfigurableWind", true), true)!;
+        configurable.WindConfig(new OpenSim.Tests.Common.SceneHelpers().SetupScene(), wind);
+        Assert.Equal(5f, configurable.WindParamGet("avgStrength"));
+        Assert.Equal(30f, configurable.WindParamGet("varDirection"));
+
+        var zephyr = new ZephyrWind();
+        zephyr.WindConfig(new OpenSim.Tests.Common.SceneHelpers().SetupScene(), wind);
+        foreach (string param in zephyr.WindParams().Keys)
+            Assert.True(float.IsFinite(zephyr.WindParamGet(param)), "ZephyrWind " + param + " is " + zephyr.WindParamGet(param));
     }
 }

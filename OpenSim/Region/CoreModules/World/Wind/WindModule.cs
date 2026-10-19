@@ -59,6 +59,10 @@ namespace OpenSim.Region.CoreModules
         private string m_dWindPluginName = "SimpleRandomWind";
         private Dictionary<string, IWindModelPlugin> m_availableWindPlugins = new Dictionary<string, IWindModelPlugin>();
 
+        // [Confluence] Tranquillity #320: script-made wind volumes, from the [WindVolumes] section. Off unless
+        // [WindVolumes] enabled = true.
+        private IWindVolumeStore m_windVolumes = new WindVolumeStore(false);
+
         // Simplified windSpeeds based on the fact that the client protocal tracks at a resolution of 16m
         private Vector2[] windSpeeds = new Vector2[16 * 16];
 
@@ -67,6 +71,7 @@ namespace OpenSim.Region.CoreModules
         public void Initialise(IConfigSource config)
         {
             m_windConfig = config.Configs["Wind"];
+            m_windVolumes = CreateWindVolumes(config.Configs["WindVolumes"]);
 //            string desiredWindPlugin = m_dWindPluginName;
 
             if (m_windConfig != null)
@@ -98,7 +103,7 @@ namespace OpenSim.Region.CoreModules
             m_scene = scene;
             m_frame = 0;
             // Register all the Wind Model Plug-ins
-            foreach (IWindModelPlugin windPlugin in AddinManager.GetExtensionObjects("/OpenSim/WindModule", false))
+            foreach (IWindModelPlugin windPlugin in FindWindPlugins())
             {
                 m_log.InfoFormat("[WIND] Found Plugin: {0}", windPlugin.Name);
                 m_availableWindPlugins.Add(windPlugin.Name, windPlugin);
@@ -367,6 +372,65 @@ namespace OpenSim.Region.CoreModules
             }
         }
 
+        /// <summary>
+        /// [Confluence] Tranquillity #320. Reads the [WindVolumes] section. Every key falls back to its default when
+        /// absent or out of range; the section absent, or enabled left false, gives a store that accepts nothing.
+        /// </summary>
+        public static IWindVolumeStore CreateWindVolumes(IConfig section, Func<long> clockMs = null)
+        {
+            if (section == null) return new WindVolumeStore(false, null, clockMs);
+
+            var defaults = new WindVolumeLimits();
+            var limits = new WindVolumeLimits
+            {
+                MaxVolumesRegion = Math.Max(0, section.GetInt("max_volumes_region", defaults.MaxVolumesRegion)),
+                MaxVolumesObject = Math.Max(0, section.GetInt("max_volumes_object", defaults.MaxVolumesObject)),
+                MaxRadius = Math.Max(0f, section.GetFloat("max_radius", defaults.MaxRadius)),
+                MaxHeight = Math.Max(0f, section.GetFloat("max_height", defaults.MaxHeight)),
+                MaxSpeed = Math.Max(0f, section.GetFloat("max_speed", defaults.MaxSpeed)),
+                MaxLifetimeSeconds = Math.Max(0f, section.GetFloat("max_lifetime", defaults.MaxLifetimeSeconds)),
+            };
+            bool enabled = section.GetBoolean("enabled", false);
+            if (enabled)
+                m_log.InfoFormat(
+                    "[WIND VOLUMES] Enabled: at most {0} wind volumes per region and {1} per object, radius {2} m, height {3} m, speed {4} m/s, lifetime {5} s.",
+                    limits.MaxVolumesRegion, limits.MaxVolumesObject, limits.MaxRadius, limits.MaxHeight, limits.MaxSpeed, limits.MaxLifetimeSeconds);
+            return new WindVolumeStore(enabled, limits, clockMs);
+        }
+
+        /// <summary>
+        /// The wind model plugins: from the add-in engine, as a region server has it; [Confluence] where the add-in
+        /// engine is not running (a test host), the plugins built into this assembly.
+        /// </summary>
+        private static IEnumerable<IWindModelPlugin> FindWindPlugins()
+        {
+            if (AddinManager.IsInitialized)
+            {
+                foreach (IWindModelPlugin plugin in AddinManager.GetExtensionObjects("/OpenSim/WindModule", false))
+                    yield return plugin;
+                yield break;
+            }
+
+            foreach (Type type in typeof(WindModule).Assembly.GetTypes())
+            {
+                if (type.IsAbstract || !typeof(IWindModelPlugin).IsAssignableFrom(type))
+                    continue;
+                var extension = type.GetCustomAttribute<ExtensionAttribute>();
+                if (extension == null || extension.Path != "/OpenSim/WindModule")
+                    continue;
+                yield return (IWindModelPlugin)Activator.CreateInstance(type, true);
+            }
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #315. Set the wind at the given region coordinates, if the active wind plugin
+        /// supports it.
+        /// </summary>
+        public void WindSet(int type, Vector3 loc, Vector3 speed)
+        {
+            m_activeWindPlugin?.WindSet(type, loc, speed);
+        }
+
         public void WindParamSet(string plugin, string param, float value)
         {
             if (m_availableWindPlugins.ContainsKey(plugin))
@@ -402,6 +466,9 @@ namespace OpenSim.Region.CoreModules
             }
         }
 
+        /// <summary>[Confluence] Tranquillity #320: the region's wind volumes.</summary>
+        public IWindVolumeStore WindVolumes => m_windVolumes;
+
         public string WindActiveModelPluginName
         {
             get
@@ -426,6 +493,8 @@ namespace OpenSim.Region.CoreModules
         {
             if ((!m_ready || m_inUpdate || (m_frame++ % m_frameUpdateRate) != 0))
                 return;
+
+            m_windVolumes.PruneExpired();   // [Confluence] Tranquillity #320
 
             m_inUpdate = true;
             Util.FireAndForget(delegate

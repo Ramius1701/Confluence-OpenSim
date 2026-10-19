@@ -28941,3 +28941,34 @@ which matches the lifetime worked out for the module's 22 m drop (+8%). Tests: t
 placed emitter's +Z points at the ground. Weather tests 21 pass.
 
 Then the snow's scripted copy reached the ground from 25 m and not from 30 m above it (slowest flakes ~22 m over 16.8 s): the lifetime now covers 1.5 x the drop + 2 m for the slowest particle (snow ~22.5 s, rain ~3.3 s at 22 m); tests require 1.4 x the drop.
+
+## Tranquillity's wind series ported: ZephyrWind (#315), finite values (#321), snapshots (#322), wind volumes (#320) (2026-10-19)
+
+The wind series is core OpenSim, separate from the weather add-on (which only sets wind parameters).
+
+- **#315 ZephyrWind**, ported from Halcyon's Zephyr wind module: terrain-shaped surface wind, wind aloft, currents
+  under the water and a prevailing wind that follows the region's day, on 16 m cells (more on a larger region;
+  viewers get a 16 x 16 sample). Opt-in with `[Wind] wind_plugin = ZephyrWind`; the default plugin is unchanged.
+  `IWindModule.WindSet` / `IWindModelPlugin.WindSet` (default: ignore) and the `WindConstants` enum; Phlox
+  `iwSetWind` now sets a cell for estate managers and gods (it was "not implemented"); `llWind` passes the height.
+  Taken as Tranquillity's current file (it includes #321 and #322), adapted to log4net and registered with a
+  Mono.Addins `[Extension]` attribute like the other two plugins; RunningStat's notice in ThirdPartyLicenses.
+- **#321, the rest**: ZephyrWind uses day fraction 0 when the environment's day length makes it non-finite; the
+  plugins' `[Wind]` keys go through `WindValues.ReadFinite`. Confluence addition: text the config reader cannot
+  parse ("Infinity", a typo) falls back to the default with a warning instead of throwing out of the plugin's start.
+- **#322**: ZephyrWind publishes each update as an immutable snapshot, so `WindSpeed` (vehicles, `llWind`) and the
+  viewer array read without the update's lock.
+- **#320 wind volumes**: a store of script-made volumes (sphere or upright cylinder, centre, size, falloff, 3D
+  velocity, lifetime) with region / object / size / speed / lifetime caps, `osWindVolumeCreate/Remove/osWindVolumes`
+  (YEngine, `WV_*` constants, ESTATE_MANAGER/OWNER in osslDefaultEnable) and `iwWindVolumeCreate/Remove/iwWindVolumes`
+  (Phlox). Stored only in this release - nothing reads them yet. **Section renamed `[WindVolumes]`** (Tranquillity:
+  `[Weather]`): the weather add-on's `[Weather] Enabled = true` would have switched them on everywhere. With them on,
+  `osSetWindParam` needs an estate owner/manager or god. **Phlox slots 1009-1011** (Tranquillity: 969-971, where
+  Confluence's own 40 functions are; Phlox is off live, so no saved script state depends on either).
+
+The wind module now falls back to the plugins built into its own assembly when the add-in engine is not running (a
+test host); a region server is unchanged. Tests run in the Phlox suite: ZephyrWindTests, ZephyrWindSnapshotTests
+(with Tranquillity's recorded 256 m and 1024 m output as embedded fixtures), WindVolumeStoreTests,
+OSSL_ApiWindVolumeTests, WindVolumeFunctionTests, and a config test for the non-finite `[Wind]` values in all three
+plugins (Tranquillity's WindParamValueTests captured Microsoft.Extensions.Logging lines; not taken). Wind and dispatch
+tests 129 pass. Documented in OpenSimDefaults.ini `[Wind]` and `[WindVolumes]`. Not deployed.
