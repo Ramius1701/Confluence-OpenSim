@@ -250,7 +250,10 @@ checked by `Tools/data-backend-check`.)*
   `lane/jolt` 10-14..17 (~240 commits: Halcyon vehicle motors on a 15 ms clock, move-to / hover / look-at kept across
   a crossing, one copy kept when a crossing fails, size limits, mouse drag, spike cut, and an engine side of #314's
   `CaptureVehicleRunningState`) - its own session, while Jolt stays off live.
-- **Weather rethink** (agreed 2026-10-18; the module's sky, ground effects and model were not good enough). Stage 1
+- **Weather rethink - tabled 2026-10-19** at the owner's request. Deployed: 0.6.1, whose rain and snow fire upward
+  in Firestorm (fixed in 0.6.2, not deployed: emitter upside down, cone round its +Z; a wider lifetime margin). Before
+  resuming: confirm the four-weather test script in a viewer, then deploy once. Earlier notes:
+  **Weather rethink** (agreed 2026-10-18; the module's sky, ground effects and model were not good enough). Stage 1
   done (addon 0.5.0): the sky changes each sky of the day cycle relative to itself and fades; the ground prims are
   gone. Stage 2 done (0.6.0): rain and snow fall around the avatars present and reach the ground. Still to look at:
   lightning flashes without prims, if possible. Next: (3) a weather model:
