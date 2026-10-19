@@ -28926,3 +28926,16 @@ sent through libomv's packing). 0.6.0 had dropped the emissive flag (lit by the 
 and made flakes 0.18 m (below a pixel from 20-30 m). Now emissive, snow 0.35 m, blizzard 0.32 m, rain streaks
 0.05 x 0.8 m (storm 0.06 x 1.0); and rain's follow-velocity flag is 32 (0.6.0 set 16, follow-source). Tests assert
 emissive, not follow-source, and a visible size. Weather tests 21 pass.
+
+## Weather 0.6.2: rain and snow fall down (2026-10-19)
+
+On 0.6.1 the owner saw the rain "shooting straight up" from each emitter and dying in the air (screenshots: a fan
+narrow at the emitter, wide above it). The particles' cone had been given as angles pi-0.3..pi round the emitter's
+upright +Z - meant as straight down - and Firestorm drew it as a fountain going up; the tests had checked that a
+particle falling down the cone lands within its life, not which way the viewer fires it. Now the emitter prim is
+upside down (`PrecipitationParticles.EmitterRotation`, 180 degrees about X) and the cone is 0..half-angle round the
+prim's +Z, which points at the ground - a small angle round an axis reads the same in every viewer. Before deploying
+this time it was checked in-world with a scripted copy of one rain emitter (same flags, cone, speeds, lifetime,
+acceleration and an upside-down prim): it falls, and reaches the ground from up to ~24 m above it and not from ~29 m,
+which matches the lifetime worked out for the module's 22 m drop (+8%). Tests: the cone is 0..half-angle and a
+placed emitter's +Z points at the ground. Weather tests 21 pass.

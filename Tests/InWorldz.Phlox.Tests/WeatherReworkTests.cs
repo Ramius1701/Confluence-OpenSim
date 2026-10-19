@@ -391,7 +391,7 @@ public class WeatherReworkTests
             var ps = PrecipitationParticles.Build(fall, drop, 200f, Vector2.Zero, UUID.Random());
 
             // the slowest particle (the edge of the cone, the slowest speed) must have fallen the whole drop
-            float v = ps.BurstSpeedMin * MathF.Cos(MathF.PI - ps.InnerAngle);
+            float v = ps.BurstSpeedMin * MathF.Cos(ps.OuterAngle);              // the edge of the cone
             float a = -ps.PartAcceleration.Z;
             float t = ps.PartMaxAge;
             Assert.True(v * t + 0.5f * a * t * t >= drop, $"{weather} from {drop} m stops at {v * t + 0.5f * a * t * t:0.0} m");
@@ -403,8 +403,9 @@ public class WeatherReworkTests
             Assert.True((flags & 16u) == 0, "follows its source: the particles would move with the emitter");
             Assert.True(ps.PartStartScaleX >= (fall.StreakLength > 0f ? 0.05f : 0.3f), "too small to see from 20 m");
             Assert.True(ps.PartStartColor.A >= 0.5f);
-            Assert.Equal(MathF.PI, ps.OuterAngle, 4);                           // a cone round straight down
-            Assert.True(ps.InnerAngle > MathF.PI / 2f);
+            // a narrow cone round the emitter's +Z (no angle near pi, which a viewer turned into a fountain going up)
+            Assert.Equal(0f, ps.InnerAngle);
+            Assert.InRange(ps.OuterAngle, 0.05f, 0.8f);
 
             float alive = ps.BurstPartCount * ps.PartMaxAge / ps.BurstRate;   // particles in the air at once
             Assert.InRange(alive, 100f, 400f);
@@ -431,6 +432,8 @@ public class WeatherReworkTests
             Assert.True(MathF.Sqrt(dx * dx + dy * dy) <= 32f + 24f, "an emitter " + MathF.Sqrt(dx * dx + dy * dy) + " m away");
             Assert.InRange(p.Z, 29f + 22f - 0.5f, 29f + 22f + 0.5f);          // the avatar's floor plus the drop
             Assert.True(e.RootPart.ParticleSystem.Length > 0);
+            Vector3 axis = Vector3.UnitZ * e.RootPart.RotationOffset;           // the cone's axis in the region
+            Assert.True(axis.Z < -0.99f, "the emitter's +Z points " + axis + ", not at the ground");
         }
     }
 

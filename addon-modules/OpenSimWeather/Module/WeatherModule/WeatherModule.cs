@@ -1280,7 +1280,8 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             textures.DefaultTexture.RGBA = new Color4(1f, 1f, 1f, 0f);
             shape.Textures = textures;
 
-            SceneObjectPart root = new SceneObjectPart(ownerId, shape, position, Quaternion.Identity, Vector3.Zero);
+            // upside down: the particles' cone is round the prim's +Z, which then points at the ground
+            SceneObjectPart root = new SceneObjectPart(ownerId, shape, position, PrecipitationParticles.EmitterRotation, Vector3.Zero);
             root.Name = GeneratedNamePrefix + " " + WeatherName(weather) + " emitter";
             root.Description = GeneratedDescription;
             root.Scale = shape.Scale;

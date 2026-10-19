@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.2 - Confluence: rain and snow fall down (2026-10-19)
+
+- 0.6.0 and 0.6.1 sent the particles up: the cone was given as angles near pi round the emitter's upright +Z, meant as
+  "down", and Firestorm drew a fountain going up, so each particle spent its life (worked out for the fall) climbing
+  and died in the air. The emitter prim is now upside down and the cone is 0 to its half-angle round the prim's +Z,
+  which points at the ground. Checked in-world with a scripted copy of one rain emitter: it falls, and reaches the
+  ground from a drop of up to ~24 m (the emitters sit 22 m above their avatar's floor) and not from 29 m.
+
 ## 0.6.1 - Confluence: snow you can see (2026-10-19)
 
 - Seen in-world on 0.6.0: the flakes were dark grey specks, visible only against the sky, so over buildings, water and

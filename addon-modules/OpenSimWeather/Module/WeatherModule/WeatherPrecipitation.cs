@@ -30,6 +30,9 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         private const byte PatternAngleCone = 8;    // PSYS_SRC_PATTERN_ANGLE_CONE
         private const float MaxLifetime = 30f;      // the most a viewer keeps a particle
 
+        /// <summary>The emitter prim's rotation: upside down, so its +Z, the cone's axis, points at the ground.</summary>
+        public static readonly Quaternion EmitterRotation = new Quaternion(1f, 0f, 0f, 0f);
+
         public sealed class Fall
         {
             /// <summary>Speed the particles leave the emitter with (m/s), down the cone.</summary>
@@ -110,9 +113,12 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 Pattern = (Primitive.ParticleSystem.SourcePattern)PatternAngleCone,
                 Texture = texture,
                 BurstRadius = 0.5f,
-                // the cone is about the emitter's +Z: an angle of pi is straight down
-                InnerAngle = MathF.PI - fall.ConeHalfAngle,
-                OuterAngle = MathF.PI,
+                // A cone of this half-angle round the emitter's own +Z, which points at the ground: the emitter prim
+                // is upside down (EmitterRotation). Angles near pi, meant as "down" round an upright +Z, came out of
+                // Firestorm as a fountain shooting up (seen in-world 2026-10-19); a small angle round an axis that
+                // points down reads the same in every viewer.
+                InnerAngle = 0f,
+                OuterAngle = fall.ConeHalfAngle,
                 MaxAge = 0f,
                 PartMaxAge = lifetime,
                 BurstRate = burstRate,
