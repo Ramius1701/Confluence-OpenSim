@@ -1,6 +1,6 @@
 # Features
 
-What OpenSim-Confluence actually has, organized by area. For how any of
+What Confluence-OpenSim actually has, organized by area. For how any of
 this was built, tested, or debugged, see `PROJECT_LOG.md`. For what's
 planned or still missing, see `ROADMAP.md`.
 

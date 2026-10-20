@@ -1,10 +1,10 @@
-# OpenSim-Confluence Project Log
+# Confluence-OpenSim Project Log
 
-Running record of work done on the OpenSim-Confluence fork, so context
+Running record of work done on the Confluence-OpenSim fork (named OpenSim-Confluence until 2026-10-20), so context
 survives across sessions. Update this file as work progresses — don't let it
 go stale.
 
-Repo: `S:\Github\OpenSim-Confluence` (git, branch `merge-experiment`)
+Repo: `S:\Github\Confluence-OpenSim` (git, branch `merge-experiment`)
 Test deployment: the local test deployment (built from the repo above)
 Live grid: the live grid deployment — **frozen, do not touch until user says
 testing is done.**
@@ -29145,3 +29145,12 @@ a main HTTP server as upstream's entity-transfer tests do): ViewerAddressTests, 
 ViewerAddressDnsServerTests, CrossingBackOffTests, ViewerAddressWiringTests, ViewerLocalAddressRegistrationTests,
 LoginViewerAddressTests - 207 pass - plus ViewerLocalAddressSqliteStoreTests (own: the SQLite migration on a fresh
 store). The MySQL and PostgreSQL migrations were not run against a database here.
+
+## Repository renamed to Confluence-OpenSim (2026-10-20)
+
+At the owner's request the GitHub repository is now `github.com/Ramius1701/Confluence-OpenSim` (renamed with
+`gh repo rename`; GitHub redirects the old URL) and the `confluence` remote points there. The local checkout moves to
+`S:\Github\Confluence-OpenSim` (renamed by the owner outside a running session). Current docs updated: README (title,
+link), FEATURES, SETUP (clone steps), this log's header, CONTRIBUTORS.txt, TESTING.txt. Older entries in this log keep
+the name they were written under. The product/version string ("OpenSim-Confluence {version}",
+`ViewerSimulatorVersionOverride`) is branding, not the repository name, and is unchanged.

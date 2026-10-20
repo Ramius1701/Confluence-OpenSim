@@ -224,7 +224,7 @@ what it is today.
 * openlifegrid.com
 
 = Confluence-Specific Attribution =
-This fork (OpenSim-Confluence, https://github.com/Ramius1701/OpenSim-Confluence)
+This fork (Confluence-OpenSim, https://github.com/Ramius1701/Confluence-OpenSim)
 has, beyond the upstream OpenSimulator contributors listed above,
 cherry-picked or hand-ported improvements from the following projects.
 See this repository's README.md ("Attribution and support") and

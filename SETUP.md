@@ -19,8 +19,8 @@ in this guide - please report it.
 ## 2. Build
 
 ```bat
-git clone https://github.com/Ramius1701/OpenSim-Confluence.git
-cd OpenSim-Confluence
+git clone https://github.com/Ramius1701/Confluence-OpenSim.git
+cd Confluence-OpenSim
 runprebuild.bat
 dotnet build OpenSim.sln --configuration Release
 ```

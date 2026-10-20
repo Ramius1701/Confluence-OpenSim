@@ -1,4 +1,4 @@
-= Testing OpenSim-Confluence =
+= Testing Confluence-OpenSim =
 
 == Building ==
 

@@ -1,4 +1,4 @@
-# OpenSim-Confluence
+# Confluence-OpenSim
 
 Confluence is an independent OpenSimulator fork — in the same vein as
 WhiteCore-Dev, Tranquillity, or Homeworldz: a distinct project with its
@@ -24,7 +24,7 @@ a later phase.
 
 | Item | Status |
 |---|---|
-| GitHub home | [Ramius1701/OpenSim-Confluence](https://github.com/Ramius1701/OpenSim-Confluence) |
+| GitHub home | [Ramius1701/Confluence-OpenSim](https://github.com/Ramius1701/Confluence-OpenSim) |
 | Upstream baseline | `origin/master` (`opensim/opensim`), merged in as of the latest commit |
 | Active integration branch | `merge-experiment` (also the repo's default branch) |
 | Windows build | Successful — full solution build, 0 warnings / 0 errors, including Jolt and Phlox |
