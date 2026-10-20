@@ -52,6 +52,8 @@ namespace osWebRtcVoice
         private string _JanusAPIToken = string.Empty;
         private string _JanusAdminURI = string.Empty;
         private string _JanusAdminToken = string.Empty;
+        // [Confluence] Tranquillity #347: the Janus plugin (mixer) handles attach to.
+        private string _JanusPluginName = JanusAudioBridge.DefaultPluginName;
 
         private bool _JanusDebug = false;
         private bool _MessageDetails = false;
@@ -92,6 +94,9 @@ namespace osWebRtcVoice
                         _Enabled = false;
                         return;
                     }
+
+                    _JanusPluginName = janusConfig.GetString("PluginName", JanusAudioBridge.DefaultPluginName);
+                    _log.Info($"{LogHeader} Janus plugin (mixer) = {_JanusPluginName}");
 
                     // Debugging options
                     _JanusDebug = janusConfig.GetBoolean("JanusDebug", false);
@@ -156,7 +161,7 @@ namespace osWebRtcVoice
                 _log.DebugFormat("{0} JanusSession created", LogHeader);
 
                 // Once the session is created, create a handle to the plugin for rooms
-                JanusAudioBridge audioBridge = new(janusSession);
+                JanusAudioBridge audioBridge = new(janusSession, _JanusPluginName);
 
                 if (await audioBridge.Activate(_Config).ConfigureAwait(false))
                 {

@@ -42,3 +42,8 @@
     AdminAPIToken = AdminAPITokenToNeverCheckIn
     ; Debugging: output to log file messages sent and received from Janus. Very verbose.
     MessageDetails = false
+
+    ; Janus plugin the region attaches voice handles to. Default: janus.plugin.audiobridge (Janus's stock
+    ; AudioBridge, flat non-spatial mixing). Set janus.plugin.slvoice to use a spatial mixer that implements
+    ; that plugin.
+    ;PluginName = janus.plugin.audiobridge

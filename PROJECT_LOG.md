@@ -29054,3 +29054,12 @@ Tests in the Phlox suite (namespace osWebRtcVoice.Tests): the four helper test f
 module tests adapted to Confluence's module (a recording voice service set in place of the loaded one, a POST stand-in),
 plus one added case - voice-off on an estate-channel parcel when the viewer names no parcel. 50 tests; against the old
 module 10 of the 15 module tests fail. Documented in FEATURES (Voice) and TESTING 5.13.
+
+## Tranquillity PR #347 (open upstream): Janus plugin name setting (2026-10-20)
+
+`[JanusWebRtcVoice] PluginName` chooses the Janus plugin voice handles attach to (default `janus.plugin.audiobridge`,
+which was fixed in code); `janus.plugin.slvoice` drives a spatial mixer with the same messages. A blank value falls
+back to the default (Confluence addition). The PR's other half - advertising `[WebRtcVoice] StunServers` to viewers
+as `stun-servers` - Confluence already had in its own form (`TryGetStunServers`, both `VoiceStunServers` and
+`stun-servers`), so it is not taken. Documented in bin/config/os-webrtc-janus.ini.example. Tests:
+WebRtcVoiceJanusPluginNameTests (from the PR, plus the blank-value case).

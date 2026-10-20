@@ -40,10 +40,16 @@ namespace osWebRtcVoice
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static readonly string LogHeader = "[JANUS AUDIO BRIDGE]";
 
-        // Wrapper around the session connection to Janus-gateway
-        public JanusAudioBridge(JanusSession pSession) : base(pSession, "janus.plugin.audiobridge")
+        // [Confluence] Tranquillity #347: the stock AudioBridge plugin, used when [JanusWebRtcVoice] PluginName is unset.
+        public const string DefaultPluginName = "janus.plugin.audiobridge";
+
+        // Wrapper around the session connection to Janus-gateway. The Janus plugin name comes from the caller
+        // ([JanusWebRtcVoice] PluginName) rather than being fixed, so a mixer with the same messages (for one,
+        // janus.plugin.slvoice) can be chosen without a code change.
+        public JanusAudioBridge(JanusSession pSession, string pPluginName = DefaultPluginName)
+            : base(pSession, string.IsNullOrWhiteSpace(pPluginName) ? DefaultPluginName : pPluginName)
         {
-            // m_log.DebugFormat("{0} JanusAudioBridge constructor", LogHeader);
+            // m_log.DebugFormat("{0} JanusAudioBridge constructor (plugin={1})", LogHeader, pPluginName);
         }
 
         public override void Dispose()
