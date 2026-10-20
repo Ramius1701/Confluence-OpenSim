@@ -861,6 +861,11 @@ Sim FPS auto-mitigation and stuck-region auto-restart (`SimProtection`)
 is enabled on the live grid. Physics inputs are sanitized against
 NaN/Infinity before being applied.
 
+- **A region whose physics engine did not load refuses to start** (2026-10-21), with one fatal line naming
+  what `[Startup] physics` asked for: a name in the wrong case is shown with the real one (`ubode` ->
+  `ubODE`), an unknown name with the list of engines, a known engine that failed with a pointer to its own
+  error. It used to reach "Startup complete" and then crash on its first heartbeat.
+
 - **A grid-service outage no longer aborts scripts** (2026-10-13). When Robust is restarting or
   unreachable, the Groups, Offline IM, Experience and mute-list connectors answer "no reply" (as the
   service would for nothing found) instead of throwing into the calling script; as in Second Life, a

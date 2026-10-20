@@ -506,6 +506,15 @@ namespace OpenSim
                 Environment.Exit(0);
             }
 
+            // [Confluence] The same for the physics engine: with none loaded the region reached "Startup complete" and
+            // then threw on its first heartbeat. Say which engine was asked for, and stop here instead.
+            string physicsProblem = PhysicsEngineStartupCheck.Problem(Config, scene.PhysicsScene, regionInfo.RegionName);
+            if (physicsProblem is not null)
+            {
+                m_log.Fatal(physicsProblem);
+                Environment.Exit(0);
+            }
+
             scene.SetModuleInterfaces();
 // First Step of bootreport sequence
             if (scene.SnmpService != null)

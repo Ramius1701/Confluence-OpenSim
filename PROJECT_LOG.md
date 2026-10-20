@@ -29202,3 +29202,17 @@ LSL_ApiLocalForceTests, SceneObjectVehicleRulesTests.
 
 Also: the folder rename needed prebuild re-run (it writes absolute HintPaths); ConfluenceVoice is now Confluence-Voice
 (`github.com/Ramius1701/Confluence-Voice`, live at `S:\Opensim\Confluence-Voice`).
+
+## A region refuses to start when its physics engine did not load (2026-10-21)
+
+The roadmap item from 2026-09-27: with no physics engine loaded (the Jolt build gap then; equally a misspelt
+`[Startup] physics`, matched case-sensitively, or an engine whose native library failed), a region reached "Startup
+complete" and then threw a NullReferenceException in `Scene.Update` on its first heartbeat.
+
+`OpenSimBase.CreateRegion` now checks `scene.PhysicsScene` once the region's modules are loaded, next to the existing
+"no permissions module" check, and with none logs one fatal line and exits, as that check does. The text comes from
+`PhysicsEngineStartupCheck.Problem` (Region.Framework): it names the region and the configured value, and says
+`[Startup] physics is not set`, or that the name is matched exactly and gives the real one (`ubode` -> `ubODE`), or
+lists the known engines (ubODE, BulletSim, basicphysics, POS, Jolt), or, for a known engine, to see that engine's own
+error earlier in the log. Tests: PhysicsEngineStartupCheckTests (7). Not tried by starting a region server here: the
+repo's bin is configured for the live grid's ports and Robust, so a test start could register with the live grid.

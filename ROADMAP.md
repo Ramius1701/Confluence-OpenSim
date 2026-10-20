@@ -310,7 +310,7 @@ checked by `Tools/data-backend-check`.)*
   its first heartbeat (found 2026-09-27).** Surfaced by the Jolt build-gap bug (now fixed - see
   FEATURES.md): with no physics engine loaded, a region still reached "Startup complete" and then threw an
   unhandled `NullReferenceException` in `Scene.Update` on its first heartbeat. Applies to any cause of a
-  missing engine, not just that one bug. Not started.
+  missing engine, not just that one bug. **Done 2026-10-21** (`PhysicsEngineStartupCheck`, see PROJECT_LOG).
 - **Server-side appearance baking (SSB) - from Tranquillity #207; scoped
   2026-09-26, not started.** The region composes each avatar's bake itself
   instead of relaying the viewer's, so "the viewer and region disagree
