@@ -53,6 +53,9 @@ namespace OpenSim.Region.Framework.Scenes.Tests;
 /// EntityTransferModule hands one out. With no [ViewerAddress] settings every viewer must get the
 /// region's own endpoint, as before; with a public address, a viewer outside the local networks gets that.
 /// </summary>
+// [Confluence] Runs alone: it switches Util.FireAndForgetMethod (process-wide) and needs MainServer, which other test
+// classes add and remove while they run. In Tranquillity it lives in its own test project.
+[Collection("viewer-address-wiring")]
 public class ViewerAddressWiringTests : IDisposable
 {
     private const string LanViewer = "198.51.100.20";
@@ -621,3 +624,6 @@ public class ViewerAddressWiringTests : IDisposable
         public IPEndPoint EndPointFor(GridRegion region, IPAddress source) => ViewerEndPoint(region, source);
     }
 }
+
+[CollectionDefinition("viewer-address-wiring", DisableParallelization = true)]
+public class ViewerAddressWiringCollection { }

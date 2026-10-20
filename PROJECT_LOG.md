@@ -29154,3 +29154,18 @@ At the owner's request the GitHub repository is now `github.com/Ramius1701/Confl
 link), FEATURES, SETUP (clone steps), this log's header, CONTRIBUTORS.txt, TESTING.txt. Older entries in this log keep
 the name they were written under. The product/version string ("OpenSim-Confluence {version}",
 `ViewerSimulatorVersionOverride`) is branding, not the repository name, and is unchanged.
+
+## Tranquillity #328: optional PhysicsActor / PhysicsScene hooks; a test isolation fix (2026-10-20)
+
+- #328 (merged upstream): `PhysicsActor` gains OnComplexityError / RaiseComplexityError, PhysicsCostIsShapeCount,
+  PIDHoverRepel, SetScriptForce / SetScriptTorque, AllowsVehicleGrab, VehicleTypeStopsTargets,
+  CarriesTargetsAcrossCrossing, AllowOutsideRegion, HoldStill / ReleaseHold / ReleaseHold(float),
+  WaitsBeforeCrossingBack and KeepInsideBorder; `PhysicsScene` an AddAvatar overload with allowOutsideRegion. Each
+  default does what every engine does today and nothing calls them yet (the Jolt PRs and #337 use them). Test:
+  PhysicsActorHookDefaultsTests (from the PR).
+- ViewerAddressWiringTests (#302) failed 7 cases in the full suite though they pass alone: the class switches the
+  process-wide `Util.FireAndForgetMethod` and needs `MainServer`, which other classes add and remove in parallel. It now
+  runs in its own collection with parallelisation off.
+- Held, not ported: #337 (draft; its author has not yet verified it on a running grid, and it changes crossing order,
+  drag clean-up and ubODE's change enum even with the setting off). #325 (mesher profile rings) and #326 (Jolt natives
+  from the package) go with the Jolt session.
