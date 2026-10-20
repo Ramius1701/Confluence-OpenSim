@@ -29034,3 +29034,23 @@ there. Still open upstream and not taken: #347-#350 (Janus settings, hardening, 
   projects).
 - Docs brought up to date: FEATURES (Janus ids, Hypergrid child agents and public address, the small fixes),
   TESTING 5.11/5.12, ROADMAP donor status.
+
+## Tranquillity PR #350 (open upstream): parcel voice checks on every parcel (2026-10-20)
+
+Stock viewers (Second Life, Firestorm) send `parcel_local_id` in a local voice provision only when the avatar's parcel
+has its own voice channel. On a parcel using the estate channel - the default - they send none, and the region module
+looked a parcel up only when one was sent, so a parcel's voice-off setting and its ban list were never applied there.
+The voice-off check was also skipped on TaxFree estates.
+
+Ported #350's own commits (not #348, which it is stacked on): for a root agent the parcel is the one under the
+avatar's position, as Vivox/FreeSwitch do; the viewer's id is a hint, logged on a mismatch and never refused. Voice-off
+and bans (the core restricted/banned check plus `LandBan`, which follows IsBannedFromLand's exemptions) apply on every
+estate. A child agent (a neighbour region's provision) with no id gets the estate room with no checks; a named parcel
+is used only if it lies near the child's known position (`ChildParcelProximity`, 31 m slack), else it is dropped.
+The four helpers are taken unchanged; the module change is adapted to Confluence's version (it keeps the viewer-session
+flags: estate, parcel, parcel owner as admin). One debug line per provision records how the parcel was chosen.
+
+Tests in the Phlox suite (namespace osWebRtcVoice.Tests): the four helper test files converted from NUnit, and the
+module tests adapted to Confluence's module (a recording voice service set in place of the loaded one, a POST stand-in),
+plus one added case - voice-off on an estate-channel parcel when the viewer names no parcel. 50 tests; against the old
+module 10 of the 15 module tests fail. Documented in FEATURES (Voice) and TESTING 5.13.

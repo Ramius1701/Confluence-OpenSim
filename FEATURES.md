@@ -355,6 +355,12 @@ subscription required:
   #345) it reads Janus's 64-bit session and handle ids (they read as 0,
   so the service disabled itself on its first request), and one service
   serves both roles when both settings name the same DLL.
+- **Parcel voice rules apply everywhere** (Tranquillity #350, 2026-10-20): a local voice request is
+  checked against the parcel the avatar stands on, as Vivox/FreeSwitch do, not the parcel id the viewer
+  sends. Stock viewers send no id on a parcel that uses the estate voice channel (the default), so a
+  parcel's voice-off setting and ban list used to be skipped there; they now apply on every parcel and on
+  TaxFree estates too. A neighbour region's (child agent's) request keeps the estate room unless it
+  names a parcel near the avatar. Applies to ConfluenceVoice and Janus alike (the region module is shared).
 - **ConfluenceVoice** — a purpose-built, Windows-native voice server
   filling that backend role, so the whole stack runs without Linux
   infrastructure. Its own separate project

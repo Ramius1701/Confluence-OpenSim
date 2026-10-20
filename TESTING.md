@@ -126,6 +126,9 @@ Needs a parcel you own, a second account's objects on it, and a script whose own
       reaches the others once and the sender does not get their own line back; group chat still works as before.
 - [ ] 5.12 After a Hypergrid teleport out of a region with neighbours, the region's console `show users` (or the
       neighbours' agent counts) no longer lists the traveller as a child agent in the regions around it.
+- [ ] 5.13 Voice on a parcel that uses the estate voice channel: turn the parcel's voice off (About Land > Sound,
+      untick voice) and voice stops there; ban an alt from the parcel and the alt cannot join voice standing on it;
+      voice still works on the parcels around it and in a neighbouring region.
 
 ## 6. Bots
 

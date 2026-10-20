@@ -555,33 +555,84 @@ namespace osWebRtcVoice
                             return;
                         }
 
-                        if(map.TryGetInt("parcel_local_id", out int parcelID))
-                        {
-                            ILandObject parcel = scene.LandChannel.GetLandObject(parcelID);
-                            if (parcel == null)
-                            {
-                                response.RawBuffer = llsdUndefAnswerBytes;
-                                response.StatusCode = (int)HttpStatusCode.NotFound;
-                                return;
-                            }
+                        // [Confluence] Tranquillity #350. Stock viewers send parcel_local_id only for a parcel with its
+                        // own voice channel; on a parcel using the estate channel (the default) they send none, so no
+                        // parcel setting was applied there - not voice-off, not the ban list. For a ROOT agent the
+                        // parcel now comes from the avatar's position, as Vivox/FreeSwitch do, and the viewer's id is
+                        // only a hint (logged on mismatch, never refused: a viewer mid-crossing can be stale). A CHILD
+                        // agent (a neighbour region's provision) has no parcel under it here: a hinted id selects the
+                        // parcel if it lies near the child's known position, else (or with no id) the estate room,
+                        // with no parcel checks. Voice-off and bans now apply on TaxFree estates too.
+                        int? clientParcelId = map.TryGetInt("parcel_local_id", out int hintId) ? hintId : null;
+                        ParcelResolveInput resolveInput = new ParcelResolveInput(clientParcelId, sp.IsChildAgent);
 
-                            LandData land = parcel.LandData;
+                        ILandObject parcel = null;
+                        if (ProvisionParcelResolver.DerivesFromPosition(resolveInput))
+                            parcel = scene.LandChannel.GetLandObject(sp.AbsolutePosition.X, sp.AbsolutePosition.Y);
+                        ParcelResolution res = ProvisionParcelResolver.Resolve(resolveInput, parcel?.LandData?.LocalID);
+                        if (res.Source == ParcelSource.ClientHint)
+                        {
+                            parcel = scene.LandChannel.GetLandObject(res.LocalId.Value);
+                            LandData hinted = parcel?.LandData;
+                            if (hinted is null || !ChildParcelProximity.IsNear(sp.AbsolutePosition, hinted.AABBMin, hinted.AABBMax))
+                            {
+                                res = ProvisionParcelResolver.RejectHint(res);
+                                parcel = null;
+                                map.Remove("parcel_local_id"); // the service must not room by the dropped id
+                            }
+                        }
+
+                        LandData land = parcel?.LandData;
+                        bool estateChan = land != null && (land.Flags & (uint)ParcelFlags.UseEstateVoiceChan) != 0;
+
+                        m_log.DebugFormat("{0}[PARCEL RESOLVE] agent={1} region={2} child={3} source={4} client={5} server={6} parcel={7} estate_chan={8} mismatch={9} hint_rejected={10}",
+                            LogHeader, agentID, scene.Name, sp.IsChildAgent, res.Source, clientParcelId?.ToString() ?? "-",
+                            res.ServerLocalId?.ToString() ?? "-", land?.LocalID.ToString() ?? "-",
+                            land == null ? "-" : estateChan.ToString(), res.ClientMismatch, res.HintRejected);
+
+                        if (res.Source == ParcelSource.None)
+                        {
+                            // A child agent with no (or a dropped) id: the estate room, no parcel checks.
+                            flags = IVoiceViewerSession.VFlags.IsEstate;
+                        }
+                        else
+                        {
                             if (land == null)
                             {
+                                if (res.Source == ParcelSource.ServerPosition)
+                                    m_log.Warn($"{LogHeader}[ProvisionVoice]: no parcel at position for root agent {agentID} in \"{scene.Name}\" - refusing");
                                 response.RawBuffer = llsdUndefAnswerBytes;
                                 response.StatusCode = (int)HttpStatusCode.NotFound;
                                 return;
                             }
 
-                            if (!scene.RegionInfo.EstateSettings.TaxFree && (land.Flags & (uint)ParcelFlags.AllowVoiceChat) == 0)
+                            if (res.ClientMismatch)
+                                m_log.Warn($"{LogHeader}[ProvisionVoice]: parcel_local_id {clientParcelId} from agent {agentID} does not match the avatar's parcel {res.ServerLocalId} in \"{scene.Name}\" - using the server parcel");
+
+                            EstateSettings estateSettings = scene.RegionInfo.EstateSettings;
+                            ProvisionAccess access = ProvisionParcelAccess.Check(
+                                land,
+                                parcel.IsRestrictedFromLand(agentID) || parcel.IsBannedFromLand(agentID),
+                                a => scene.Permissions.IsAdministrator(a),
+                                a => estateSettings.IsEstateManagerOrOwner(a),
+                                agentID,
+                                Util.UnixTimeSinceEpoch());
+                            if (access == ProvisionAccess.VoiceOff)
                             {
                                 m_log.Debug($"{LogHeader}[ProvisionVoice]:parcel voice not allowed");
                                 response.RawBuffer = llsdUndefAnswerBytes;
                                 response.StatusCode = (int)HttpStatusCode.Forbidden;
                                 return;
                             }
+                            if (access == ProvisionAccess.Barred)
+                            {
+                                m_log.Debug($"{LogHeader}[ProvisionVoice]:agent not allowed on parcel");
+                                response.RawBuffer = llsdUndefAnswerBytes;
+                                response.StatusCode = (int)HttpStatusCode.Forbidden;
+                                return;
+                            }
 
-                            if ((land.Flags & (uint)ParcelFlags.UseEstateVoiceChan) != 0)
+                            if (estateChan)
                             {
                                 // By removing the parcel_local_id, the voice service will treat this as an estate channel
                                 //    request and return the appropriate voice credentials for the estate channel
@@ -591,22 +642,14 @@ namespace osWebRtcVoice
                             }
                             else
                             {
-                                if(parcel.IsRestrictedFromLand(agentID) || parcel.IsBannedFromLand(agentID))
-                                {
-                                    // check Z distance?
-                                    m_log.Debug($"{LogHeader}[ProvisionVoice]:agent not allowed on parcel");
-                                    response.RawBuffer = llsdUndefAnswerBytes;
-                                    response.StatusCode = (int)HttpStatusCode.Forbidden;
-                                    return;
-                                }
-                                flags = parcel.OwnerID.Equals(agentID) ?
+                                // The service rooms by this id; an honest viewer sends the same number, so no live
+                                // room renumbers. A child's accepted hint is forwarded unchanged.
+                                if (res.Source == ParcelSource.ServerPosition)
+                                    map["parcel_local_id"] = OSD.FromInteger(land.LocalID);
+                                flags = land.OwnerID.Equals(agentID) ?
                                         IVoiceViewerSession.VFlags.IsAdmin | IVoiceViewerSession.VFlags.IsParcel :
                                          IVoiceViewerSession.VFlags.IsParcel;
                             }
-                        }
-                        else
-                        {
-                            flags = IVoiceViewerSession.VFlags.IsEstate;
                         }
 
                         // TODO: check if this userId is making a new session (case that user is reconnecting)

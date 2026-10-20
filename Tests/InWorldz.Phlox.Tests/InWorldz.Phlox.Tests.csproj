@@ -66,6 +66,8 @@
     <Reference Include="WebRtcJanusService"><HintPath>..\..\bin\WebRtcJanusService.dll</HintPath></Reference>
     <Reference Include="WebRtcVoice"><HintPath>..\..\bin\WebRtcVoice.dll</HintPath></Reference>
     <Reference Include="WebRtcVoiceServiceModule"><HintPath>..\..\bin\WebRtcVoiceServiceModule.dll</HintPath></Reference>
+    <!-- [Confluence] Tranquillity #350 tests: the region module's parcel checks. -->
+    <Reference Include="WebRtcVoiceRegionModule"><HintPath>..\..\bin\WebRtcVoiceRegionModule.dll</HintPath></Reference>
     <Reference Include="C5"><HintPath>..\..\bin\C5.dll</HintPath></Reference>
     <Reference Include="XMLRPC"><HintPath>..\..\bin\XMLRPC.dll</HintPath></Reference>
     <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
