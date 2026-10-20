@@ -43,7 +43,13 @@
     ; URI to access the admin port on Janus Gateway
     JanusGatewayAdminURI = http://janus.example.org:14224/admin
     ; APIKey to access the admin port on the Janus Gateway. Must be set to the same value as the Janus Gateway.
+    ; Use random secrets of at least 32 characters for APIToken and AdminAPIToken; a shorter one is logged as a
+    ; warning at startup.
     AdminAPIToken = AdminAPITokenToNeverCheckIn
+    ; For https gateway and admin URLs whose certificate comes from a private CA: that CA's certificate file (PEM or
+    ; DER), trusted alongside the system roots for the gateway only; the host name must still match. Default: unset
+    ; (the grid's usual HTTP client and certificate settings).
+    ;JanusGatewayCACertificateFile =
     ; Debugging: output to log file messages sent and received from Janus. Very verbose.
     MessageDetails = false
 

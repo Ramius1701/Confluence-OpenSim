@@ -367,7 +367,9 @@ subscription required:
   wait for their result at most `RequestTimeoutMs` (they waited without limit), a half-built session is
   destroyed, every join first asks the mixer to create its room (no stale room cache), a room number can no
   longer be the one value that crashed the calculation, empty rooms the service made are removed after a
-  grace period, and `[JanusWebRtcVoice] PluginName` picks the mixer plugin (#347).
+  grace period, and `[JanusWebRtcVoice] PluginName` picks the mixer plugin (#347). The Janus API and admin
+  secrets are kept out of log lines, a secret under 32 characters draws a startup warning, and
+  `JanusGatewayCACertificateFile` trusts a private CA for an https gateway (#349).
 - **ConfluenceVoice** — a purpose-built, Windows-native voice server
   filling that backend role, so the whole stack runs without Linux
   infrastructure. Its own separate project

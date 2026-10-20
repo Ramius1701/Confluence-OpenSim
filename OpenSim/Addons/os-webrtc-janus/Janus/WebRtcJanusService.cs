@@ -67,6 +67,23 @@ namespace osWebRtcVoice
         // waits for its event before it fails.
         private int _JanusRequestTimeoutMs = JanusSession.DefaultRequestTimeoutMs;
 
+        // [Confluence] Tranquillity #349. The shortest Janus API / admin secret that does not draw a warning.
+        public const int MinSecretLength = 32;
+
+        // [JanusWebRtcVoice] JanusGatewayCACertificateFile: a private CA certificate trusted, alongside the system
+        // roots, for https gateway and admin URLs (see JanusTls). Unset: OpenSim's shared HTTP clients, as before.
+        private System.Net.Http.HttpMessageHandler _JanusHttpHandler;
+
+        // A secret shorter than MinSecretLength is easy to guess. It warns and the service starts as before; the line
+        // names the key only - neither the value nor its length goes into the log.
+        private void WarnOnShortJanusSecrets()
+        {
+            if (!string.IsNullOrEmpty(_JanusAPIToken) && _JanusAPIToken.Length < MinSecretLength)
+                _log.Warn($"{LogHeader} [JanusWebRtcVoice] APIToken is shorter than {MinSecretLength} characters; use a longer random secret");
+            if (!string.IsNullOrEmpty(_JanusAdminToken) && _JanusAdminToken.Length < MinSecretLength)
+                _log.Warn($"{LogHeader} [JanusWebRtcVoice] AdminAPIToken is shorter than {MinSecretLength} characters; use a longer random secret");
+        }
+
         // [Confluence] Tranquillity #348: [JanusWebRtcVoice] RemoveEmptyRooms (default true) removes rooms this service
         // created once they have stood empty for EmptyRoomGraceSeconds (default 60). The stock AudioBridge plugin
         // otherwise keeps every emptied room until Janus restarts. Off for any other plugin (the slvoice mixer removes
@@ -107,6 +124,11 @@ namespace osWebRtcVoice
                         _Enabled = false;
                         return;
                     }
+
+                    WarnOnShortJanusSecrets();
+                    string caFile = janusConfig.GetString(JanusTls.CaCertificateFileKey, string.Empty);
+                    if (!string.IsNullOrWhiteSpace(caFile))
+                        _JanusHttpHandler = JanusTls.CreateHandler(caFile);
 
                     _JanusPluginName = janusConfig.GetString("PluginName", JanusAudioBridge.DefaultPluginName);
                     _log.Info($"{LogHeader} Janus plugin (mixer) = {_JanusPluginName}");
@@ -181,6 +203,7 @@ namespace osWebRtcVoice
         {
             JanusSession janusSession = new(_JanusServerURI, _JanusAPIToken, _JanusAdminURI, _JanusAdminToken, _MessageDetails);
             janusSession.JanusRequestTimeout = TimeSpan.FromMilliseconds(_JanusRequestTimeoutMs);
+            janusSession.HttpHandler = _JanusHttpHandler;
             if (await janusSession.CreateSession().ConfigureAwait(false))
             {
                 _log.DebugFormat("{0} JanusSession created", LogHeader);

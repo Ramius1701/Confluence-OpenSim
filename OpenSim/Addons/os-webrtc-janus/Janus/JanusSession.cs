@@ -109,7 +109,7 @@ namespace osWebRtcVoice
                     SessionId = sessionResp.returnedId;
                     IsConnected = true;
                     SessionUri = _JanusServerURI + "/" + SessionId;
-                    m_log.DebugFormat("{0} CreateSession. Created. ID={1}, URL={2}", LogHeader, SessionId, SessionUri);
+                    m_log.DebugFormat("{0} CreateSession. Created. ID={1}, URL={2}", LogHeader, SessionId, RedactUriForLog(SessionUri));
 //                    DebugLog("{0} CreateSession. Created. ID={1}, URL={2}", LogHeader, SessionId, SessionUri);
                     ret = true;
                     StartLongPoll();
@@ -125,6 +125,31 @@ namespace osWebRtcVoice
             }
 
             return ret;
+        }
+
+        // [Confluence] Tranquillity #349: a URI as it may appear in a log - the query string and fragment are replaced,
+        // because the long-poll GET carries the API secret in its query (Janus reads a GET's secret nowhere else).
+        public static string RedactUriForLog(string pUri)
+        {
+            if (string.IsNullOrEmpty(pUri))
+                return pUri;
+            int cut = pUri.IndexOfAny(new[] { '?', '#' });
+            return cut < 0 ? pUri : pUri.Substring(0, cut) + "?<redacted>";
+        }
+
+        // [Confluence] Tranquillity #349: the handler that validates the gateway's certificate against a private CA
+        // ([JanusWebRtcVoice] JanusGatewayCACertificateFile, see JanusTls). Null: OpenSim's shared HTTP clients.
+        public System.Net.Http.HttpMessageHandler HttpHandler { get; set; }
+
+        private HttpClient NewHttpClient(int pTimeoutMs, bool pNoRedirect = false, int pMaxBuffer = 250 * 1024 * 1024)
+        {
+            if (HttpHandler is null)
+                return pNoRedirect ? WebUtil.GetGlobalNoRedirHttpClient(pTimeoutMs, pMaxBuffer) : WebUtil.GetNewGlobalHttpClient(pTimeoutMs);
+            return new HttpClient(HttpHandler, false)
+            {
+                Timeout = TimeSpan.FromMilliseconds(pTimeoutMs > 0 ? pTimeoutMs : 30000),
+                MaxResponseContentBufferSize = pMaxBuffer,
+            };
         }
 
         public async Task<bool> DestroySession()
@@ -323,7 +348,9 @@ namespace osWebRtcVoice
         public async Task<JanusMessageResp> SendToJanus(JanusMessageReq pReq, string pURI, bool admin = false)
         {
             AddJanusHeaders(pReq, admin);
-            if (_MessageDetails) m_log.DebugFormat($"{LogHeader} SendToJanus. URI={pURI}, req={pReq.ToJson}");
+            // ToJsonForLog, not ToJson: this is where a request body reaches a log, and it must not carry the API or
+            // admin secret ([Confluence] Tranquillity #349; this line used to print the method, not the request).
+            if (_MessageDetails) m_log.DebugFormat("{0} SendToJanus. URI={1}, req={2}", LogHeader, RedactUriForLog(pURI), pReq.ToJsonForLog());
 
             JanusMessageResp ret = null;
             try
@@ -340,7 +367,7 @@ namespace osWebRtcVoice
 
                 string reqStr = pReq.ToJson();
 
-                HttpClient httpClient = WebUtil.GetNewGlobalHttpClient(30000);
+                HttpClient httpClient = NewHttpClient(30000);
                 HttpRequestMessage reqMsg = new(HttpMethod.Post, pURI);
                 reqMsg.Content = new StringContent(reqStr, System.Text.Encoding.UTF8, MediaTypeNames.Application.Json);
                 reqMsg.Headers.TryAddWithoutValidation("Accept", "application/json");
@@ -427,7 +454,7 @@ namespace osWebRtcVoice
 
             try
             {
-                HttpClient httpClient = WebUtil.GetNewGlobalHttpClient(30000);
+                HttpClient httpClient = NewHttpClient(30000);
                 HttpRequestMessage reqMsg = new(HttpMethod.Post, pURI);
                 string reqStr = pReq.ToJson();
                 reqMsg.Content = new StringContent(reqStr, System.Text.Encoding.UTF8, MediaTypeNames.Application.Json);
@@ -530,7 +557,7 @@ namespace osWebRtcVoice
             {
                 // m_log.DebugFormat("{0} GetFromJanus: URI = \"{1}\"", LogHeader, pURI);
                 //HttpClient httpClient = WebUtil.GetNewGlobalHttpClient(timeout);
-                HttpClient httpClient = WebUtil.GetGlobalNoRedirHttpClient(timeout, 1024 * 1024);
+                HttpClient httpClient = NewHttpClient(timeout, true, 1024 * 1024);
                 HttpRequestMessage reqMsg = new HttpRequestMessage(HttpMethod.Get, pURI);
                 reqMsg.Headers.TryAddWithoutValidation("Accept", "application/json");
                 HttpResponseMessage response = null;
@@ -787,20 +814,20 @@ namespace osWebRtcVoice
                                             case 404:
                                                 // "Not found" means there is a Janus server but the session is gone
                                                 m_log.ErrorFormat("{0} EventLongPoll: GETERROR Not Found. URI={1}: {2}",
-                                                            LogHeader, SessionUri, resp.ToString());
+                                                            LogHeader, RedactUriForLog(SessionUri), resp.ToString());
                                                 break;
                                             case 400:
                                                 // "Bad request" means the session is gone
                                                 m_log.ErrorFormat("{0} EventLongPoll: Bad Request. URI={1}: {2}",
-                                                            LogHeader, SessionUri, resp.ToString());
+                                                            LogHeader, RedactUriForLog(SessionUri), resp.ToString());
                                                 break;
                                             case 499:
                                                 // "Task canceled" means the long poll was canceled
-                                                if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: Task canceled. URI={1}", LogHeader, SessionUri);
+                                                if (_MessageDetails) m_log.DebugFormat("{0} EventLongPoll: Task canceled. URI={1}", LogHeader, RedactUriForLog(SessionUri));
                                                 break;
                                             default:
                                                 m_log.DebugFormat("{0} EventLongPoll: unknown response. URI={1}: {2}",
-                                                            LogHeader, SessionUri, resp.ToString());
+                                                            LogHeader, RedactUriForLog(SessionUri), resp.ToString());
                                                 break;
                                         }   
                                         // This will cause the long poll to exit

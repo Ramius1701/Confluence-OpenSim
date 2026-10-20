@@ -94,7 +94,7 @@ namespace osWebRtcVoice
                     AttachPluginResp handleResp = new(resp);
                     PluginId = handleResp.pluginId;
                     PluginUri = _JanusSession.SessionUri + "/" + PluginId;
-                    m_log.Debug($"{LogHeader} Activate. Plugin attached. ID={PluginId}, URL={PluginUri}");
+                    m_log.Debug($"{LogHeader} Activate. Plugin attached. ID={PluginId}, URL={JanusSession.RedactUriForLog(PluginUri)}");
                     _JanusSession.PluginId = PluginId;
                     _JanusSession.OnEvent += Handle_Event;
                     _JanusSession.OnMessage += Handle_Message;

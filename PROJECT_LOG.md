@@ -29091,3 +29091,19 @@ Tests: ProvisionRefusalCache, EmptyRoomReaper (the sweep and config tests), Room
 converted from the PR; WebRtcVoiceJanusRequestTimeoutTests (own, against a local listener that acks and never
 answers); three module tests (409, another failure stays 200, a refusal replayed until a logout - the first and third
 fail against the pre-#348 module). Settings documented in bin/config/os-webrtc-janus.ini.example; FEATURES (Voice).
+
+## Tranquillity PR #349 (open upstream): Janus secrets out of logs, weak-secret warning, private CA (2026-10-20)
+
+- A request body reaches a log only through `ToJsonForLog`, which replaces `apisecret` and `admin_secret`; URLs are
+  logged without their query (`RedactUriForLog` - the long-poll GET carries the API secret there). Confluence's
+  request-detail line used to print `pReq.ToJson` without calling it, so it logged the method, not the request; it now
+  logs the redacted request.
+- `APIToken` / `AdminAPIToken` shorter than 32 characters log a startup warning naming the key only.
+- `[JanusWebRtcVoice] JanusGatewayCACertificateFile` (PEM or DER): `JanusTls` (adapted to log4net) trusts that CA for
+  the gateway alongside the system roots, never excusing a host-name mismatch, and logs a rejected certificate once
+  with the fix. Confluence's sessions post through OpenSim's shared HTTP clients (the grid's certificate settings), so
+  the validating handler is used only when the key is set; unset, nothing changes.
+
+Tests: WebRtcVoiceJanusSecretsAndTlsTests (own for the redaction and the warning, captured through log4net; the TLS
+cases are Tranquillity's, run against the handler directly with their TlsTestServer, taken unchanged). Documented in
+bin/config/os-webrtc-janus.ini.example and FEATURES.

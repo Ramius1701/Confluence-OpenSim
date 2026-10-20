@@ -261,6 +261,29 @@ namespace osWebRtcVoice
         {
             return m_message is null ? "'null'": m_message.ToString();
         }
+
+        // [Confluence] Tranquillity #349: top-level request fields that authenticate the sender and so must never
+        // reach a log.
+        private static readonly string[] LogRedactedFields = { "apisecret", "admin_secret" };
+
+        // How a request is written to a LOG line, as opposed to the wire: the wire form with the API secret and the
+        // admin secret replaced. Every other field (transaction and session ids included) is kept - they are not
+        // secrets and are what an operator correlates on.
+        public virtual string ToJsonForLog()
+        {
+            ToJson();   // a subclass may assemble m_message here (PluginMsgReq adds its body)
+            if (m_message is null)
+                return "'null'";
+            OSDMap copy = new();
+            foreach (KeyValuePair<string, OSD> field in m_message)
+                copy[field.Key] = field.Value;
+            foreach (string secret in LogRedactedFields)
+            {
+                if (copy.TryGetValue(secret, out OSD value) && !string.IsNullOrEmpty(value.AsString()))
+                    copy[secret] = "<redacted " + secret + ">";
+            }
+            return copy.ToString();
+        }
         
         public override string ToString()
         {
