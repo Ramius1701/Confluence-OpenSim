@@ -2170,8 +2170,13 @@ namespace OpenSim.Region.Framework.Scenes
                     return 0;
 
                 float cost;
-                if (PhysActor != null)
-                    cost = PhysActor.PhysicsCost;
+                PhysicsActor pa = PhysActor;
+                if (pa != null)
+                {
+                    cost = pa.PhysicsCost;
+                    if (pa.PhysicsCostIsShapeCount)
+                        return cost;    // [Confluence] Tranquillity #330: the engine's count of collision shapes, as it is
+                }
                 else
                     cost = 0.1f;
 
@@ -2591,7 +2596,7 @@ namespace OpenSim.Region.Framework.Scenes
             if (localGlobalTF)
                 torque *= GetWorldRotation();
 
-            Torque = torque;
+            SetTorque(torque, localGlobalTF);   // [Confluence] Tranquillity #332
         }
 
         /// <summary>
@@ -2791,8 +2796,17 @@ namespace OpenSim.Region.Framework.Scenes
                             pa.IsPhysical = UsePhysics;
                             pa.OnRequestTerseUpdate -= PhysicsRequestingTerseUpdate;
                             pa.OnOutOfBounds -= PhysicsOutOfBounds;
+                            pa.OnComplexityError -= PhysicsComplexityError;
                             pa.delink();
                         }
+                    }
+
+                    if (UsePhysics)
+                    {
+                        // [Confluence] Tranquillity #330: before the actor is made physical, so an engine that limits
+                        // complexity can say so as it is.
+                        pa.OnComplexityError -= PhysicsComplexityError;
+                        pa.OnComplexityError += PhysicsComplexityError;
                     }
 
                     if (pa.IsPhysical != UsePhysics)
@@ -3027,9 +3041,9 @@ namespace OpenSim.Region.Framework.Scenes
         /// <param name="height">Height to hover.  Height of zero disables hover.</param>
         /// <param name="hoverType">Determines what the height is relative to </param>
         /// <param name="tau">Number of seconds over which to reach target</param>
-        public void SetHoverHeight(float height, PIDHoverType hoverType, float tau)
+        public void SetHoverHeight(float height, PIDHoverType hoverType, float tau, bool repel = false)
         {
-            ParentGroup.SetHoverHeight(height, hoverType, tau);
+            ParentGroup.SetHoverHeight(height, hoverType, tau, repel);
         }
 
         public void StopHover()
@@ -3448,6 +3462,16 @@ namespace OpenSim.Region.Framework.Scenes
                     $"'{Name}' has a mesh or sculpt that couldn't be built into a proper physics shape, so it's using a plain box for collisions instead of its real shape. You may want to re-check or re-upload it.",
                     false);
             }
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #330. The physics engine says the object is over its limit on how complex a physical
+        /// object may be. The owner is told and the object is made non-physical, as for PhysicsOutOfBounds (only the root
+        /// part's actor is listened to). <paramref name="detail"/> is what the engine counted.
+        /// </summary>
+        public void PhysicsComplexityError(string detail)
+        {
+            ParentGroup?.PhysicsTooComplex(detail);
         }
 
         public void PhysicsRequestingTerseUpdate()
@@ -4072,6 +4096,34 @@ namespace OpenSim.Region.Framework.Scenes
             Force = force;
         }
 
+        /// <summary>
+        /// [Confluence] Tranquillity #332. llSetForce on the object: <paramref name="force"/> in region axes (a local force
+        /// already turned by the caller), and whether the script gave it as local. Stored for llGetForce and handed to the
+        /// physics actor, which may follow the object's rotation with a local one (PhysicsActor.SetScriptForce).
+        /// </summary>
+        public void SetForce(Vector3 force, bool local)
+        {
+            if (ParentGroup != null && ParentGroup.RootPart != null && ParentGroup.RootPart != this)
+            {
+                ParentGroup.RootPart.SetForce(force, local);
+                return;
+            }
+            m_force = force;
+            PhysActor?.SetScriptForce(force, local);
+        }
+
+        /// <summary>llSetTorque on the object, as <see cref="SetForce(Vector3, bool)"/> is for a force.</summary>
+        public void SetTorque(Vector3 torque, bool local)
+        {
+            if (ParentGroup != null && ParentGroup.RootPart != null && ParentGroup.RootPart != this)
+            {
+                ParentGroup.RootPart.SetTorque(torque, local);
+                return;
+            }
+            m_torque = torque;
+            PhysActor?.SetScriptTorque(torque, local);
+        }
+
         public PhysicsInertiaData PhysicsInertia
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -4119,16 +4171,35 @@ namespace OpenSim.Region.Framework.Scenes
                 if (type == (int)Vehicle.TYPE_NONE)
                 {
                     if (_parentID ==0 && PhysActor != null)
+                    {
                         PhysActor.VehicleType = (int)Vehicle.TYPE_NONE;
+                        StopTargetsForVehicleType();
+                    }
                     return;
                 }
                 m_vehicleParams = new SOPVehicle();
                 m_vehicleParams.ProcessTypeChange((Vehicle)type);
                 {
                     if (_parentID ==0 && PhysActor != null)
+                    {
                         PhysActor.VehicleType = type;
+                        StopTargetsForVehicleType();
+                    }
                     return;
                 }
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #333. An engine that follows InWorldz (PhysicsActor.VehicleTypeStopsTargets) ends the
+        /// object's llRotLookAt and llMoveToTarget when a script sets its vehicle type, whatever the type.
+        /// </summary>
+        private void StopTargetsForVehicleType()
+        {
+            if (PhysActor is { VehicleTypeStopsTargets: true } && ParentGroup is not null)
+            {
+                ParentGroup.StopMoveToTarget();
+                ParentGroup.StopLookAt();
+            }
         }
 
         public void SetVehicleFlags(int param, bool remove)
@@ -5343,6 +5414,7 @@ namespace OpenSim.Region.Framework.Scenes
 
                     pa.OnRequestTerseUpdate += PhysicsRequestingTerseUpdate;
                     pa.OnOutOfBounds += PhysicsOutOfBounds;
+                    pa.OnComplexityError += PhysicsComplexityError;
 
                     if (_parentID != 0 && _parentID != LocalId)
                     {
@@ -5393,6 +5465,7 @@ namespace OpenSim.Region.Framework.Scenes
                 pa.OnCollisionUpdate -= PhysicsCollision;
                 pa.OnRequestTerseUpdate -= PhysicsRequestingTerseUpdate;
                 pa.OnOutOfBounds -= PhysicsOutOfBounds;
+                pa.OnComplexityError -= PhysicsComplexityError;
                 pa.OnPhysicsShapeFallback -= PhysicsShapeFallback;
 
                 ParentGroup.Scene.PhysicsScene.RemovePrim(pa);

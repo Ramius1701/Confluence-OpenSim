@@ -1786,7 +1786,8 @@ namespace OpenSim.Region.Framework.Scenes
                 remoteClient?.SendPartPhysicsProprieties(part);
             }
 
-            if (wantedPhys != group.UsesPhysics && remoteClient is not null)
+            // [Confluence] Tranquillity #330: an engine's complexity limit has told the owner why already
+            if (wantedPhys != group.UsesPhysics && remoteClient is not null && !group.TakePhysicsTooComplexTold())
             {
                 if(m_parentScene.m_linksetPhysCapacity != 0)
                     remoteClient.SendAlertMessage("Object physics cancelled because it exceeds limits for physical prims, either size or number of primswith shape type not set to None");

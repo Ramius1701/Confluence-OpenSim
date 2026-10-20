@@ -2476,6 +2476,19 @@ namespace OpenSim.Region.Framework.Scenes
         /// </summary>
         public void ApplyPhysics()
         {
+            BeginPhysicsApply(false);
+            try
+            {
+                ApplyPhysicsToParts();
+            }
+            finally
+            {
+                EndPhysicsApply();
+            }
+        }
+
+        private void ApplyPhysicsToParts()
+        {
             SceneObjectPart[] parts = m_parts.GetArray();
             if (parts.Length > 1)
             {
@@ -2820,6 +2833,100 @@ namespace OpenSim.Region.Framework.Scenes
                 RootPart.Velocity = Vector3.Zero; // In case source is moving
         }
 
+        // [Confluence] Tranquillity #330. How many operations that give this object's parts their physical status are
+        // running (UpdateFlags, ApplyPhysics, LinkToGroup), and whether the physics engine said, during them, that the
+        // object is too complex to be physical. The refusal is carried out when the outermost of them ends, never in the
+        // middle of one going through the parts. The engine may report from any thread, so these fields are read and
+        // written under m_physicsRefusalLock; the alert and the change of physical status are done outside it.
+        private readonly object m_physicsRefusalLock = new();
+        private int m_physicsApplyDepth;
+        private bool m_physicsTooComplex;
+        private string m_physicsTooComplexDetail = "";
+        private bool m_physicsTooComplexTold;
+
+        // The owner's message and the refusal follow what InWorldz Halcyon does when an object is over its limit (an
+        // alert, then the physics flag cleared). No Halcyon code is copied.
+        /// <summary>
+        /// The physics engine says this object is over its limit on how complex a physical object may be (see
+        /// <see cref="PhysicsActor.OnComplexityError"/>). The owner is told, and the object is made non-physical, as
+        /// llSetStatus(STATUS_PHYSICS, FALSE) would: when the operation making it physical has finished, or at once when
+        /// none is running. An engine that counts as the parts arrive reports again as the count grows.
+        /// </summary>
+        /// <param name="detail">What the engine counted, for example "(300 of 256 convex hulls)".</param>
+        public void PhysicsTooComplex(string detail)
+        {
+            if (m_scene is null || IsDeleted || !UsesPhysics)
+                return;
+
+            string carryOut = null;
+            lock (m_physicsRefusalLock)
+            {
+                m_physicsTooComplex = true;
+                m_physicsTooComplexDetail = detail;
+                if (m_physicsApplyDepth == 0)
+                    carryOut = TakePhysicsRefusal();
+            }
+
+            if (carryOut is not null)
+                CarryOutPhysicsRefusal(carryOut);
+        }
+
+        /// <summary>
+        /// True once, after the owner has been told this object was too complex to be physical. The build tool uses it
+        /// to skip its own, less specific, message.
+        /// </summary>
+        public bool TakePhysicsTooComplexTold()
+        {
+            lock (m_physicsRefusalLock)
+            {
+                bool told = m_physicsTooComplexTold;
+                m_physicsTooComplexTold = false;
+                return told;
+            }
+        }
+
+        // resetTold: an operation that starts the outermost change clears the mark of an earlier refusal.
+        private void BeginPhysicsApply(bool resetTold)
+        {
+            lock (m_physicsRefusalLock)
+            {
+                if (resetTold && m_physicsApplyDepth == 0)
+                    m_physicsTooComplexTold = false;
+                m_physicsApplyDepth++;
+            }
+        }
+
+        private void EndPhysicsApply()
+        {
+            string carryOut = null;
+            lock (m_physicsRefusalLock)
+            {
+                if (--m_physicsApplyDepth == 0)
+                    carryOut = TakePhysicsRefusal();
+            }
+
+            if (carryOut is not null)
+                CarryOutPhysicsRefusal(carryOut);
+        }
+
+        // Called with m_physicsRefusalLock held. Returns the detail of a refusal that is to be carried out now, or null.
+        private string TakePhysicsRefusal()
+        {
+            if (!m_physicsTooComplex)
+                return null;
+            m_physicsTooComplex = false;
+            return m_physicsTooComplexDetail;
+        }
+
+        // Called without the lock: it alerts the owner and changes the physical status (scene and engine calls).
+        private void CarryOutPhysicsRefusal(string detail)
+        {
+            m_scene?.RequestModuleInterface<IDialogModule>()?.SendAlertToUser(OwnerID, "Object was too complex to be made physical: " + detail);
+            ScriptSetPhysicsStatus(false);
+            lock (m_physicsRefusalLock)
+                m_physicsTooComplexTold = true;   // after it: making the object non-physical clears the mark for the next change
+        }
+
         public void ScriptSetPhysicsStatus(bool usePhysics)
         {
             if (usePhysics)
@@ -3002,7 +3109,7 @@ namespace OpenSim.Region.Framework.Scenes
         /// <param name="height">Height to hover.  Height of zero disables hover.</param>
         /// <param name="hoverType">Determines what the height is relative to </param>
         /// <param name="tau">Number of seconds over which to reach target</param>
-        public void SetHoverHeight(float height, PIDHoverType hoverType, float tau)
+        public void SetHoverHeight(float height, PIDHoverType hoverType, float tau, bool repel = false)
         {
             if (IsAttachment)
             {
@@ -3025,6 +3132,7 @@ namespace OpenSim.Region.Framework.Scenes
                         m_scriptHoverHeight = height;
                         m_scriptHoverType = hoverType;
                         m_scriptHoverTau = tau;
+                        m_scriptHoverRepel = repel;
                     }
                     if (m_grabbed)
                         return;
@@ -3034,6 +3142,7 @@ namespace OpenSim.Region.Framework.Scenes
                         pa.PIDHoverHeight = height;
                         pa.PIDHoverType = hoverType;
                         pa.PIDHoverTau = tau;
+                        pa.PIDHoverRepel = repel;   // [Confluence] Tranquillity #331
                         pa.PIDHoverActive = true;
                     }
                     else
@@ -3396,6 +3505,19 @@ namespace OpenSim.Region.Framework.Scenes
         // Link an existing group to this group.
         // The group being linked need not be a linkset -- it can have just one prim.
         public void LinkToGroup(SceneObjectGroup objectGroup, bool insert)
+        {
+            BeginPhysicsApply(false);
+            try
+            {
+                LinkPartsToGroup(objectGroup, insert);
+            }
+            finally
+            {
+                EndPhysicsApply();
+            }
+        }
+
+        private void LinkPartsToGroup(SceneObjectGroup objectGroup, bool insert)
         {
             //m_log.DebugFormat(
             //    "[SCENE OBJECT GROUP]: Linking group with root part {0}, {1} to group with root part {2}, {3}",
@@ -3974,6 +4096,7 @@ namespace OpenSim.Region.Framework.Scenes
         private float m_scriptHoverHeight;
         private float m_scriptHoverTau;
         private PIDHoverType m_scriptHoverType;
+        private bool m_scriptHoverRepel;
 
         /// <summary>
         /// If object is physical, steer it to the cursor with the physics actor's move-to-target
@@ -4008,7 +4131,7 @@ namespace OpenSim.Region.Framework.Scenes
 
                 if (pa is not null && pa.IsPhysical)
                 {
-                    if (IsPhysicalDragRefused())
+                    if (IsPhysicalDragRefused(pa.AllowsVehicleGrab))
                     {
                         EndGrab();
                         return;
@@ -4046,11 +4169,13 @@ namespace OpenSim.Region.Framework.Scenes
 
         /// <summary>
         /// Whether a drag or a turn of the physical root body is refused, for the mouse drag and the rotate-drag alike.
-        /// A drag moves the root's body, so the root's block applies whichever part was grabbed.
+        /// A drag moves the root's body, so the root's block applies whichever part was grabbed. A vehicle is refused unless
+        /// the engine says it runs a drag of a vehicle (PhysicsActor.AllowsVehicleGrab, [Confluence] Tranquillity #333); the
+        /// rotate-drag never does.
         /// </summary>
-        private bool IsPhysicalDragRefused()
+        private bool IsPhysicalDragRefused(bool allowVehicle = false)
             => m_rootPart.BlockGrab || IsSelected || IsAttachment
-                || m_rootPart.VehicleType != (int)Vehicle.TYPE_NONE || GetSittingAvatarsCount() > 0;
+                || (!allowVehicle && m_rootPart.VehicleType != (int)Vehicle.TYPE_NONE) || GetSittingAvatarsCount() > 0;
 
         /// <summary>
         /// Point the root actor's move-to-target at the dragged point. The first update of a drag also takes the target
@@ -4089,6 +4214,7 @@ namespace OpenSim.Region.Framework.Scenes
                 if (m_scriptMoveActive)
                     pa.PIDActive = false; // so an engine that reads tau when the target is switched on takes the drag's
 
+                pa.Grabbed = true; // before the target is switched on: an engine reads it when the target starts to act (#333)
                 pa.PIDTau = GrabTau;
                 pa.PIDTarget = target;
                 pa.PIDActive = true;
@@ -4146,12 +4272,14 @@ namespace OpenSim.Region.Framework.Scenes
                 }
                 else
                     pa.PIDActive = false;
+                pa.Grabbed = false;
 
                 if (m_scriptHoverActive)
                 {
                     pa.PIDHoverHeight = m_scriptHoverHeight;
                     pa.PIDHoverType = m_scriptHoverType;
                     pa.PIDHoverTau = m_scriptHoverTau;
+                    pa.PIDHoverRepel = m_scriptHoverRepel;
                     pa.PIDHoverActive = true;
                 }
             }
@@ -4427,6 +4555,19 @@ namespace OpenSim.Region.Framework.Scenes
         /// <param name="SetPhantom"></param>
         /// <param name="SetVolumeDetect"></param>
         public void UpdateFlags(bool UsePhysics, bool SetTemporary, bool SetPhantom, bool SetVolumeDetect)
+        {
+            BeginPhysicsApply(true);
+            try
+            {
+                UpdatePartFlags(UsePhysics, SetTemporary, SetPhantom, SetVolumeDetect);
+            }
+            finally
+            {
+                EndPhysicsApply();
+            }
+        }
+
+        private void UpdatePartFlags(bool UsePhysics, bool SetTemporary, bool SetPhantom, bool SetVolumeDetect)
         {
             if (m_scene is null || IsDeleted)
                 return;

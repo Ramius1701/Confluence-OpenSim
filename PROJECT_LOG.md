@@ -29169,3 +29169,36 @@ the name they were written under. The product/version string ("OpenSim-Confluenc
 - Held, not ported: #337 (draft; its author has not yet verified it on a running grid, and it changes crossing order,
   drag clean-up and ubODE's change enum even with the setting off). #325 (mesher profile rings) and #326 (Jolt natives
   from the package) go with the Jolt session.
+
+## Donor check 2026-10-21, and Tranquillity #330-#333 ported
+
+Fetched both active donors. opensim-master and Tranquillity's release/v1.1: nothing new. Tranquillity develop
+2667e973b6..7c74cb6bed merged, on 10-19, the Jolt series (#329, #334, #338-#344, about 80,000 lines with tests), #337
+(standing riders across borders), #330-#333 (small physics/script changes), #335 (a sculpt test tolerance only) and
+#336 (identical to the PR version ported 2026-10-19). New open PRs 10-20: #351 (three optional hooks), #352 (voice
+project references), #353-#356 (avatar-to-avatar, group and conference voice calls and a shared call store; stacked,
+about 35,000 lines; they touch the shared region module and session store as well as Janus, so whether they would work
+with Confluence-Voice needs checking there first).
+
+Ported now (all merged upstream; our scene files differ in layout, so by hand):
+- **#330**: an engine that limits how complex a physical object may be raises `PhysicsActor.OnComplexityError`; the
+  group alerts the owner ("Object was too complex to be made physical: ...") and makes it non-physical, after the
+  operation that is giving the parts their physical status (UpdateFlags, ApplyPhysics, LinkToGroup) has finished; the
+  build tool skips its own, vaguer message then. A part's physics cost is reported as the engine's shape count when it
+  says so (`PhysicsCostIsShapeCount`). ubODE raises nothing, so nothing changes on it.
+- **#331**: `llGroundRepel` hands the actor the repel flag and the height as the script gave it. **YEngine fix on
+  Casperia:** it added the ground (or water) height itself and ubODE adds it again, so a repelled object hovered at
+  about twice the height asked. Phlox `llSetHoverHeight` / `llGroundRepel` with water TRUE now use GroundAndWater (was
+  Water), as on SL and Halcyon. The repel flag survives a mouse drag.
+- **#332**: `llSetForce` / `llSetTorque` (YEngine and Phlox) and `llApplyRotationalImpulse`'s torque path say whether the
+  vector was local (`SetScriptForce` / `SetScriptTorque`); the default does what it did.
+- **#333**: a vehicle can be mouse-dragged only when the engine says it supports it (`AllowsVehicleGrab`, default
+  false, so unchanged); the actor is told `Grabbed` during a drag (ubODE ignores it); an engine with
+  `VehicleTypeStopsTargets` ends move-to and look-at on a vehicle type change (default false).
+
+Tests from the PRs (7 files, 40 tests, all pass): SceneObjectComplexityTests, HoverWaterFlagTests,
+SceneObjectHoverRepelTests, LSL_ApiGroundRepelTests (2 of its 4 fail against the old YEngine code), LocalForceFlagTests,
+LSL_ApiLocalForceTests, SceneObjectVehicleRulesTests.
+
+Also: the folder rename needed prebuild re-run (it writes absolute HintPaths); ConfluenceVoice is now Confluence-Voice
+(`github.com/Ramius1701/Confluence-Voice`, live at `S:\Opensim\Confluence-Voice`).
