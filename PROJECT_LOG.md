@@ -29019,3 +29019,18 @@ Tests in the Phlox suite: GroupsMessagingSessionSendTests and NPCCreateAgentIdTe
 JanusSessionIdAndSharedServiceTests (written for xunit from the PR's two NUnit files; the test project now references
 the three Janus DLLs). Checked against the unfixed code: the conference-echo test and 7 of the 11 Janus tests fail
 there. Still open upstream and not taken: #347-#350 (Janus settings, hardening, secrets, parcel voice checks).
+
+## Deployed: wind series, donor batches, weather 0.6.2 (2026-10-19/20)
+
+- 2026-10-19 evening: `64f581c2db` (wind series, opensim #68/#63, Tranquillity #336/#301/#319, weather 0.6.2):
+  299 files, md5-verified; Robust and the online regions relaunched after the copy; errors at baseline.
+- 2026-10-20, with the whole grid down: `a0456947e9` (Tranquillity #346/#345), 299 files md5-verified (one transient
+  mismatch on an unchanged BouncyCastle DLL, clean on the second pass). Robust 13:40, regions 13:41-13:43; every
+  region at its baseline. ZephyrWind and wind volumes stay off (ini). The gatekeeper's host resolves to its public
+  address on the grid host, so `PublicAddress` is not needed here. A stale 4.1 GB grid-root OpenSim.log (unwritten
+  since 2026-09-28) was deleted at the owner's request.
+- Build note: a hand-run prebuild step had also added the test projects to OpenSim.sln, which makes a
+  `--no-incremental` build fail in Tests.Common (~737 errors); removed them (the sln lists only the 5 Jolt/Phlox
+  projects).
+- Docs brought up to date: FEATURES (Janus ids, Hypergrid child agents and public address, the small fixes),
+  TESTING 5.11/5.12, ROADMAP donor status.

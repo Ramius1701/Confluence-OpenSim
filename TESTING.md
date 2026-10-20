@@ -122,6 +122,10 @@ Needs a parcel you own, a second account's objects on it, and a script whose own
 - [ ] 5.9 Experiences: grant an Experience on one object, then touch a second object of the same Experience - no
       second prompt, also after a relog and a region crossing.
 - [ ] 5.10 A Hypergrid teleport to another grid and back with a scripted attachment worn: the scripts keep running.
+- [ ] 5.11 Start an ad-hoc chat with two or more people (select them in Friends or People, then IM): each line
+      reaches the others once and the sender does not get their own line back; group chat still works as before.
+- [ ] 5.12 After a Hypergrid teleport out of a region with neighbours, the region's console `show users` (or the
+      neighbours' agent counts) no longer lists the traveller as a child agent in the regions around it.
 
 ## 6. Bots
 

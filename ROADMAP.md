@@ -244,9 +244,11 @@ checked by `Tools/data-backend-check`.)*
   Still open from 2026-10-14: Legion's Jolt work (mesh asset fetch, hulls, edge removal, rotation target).
   Tranquillity's core physics fixes #282/#283/#287/#288/#291/#296/#297 were ported 2026-10-18.
 - **From the 2026-10-18 donor fetch** (ported that day: #295, #314, #173, #323, #321's core part, Legion's 10-14
-  notices with #311, opensim-master's XFF comments). Waiting: Tranquillity's wind series (#315 ZephyrWind, #320 wind
-  volumes, #322 snapshot - still being built; the weather addon's wind could use it); #319 (it replaces #301's DNS
-  lookup with `[UserAgentService] PublicAddress`; take it, not #301, once merged); #302 still open. Legion's
+  notices with #311, opensim-master's XFF comments). Since done: the wind series (#315/#320/#321/#322) and #301/#319
+  (2026-10-19), opensim #68/#63 and Tranquillity #336 (2026-10-19), Tranquillity's open PRs #345/#346 (2026-10-20);
+  all deployed. Waiting on the owner: #302 (viewer addresses; a regions-table migration) and #327 (built on it),
+  #337 (standing riders across borders; open PR), the Jolt upstreaming series #325/#326/#328-#334/#338-#344, and the
+  Janus PRs #347-#350 (open; #350's parcel voice checks touch the region module ConfluenceVoice uses too). Legion's
   `lane/jolt` 10-14..17 (~240 commits: Halcyon vehicle motors on a 15 ms clock, move-to / hover / look-at kept across
   a crossing, one copy kept when a crossing fails, size limits, mouse drag, spike cut, and an engine side of #314's
   `CaptureVehicleRunningState`) - its own session, while Jolt stays off live.

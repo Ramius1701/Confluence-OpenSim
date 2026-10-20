@@ -351,7 +351,10 @@ subscription required:
   voice already uses (no viewer plugin needed) via a pluggable
   `SpatialVoiceService`/`NonSpatialVoiceService` backend connector -
   its default target (Janus Gateway) needs a Linux host and can't be
-  run or verified on this Windows grid.
+  run or verified on this Windows grid. Since 2026-10-20 (Tranquillity
+  #345) it reads Janus's 64-bit session and handle ids (they read as 0,
+  so the service disabled itself on its first request), and one service
+  serves both roles when both settings name the same DLL.
 - **ConfluenceVoice** — a purpose-built, Windows-native voice server
   filling that backend role, so the whole stack runs without Linux
   infrastructure. Its own separate project
@@ -634,6 +637,15 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
 - Hypergrid teleports retry once on a pure transport failure (no reply
   reached the source at all) instead of failing outright on any single
   transient blip.
+- After a Hypergrid teleport the avatar's child agents in the regions
+  around the old one are closed (opensim #63); the jump was treated as
+  local transit and they were left behind.
+- The grid's public address for Hypergrid client verification (Tranquillity
+  #301/#319) is looked up again every `[UserAgentService]
+  ExternalIPRefreshMinutes` (default 30), so a dynamic DNS change heals
+  without restarting Robust, and `[UserAgentService] PublicAddress` names
+  it when the host resolves its own gatekeeper name to a LAN address. A
+  failed lookup warns instead of stopping Robust.
 - Avatar baking/"cloud avatar" recovery is active on Hypergrid arrivals
   as well as local logins (previously local-only).
 - A teleport (landmark, map click, or scripted `llTeleportAgent`)
@@ -839,6 +851,13 @@ NaN/Infinity before being applied.
   it is collected (2026-10-13).
 - **Thread-safe Null data stores** (Tranquillity #222): the in-memory presence, authentication and
   avatar stores a standalone shares across its regions are locked.
+- **Small fixes from the 2026-10-19/20 donor batches:** a line in an ad-hoc (multi-person, non-group)
+  chat is no longer echoed back to its sender by the groups module (Tranquillity #346); an NPC cannot
+  be created with an agent id a presence already holds (#346); a dynamic texture whose prim has gone
+  logs its failed URL instead of throwing (opensim #68); host names in
+  `OutboundDisallowForUserScriptsExcept` are looked up again every
+  `OutboundDisallowForUserScriptsExceptRefreshMinutes` (default 30), so an excepted host on dynamic
+  DNS keeps working (Tranquillity #336).
 
 ## Database
 
