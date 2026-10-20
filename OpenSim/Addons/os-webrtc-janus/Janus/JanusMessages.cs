@@ -429,9 +429,11 @@ namespace osWebRtcVoice
             };
 
         }
+        // The viewer's candidates, per the Janus trickle API: an array goes as "candidates", a single candidate
+        // object as "candidate". No other members ([Confluence] Tranquillity #348: "viewer_session" is not part of
+        // the API and is no longer sent).
         public TrickleReq(JanusViewerSession pVSession, OSD pCandidates) : base("trickle")
         {
-            m_message["viewer_session"] = pVSession.ViewerSessionID;
             if (pCandidates is OSDArray)
                 m_message["candidates"] = pCandidates;
             else
@@ -675,10 +677,14 @@ namespace osWebRtcVoice
     // ==============================================================
     public class AudioBridgeDestroyRoomReq : PluginMsgReq
     {
-        public AudioBridgeDestroyRoomReq(int pRoomId) : base(new OSDMap() {
+        public AudioBridgeDestroyRoomReq(int pRoomId) : this(pRoomId, true)
+        {
+        }
+        // [Confluence] Tranquillity #348: the empty-room reaper removes rooms it never saved, so not "permanent".
+        public AudioBridgeDestroyRoomReq(int pRoomId, bool pPermanent) : base(new OSDMap() {
                                                 { "request", "destroy" },
                                                 { "room", pRoomId },
-                                                { "permanent", true }
+                                                { "permanent", pPermanent }
                                             })
         {
         }

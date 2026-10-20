@@ -138,6 +138,9 @@ namespace osWebRtcVoice
                     if (m_Enabled)
                     {
                         _MessageDetails = m_Config.GetBoolean("MessageDetails", false);
+                        // [WebRtcVoice] RefusalCacheSeconds (default 5; 0 disables).
+                        m_refusalCache = new ProvisionRefusalCache(TimeSpan.FromSeconds(
+                            Math.Max(0, m_Config.GetInt("RefusalCacheSeconds", ProvisionRefusalCache.DefaultSeconds))));
                         m_log.Info($"{LogHeader} WebRtcVoiceService enabled");
                     }
                 }
@@ -417,7 +420,64 @@ namespace osWebRtcVoice
         /// <param name="agentID"></param>
         /// <param name="caps"></param>
         /// <returns></returns>
+        // [Confluence] Tranquillity #348: the provision refusal throttle. A stock viewer re-provisions immediately after
+        // ANY refusal (about twice a second), and with the parcel rules applied everywhere (#350) a voice-off or banned
+        // parcel refuses often. A 403/404/501 refusal of a "local" provision is remembered for RefusalCacheSeconds per
+        // (agent, region) and replayed to the retries before the estate and parcel checks run again; it is forgotten on
+        // a successful provision or a logout. At most one "refused again" line per (agent, region) per window.
+        private ProvisionRefusalCache m_refusalCache = new ProvisionRefusalCache(TimeSpan.FromSeconds(ProvisionRefusalCache.DefaultSeconds));
+
+        // What one provision call decided, read back by the wrapper once the handler has answered.
+        private sealed class ProvisionCallContext
+        {
+            public bool IsLocal;                 // the request was a "local" (spatial) provision
+            public bool IsLogout;                // the request was a teardown ({logout: true})
+            public bool AnsweredFromCache;       // the refusal cache answered this call
+            public bool Provisioned;             // the voice service returned a success map (viewer_session)
+        }
+
+        // A cached refusal (the exact status and body the viewer got).
+        private sealed record CachedRefusal(int StatusCode, byte[] Body);
+
+        private static bool IsCacheableRefusalStatus(int pStatusCode) =>
+            pStatusCode == (int)HttpStatusCode.Forbidden || pStatusCode == (int)HttpStatusCode.NotFound
+            || pStatusCode == (int)HttpStatusCode.NotImplemented;
+
         public void ProvisionVoiceAccountRequest(IOSHttpRequest request, IOSHttpResponse response, UUID agentID, Scene scene)
+        {
+            var ctx = new ProvisionCallContext();
+            ProvisionVoiceAccountRequestCore(request, response, agentID, scene, ctx);
+
+            UUID regionId = scene.RegionInfo.RegionID;
+            if (ctx.IsLogout || ctx.Provisioned)
+            {
+                m_refusalCache.Clear(agentID, regionId);
+            }
+            else if (ctx.IsLocal && !ctx.AnsweredFromCache && IsCacheableRefusalStatus(response.StatusCode))
+            {
+                int suppressed = m_refusalCache.RecordRefusal(agentID, regionId, new CachedRefusal(response.StatusCode, response.RawBuffer));
+                if (suppressed > 0)
+                    m_log.InfoFormat("{0}[ProvisionVoice]: provision from {1} in \"{2}\" refused again (cached, {3} retries suppressed)",
+                        LogHeader, agentID, scene.Name, suppressed);
+            }
+        }
+
+        // Answers a repeat of a refusal this (agent, region) got within RefusalCacheSeconds straight from the cache.
+        private bool TryReplayCachedRefusal(UUID agentID, Scene scene, IOSHttpResponse response, ProvisionCallContext ctx)
+        {
+            if (m_refusalCache.TryGetRefusal(agentID, scene.RegionInfo.RegionID, out object cachedRefusal)
+                && cachedRefusal is CachedRefusal cached)
+            {
+                ctx.AnsweredFromCache = true;
+                response.RawBuffer = cached.Body;
+                response.StatusCode = cached.StatusCode;
+                return true;
+            }
+            return false;
+        }
+
+        private void ProvisionVoiceAccountRequestCore(IOSHttpRequest request, IOSHttpResponse response, UUID agentID, Scene scene,
+            ProvisionCallContext ctx)
         {
             if(request.HttpMethod != "POST")
             {
@@ -469,6 +529,9 @@ namespace osWebRtcVoice
             if (_MessageDetails) m_log.Debug($"{LogHeader}[ProvisionVoice]: request: {map}");
 
             IVoiceViewerSession vSession = null;
+
+            // A teardown ({logout: true}) clears this agent's cached refusal in the wrapper.
+            ctx.IsLogout = map.TryGetBool("logout", out bool isLogoutRequest) && isLogoutRequest;
 
             if (map.TryGetString("viewer_session", out string viewerSessionId))
             {
@@ -540,6 +603,12 @@ namespace osWebRtcVoice
                     //do fully not trust viewers voice parcel requests
                     if (channelType == "local")
                     {
+                        // A repeat of a refusal this agent got a moment ago is answered from the cache, before the
+                        // estate and parcel checks run again.
+                        ctx.IsLocal = true;
+                        if (TryReplayCachedRefusal(agentID, scene, response, ctx))
+                            return;
+
                         if (!scene.RegionInfo.EstateSettings.AllowVoice)
                         {
                             m_log.Debug($"{LogHeader}[ProvisionVoice]:region \"{scene.Name}\": voice not enabled in estate settings");
@@ -700,11 +769,20 @@ namespace osWebRtcVoice
             }
 
             if (_MessageDetails) m_log.Debug($"{LogHeader}[ProvisionVoice]: response: {resp}");
+            ctx.Provisioned = resp.ContainsKey("viewer_session");   // a success map clears the refusal cache
 
             response.RawBuffer = OSDParser.SerializeLLSDXmlToBytes(resp);
-            response.StatusCode = (int)HttpStatusCode.OK;
+            // [Confluence] Tranquillity #348: a capacity rejection carries the mixer's ROOM_FULL code; answer HTTP 409
+            // Conflict, which the viewer maps to ERROR_CHANNEL_FULL. Every other answer keeps its OK status.
+            if (resp.TryGetInt("error_code", out int provErrorCode) && provErrorCode == ROOM_FULL_ERROR_CODE)
+                response.StatusCode = (int)HttpStatusCode.Conflict;
+            else
+                response.StatusCode = (int)HttpStatusCode.OK;
             return;
         }
+
+        // The Janus AudioBridge's "room full" error code (a voice service passes it on in "error_code").
+        public const int ROOM_FULL_ERROR_CODE = 495;
 
         public void VoiceSignalingRequest(IOSHttpRequest request, IOSHttpResponse response, UUID agentID, Scene scene)
         {

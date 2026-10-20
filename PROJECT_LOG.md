@@ -29063,3 +29063,31 @@ back to the default (Confluence addition). The PR's other half - advertising `[W
 as `stun-servers` - Confluence already had in its own form (`TryGetStunServers`, both `VoiceStunServers` and
 `stun-servers`), so it is not taken. Documented in bin/config/os-webrtc-janus.ini.example. Tests:
 WebRtcVoiceJanusPluginNameTests (from the PR, plus the blank-value case).
+
+## Tranquillity PR #348 (open upstream): Janus request hardening, refusal cache, full rooms (2026-10-20)
+
+Confluence's Janus add-on had diverged a long way (its own voice fixes since 2026-09: room recovery, candidate
+limits, rejoin cooldown, long-value parsing), so #348 was taken fix by fix against the PR's list rather than file by
+file:
+
+- **Taken.** Ack'd Janus requests wait at most `RequestTimeoutMs` (default 5000) and fail with "timeout"; destroying
+  the session or the long poll ending fails whatever is still waiting; an event now claims (removes) its request, so
+  answered entries no longer pile up in the outstanding table. A session whose plugin attach failed is destroyed.
+  Trickles no longer carry the non-API `viewer_session` member (Confluence already forwarded the candidates). Every
+  room select asks the mixer to create the room ("already exists" = success, logged at debug), one create at a time
+  per room number, retried once when inconclusive - the old room cache could go stale and, on a race, destroyed a room
+  it had just made. `FoldHashToRoom`: `Math.Abs(int.MinValue)` threw, failing provisioning for good on that one hash.
+  Empty rooms the service created are removed after `EmptyRoomGraceSeconds` (stock plugin only). In the region
+  module (shared with ConfluenceVoice): the refused-provision cache (`[WebRtcVoice] RefusalCacheSeconds`, default 5),
+  which matters more now that #350 refuses on voice-off and banned parcels everywhere, and a full room (error_code
+  495, carried by the Janus service's failure answer) answers HTTP 409.
+- **Already here.** 64-bit participant ids; forwarding trickled candidates; the Vivox-probe log level.
+- **Not taken.** The close-time teardown machinery (`VoiceViewerSession.CloseCapture`, the service module's
+  CloseTeardown and its console command): it is built around Tranquillity's service-module flow. Confluence's region
+  module already tears down on logout (root region) and on presence removal (each neighbour region, which on a
+  one-region-per-process grid is its own process). The opt-in tests against a real gateway (StockJanus, aiortc).
+
+Tests: ProvisionRefusalCache, EmptyRoomReaper (the sweep and config tests), RoomNumberFold and RoomSelectionConcurrency
+converted from the PR; WebRtcVoiceJanusRequestTimeoutTests (own, against a local listener that acks and never
+answers); three module tests (409, another failure stays 200, a refusal replayed until a logout - the first and third
+fail against the pre-#348 module). Settings documented in bin/config/os-webrtc-janus.ini.example; FEATURES (Voice).

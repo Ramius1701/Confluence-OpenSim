@@ -24,6 +24,10 @@
     ; (VoiceStunServers). Comma-separated host:port list. Firestorm 7.2.4+
     ; requires this to be set or the viewer's WebRTC peer connection is refused.
     ; StunServers = stun2.l.google.com:19302,stun.l.google.com:19302
+    ; A refused voice request (voice off on the parcel, a ban, voice off in the estate) is answered again from a cache
+    ; for this many seconds, so the viewer's immediate retries (about two a second) do not repeat the checks.
+    ; 0 turns the cache off. Default 5.
+    ;RefusalCacheSeconds = 5
 
 [JanusWebRtcVoice]
     ; Only needed if SpatialVoiceService/NonSpatialVoiceService above are set
@@ -47,3 +51,12 @@
     ; AudioBridge, flat non-spatial mixing). Set janus.plugin.slvoice to use a spatial mixer that implements
     ; that plugin.
     ;PluginName = janus.plugin.audiobridge
+
+    ; How long, in milliseconds, a Janus request that is answered with an ack waits for its result before it fails.
+    ; Default 5000.
+    ;RequestTimeoutMs = 5000
+    ; Remove rooms this region's service created once they have stood empty for EmptyRoomGraceSeconds. On by default
+    ; with the stock AudioBridge plugin, which otherwise keeps every emptied room until Janus restarts; never with
+    ; another plugin (the slvoice mixer removes its own).
+    ;RemoveEmptyRooms = true
+    ;EmptyRoomGraceSeconds = 60

@@ -361,6 +361,13 @@ subscription required:
   parcel's voice-off setting and ban list used to be skipped there; they now apply on every parcel and on
   TaxFree estates too. A neighbour region's (child agent's) request keeps the estate room unless it
   names a parcel near the avatar. Applies to ConfluenceVoice and Janus alike (the region module is shared).
+- **Voice request hygiene** (Tranquillity #348, 2026-10-20): a refused voice request is replayed to the
+  viewer's immediate retries for `[WebRtcVoice] RefusalCacheSeconds` (default 5) instead of re-running the
+  checks twice a second, and a full room answers HTTP 409 (the viewer's "channel full"). For Janus: requests
+  wait for their result at most `RequestTimeoutMs` (they waited without limit), a half-built session is
+  destroyed, every join first asks the mixer to create its room (no stale room cache), a room number can no
+  longer be the one value that crashed the calculation, empty rooms the service made are removed after a
+  grace period, and `[JanusWebRtcVoice] PluginName` picks the mixer plugin (#347).
 - **ConfluenceVoice** — a purpose-built, Windows-native voice server
   filling that backend role, so the whole stack runs without Linux
   infrastructure. Its own separate project

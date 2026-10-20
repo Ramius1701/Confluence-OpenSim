@@ -63,6 +63,19 @@ namespace osWebRtcVoice
         private int _MaxSignalingCandidatesPerRequest = 20;
         // Delay between a disconnect and next join for same agent.
         private int _RejoinCooldownMs = 250;
+        // [Confluence] Tranquillity #348: [JanusWebRtcVoice] RequestTimeoutMs - how long an ack'd Janus request
+        // waits for its event before it fails.
+        private int _JanusRequestTimeoutMs = JanusSession.DefaultRequestTimeoutMs;
+
+        // [Confluence] Tranquillity #348: [JanusWebRtcVoice] RemoveEmptyRooms (default true) removes rooms this service
+        // created once they have stood empty for EmptyRoomGraceSeconds (default 60). The stock AudioBridge plugin
+        // otherwise keeps every emptied room until Janus restarts. Off for any other plugin (the slvoice mixer removes
+        // its own empty rooms; a second remover would only race it).
+        private const int RoomReapIntervalMs = 15_000;
+        private EmptyRoomReaper _roomReaper;
+        private Timer _roomReapTimer;
+        private int _roomReapRunning;
+        public EmptyRoomReaper RoomReaper => _roomReaper;
 
         private readonly ConcurrentDictionary<UUID, DateTime> _LastDisconnectByAgent = new();
         private long _VoiceFlowCounter;
@@ -110,12 +123,22 @@ namespace osWebRtcVoice
                         _MaxSignalingCandidatesPerRequest = 0;
                     }
 
+                    _JanusRequestTimeoutMs = janusConfig.GetInt("RequestTimeoutMs", JanusSession.DefaultRequestTimeoutMs);
+                    if (_JanusRequestTimeoutMs <= 0)
+                    {
+                        _log.WarnFormat("{0} RequestTimeoutMs = {1} is not positive; using {2}",
+                            LogHeader, _JanusRequestTimeoutMs, JanusSession.DefaultRequestTimeoutMs);
+                        _JanusRequestTimeoutMs = JanusSession.DefaultRequestTimeoutMs;
+                    }
+
                     _RejoinCooldownMs = janusConfig.GetInt("RejoinCooldownMs", 250);
                     if (_RejoinCooldownMs < 0)
                     {
                         _log.WarnFormat("{0} RejoinCooldownMs < 0 ({1}), using 0", LogHeader, _RejoinCooldownMs);
                         _RejoinCooldownMs = 0;
                     }
+
+                    _roomReaper = CreateRoomReaper(janusConfig, _JanusPluginName);
 
                     if (_Enabled)
                     {
@@ -126,6 +149,7 @@ namespace osWebRtcVoice
                             return;
                         }
                         RegisterConsoleCommands();
+                        StartRoomReaper();
                         _log.Info($"{LogHeader} Enabled");
                     }
                 }
@@ -156,12 +180,17 @@ namespace osWebRtcVoice
         private async Task<bool> ConnectToSessionAndAudioBridge(JanusViewerSession pViewerSession)
         {
             JanusSession janusSession = new(_JanusServerURI, _JanusAPIToken, _JanusAdminURI, _JanusAdminToken, _MessageDetails);
+            janusSession.JanusRequestTimeout = TimeSpan.FromMilliseconds(_JanusRequestTimeoutMs);
             if (await janusSession.CreateSession().ConfigureAwait(false))
             {
                 _log.DebugFormat("{0} JanusSession created", LogHeader);
 
                 // Once the session is created, create a handle to the plugin for rooms
-                JanusAudioBridge audioBridge = new(janusSession, _JanusPluginName);
+                JanusAudioBridge audioBridge = new(janusSession, _JanusPluginName)
+                {
+                    // Rooms this bridge creates are watched by the empty-room reaper (null when it is off).
+                    RoomCreated = _roomReaper is null ? null : _roomReaper.NoteCreated,
+                };
 
                 if (await audioBridge.Activate(_Config).ConfigureAwait(false))
                 {
@@ -179,8 +208,70 @@ namespace osWebRtcVoice
                 }
                 _log.Error($"{LogHeader} JanusPluginHandle not created");
             }
-            _log.Error($"{LogHeader} JanusSession not created");
+            else
+            {
+                _log.Error($"{LogHeader} JanusSession not created");
+            }
+            // [Confluence] Tranquillity #348: never leave a half-built session behind. A session whose plugin attach
+            // failed is a live Janus session (with its long poll) that nothing references; destroy it (bounded by
+            // RequestTimeoutMs), then release it.
+            if (janusSession.IsConnected)
+                await janusSession.DestroySession().ConfigureAwait(false);
+            janusSession.Dispose();
             return false;
+        }
+
+        // Builds the reaper from the settings; null when the key turns it off or the plugin removes empty rooms itself.
+        public static EmptyRoomReaper CreateRoomReaper(IConfig pJanusConfig, string pPluginName, Func<long> pNowMs = null)
+        {
+            if (!pJanusConfig.GetBoolean("RemoveEmptyRooms", EmptyRoomReaper.DefaultEnabled))
+            {
+                _log.Info($"{LogHeader} emptied rooms are left in place ([JanusWebRtcVoice] RemoveEmptyRooms is false)");
+                return null;
+            }
+            if (pPluginName != JanusAudioBridge.DefaultPluginName)
+            {
+                _log.Info($"{LogHeader} not removing emptied rooms: plugin {pPluginName} is not the stock AudioBridge and is expected to remove them itself");
+                return null;
+            }
+            int grace = pJanusConfig.GetInt("EmptyRoomGraceSeconds", EmptyRoomReaper.DefaultGraceSeconds);
+            if (grace < 0)
+            {
+                _log.Warn($"{LogHeader} EmptyRoomGraceSeconds = {grace} is negative; using {EmptyRoomReaper.DefaultGraceSeconds}");
+                grace = EmptyRoomReaper.DefaultGraceSeconds;
+            }
+            return new EmptyRoomReaper(TimeSpan.FromSeconds(grace), pNowMs);
+        }
+
+        private void StartRoomReaper()
+        {
+            if (_roomReaper is null || _roomReapTimer is not null)
+                return;
+            _roomReapTimer = new Timer(_ => _ = ReapEmptyRoomsAsync(), null, RoomReapIntervalMs, RoomReapIntervalMs);
+        }
+
+        // One reaper pass through the service's own Janus session. Returns the rooms removed. Never throws.
+        public async Task<int> ReapEmptyRoomsAsync()
+        {
+            EmptyRoomReaper reaper = _roomReaper;
+            if (reaper is null || reaper.TrackedCount == 0 || Interlocked.Exchange(ref _roomReapRunning, 1) == 1)
+                return 0;
+            try
+            {
+                JanusAudioBridge bridge = _ViewerSession?.AudioBridge;
+                if (bridge is null)
+                    return 0;
+                return await reaper.SweepAsync(bridge.ListRoomParticipantCounts, bridge.DestroyRoomById).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _log.Debug($"{LogHeader} empty room sweep failed: {e.Message}");
+                return 0;
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _roomReapRunning, 0);
+            }
         }
 
         private void Handle_Hangup(EventResp pResp)
@@ -399,6 +490,10 @@ namespace osWebRtcVoice
                     { "response", "failed" },
                     { "error", errorMsg }
                 };
+                // [Confluence] Tranquillity #348: a full room is passed on as error_code 495; the region module answers
+                // it with HTTP 409, which the viewer shows as "channel full".
+                if (viewerSession is JanusViewerSession jvs && jvs.LastJoinErrorCode == JanusRoom.ROOM_FULL_ERROR_CODE)
+                    ret["error_code"] = OSD.FromInteger(JanusRoom.ROOM_FULL_ERROR_CODE);
                 _log.WarnFormat("{0} ProvisionVoiceAccountRequest: failed ({1}) error={2}", LogHeader, FlowTag(flowId, viewerSession), errorMsg);
             }
             else

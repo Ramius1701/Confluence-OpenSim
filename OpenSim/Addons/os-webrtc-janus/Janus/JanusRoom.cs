@@ -57,8 +57,12 @@ namespace osWebRtcVoice
             // Close the room
         }
 
+        // The Janus AudioBridge's "room is full" error code.
+        public const int ROOM_FULL_ERROR_CODE = 495;
+
         public async Task<bool> JoinRoom(JanusViewerSession pVSession)
         {
+            pVSession.LastJoinErrorCode = 0;
             try
             {
                 // m_log.DebugFormat("{0} JoinRoom. New joinReq for room {1}", LogHeader, RoomId);
@@ -120,7 +124,10 @@ namespace osWebRtcVoice
                     }
                     else
                     {
-                        m_log.ErrorFormat("{0} JoinRoom. Failed to join room {1}", LogHeader, RoomId);
+                        // [Confluence] Tranquillity #348: keep the mixer's error_code (it was discarded), so a full
+                        // room can be answered as one.
+                        pVSession.LastJoinErrorCode = joinResp?.AudioBridgeErrorCode ?? 0;
+                        m_log.ErrorFormat("{0} JoinRoom. Failed to join room {1} (error_code={2})", LogHeader, RoomId, pVSession.LastJoinErrorCode);
                         if (m_log.IsDebugEnabled)
                             m_log.DebugFormat("{0} JoinRoom. Failure detail: {1}", LogHeader, joinResp?.ToString() ?? "null");
                     }

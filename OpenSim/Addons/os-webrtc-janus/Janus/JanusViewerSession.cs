@@ -58,6 +58,11 @@ namespace osWebRtcVoice
         // Janus keeps track of the user by this ID
         public long ParticipantId { get; set; }
 
+        // [Confluence] Tranquillity #348: the mixer's error_code from this session's last failed join (0 on success),
+        // so the provision can tell a full room (495) from other failures. Per viewer session, so joiners of one
+        // shared JanusRoom do not race on it.
+        public int LastJoinErrorCode { get; set; }
+
         // Connections to the Janus server
         public JanusSession Session { get; set; }
         public JanusAudioBridge AudioBridge { get; set; }

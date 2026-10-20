@@ -51,13 +51,14 @@ public class WebRtcVoiceProvisionParcelModuleTests
     private sealed class RecordingVoiceService : IWebRtcVoiceService
     {
         public readonly List<OSDMap> Requests = new();
+        public OSDMap Answer;   // null: a success map
 
         public IVoiceViewerSession CreateViewerSession(OSDMap r, UUID u, UUID sc)
             => new FakeSession { ViewerSessionID = UUID.Random().ToString(), VoiceService = this, AgentId = u, RegionId = sc };
         public OSDMap ProvisionVoiceAccountRequest(IVoiceViewerSession s, OSDMap r, UUID u, UUID sc)
         {
             Requests.Add((OSDMap)OSDParser.DeserializeLLSDXml(OSDParser.SerializeLLSDXmlString(r)));
-            return new OSDMap { { "jsep", new OSDMap() }, { "viewer_session", s.ViewerSessionID } };
+            return Answer ?? new OSDMap { { "jsep", new OSDMap() }, { "viewer_session", s.ViewerSessionID } };
         }
         public OSDMap ProvisionVoiceAccountRequest(OSDMap pRequest, UUID pUserID, UUID pScene) => new OSDMap();
         public OSDMap VoiceSignalingRequest(OSDMap pRequest, UUID pUserID, UUID pScene) => new OSDMap();
@@ -294,6 +295,58 @@ public class WebRtcVoiceProvisionParcelModuleTests
 
         Assert.Equal((int)HttpStatusCode.OK, status);
         Assert.False(sent.ContainsKey("parcel_local_id"));
+    }
+
+    // ---- Tranquillity #348 in the region module -------------------------------------------------------------
+
+    [Fact]
+    public void AFullRoomIsAnsweredWithConflict()
+    {
+        Rig rig = NewRig(taxFree: false);
+        rig.Service.Answer = new OSDMap { { "response", "failed" }, { "error", "JoinRoom failed" }, { "error_code", 495 } };
+        Root(rig, Visitor, InWest);
+
+        var (status, sent) = Provision(rig, Visitor, null);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, status);   // the viewer shows "channel full"
+        Assert.NotNull(sent);
+    }
+
+    [Fact]
+    public void AnotherFailedAnswerKeepsItsOkStatus()
+    {
+        Rig rig = NewRig(taxFree: false);
+        rig.Service.Answer = new OSDMap { { "response", "failed" }, { "error", "JoinRoom failed" } };
+        Root(rig, Visitor, InWest);
+
+        var (status, _) = Provision(rig, Visitor, null);
+
+        Assert.Equal((int)HttpStatusCode.OK, status);
+    }
+
+    [Fact]
+    public void ARefusalIsReplayedToTheRetriesUntilALogout()
+    {
+        Rig rig = NewRig(taxFree: false);
+        rig.West.LandData.Flags &= ~(uint)ParcelFlags.AllowVoiceChat;
+        Root(rig, Visitor, InWest);
+        Assert.Equal((int)HttpStatusCode.Forbidden, Provision(rig, Visitor, null).Status);
+
+        // Voice is turned back on, but the viewer's immediate retry is answered from the cache.
+        rig.West.LandData.Flags |= (uint)ParcelFlags.AllowVoiceChat;
+        var (again, sentAgain) = Provision(rig, Visitor, null);
+        Assert.Equal((int)HttpStatusCode.Forbidden, again);
+        Assert.Null(sentAgain);
+
+        // A logout forgets it; the next provision is checked afresh.
+        var logout = new OSDMap { ["logout"] = OSD.FromBoolean(true), ["viewer_session"] = OSD.FromString(UUID.Zero.ToString()) };
+        IOSHttpRequest request = DispatchProxy.Create<IOSHttpRequest, PostRequest>();
+        ((PostRequest)(object)request).Body = new MemoryStream(Encoding.UTF8.GetBytes(OSDParser.SerializeLLSDXmlString(logout)));
+        rig.Module.ProvisionVoiceAccountRequest(request, new TestOSHttpResponse(), Visitor, rig.Scene);
+
+        var (afterLogout, sentAfter) = Provision(rig, Visitor, null);
+        Assert.Equal((int)HttpStatusCode.OK, afterLogout);
+        Assert.NotNull(sentAfter);
     }
 
     [Fact]

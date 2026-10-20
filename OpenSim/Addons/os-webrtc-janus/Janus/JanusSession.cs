@@ -130,6 +130,9 @@ namespace osWebRtcVoice
         public async Task<bool> DestroySession()
         {
             bool ret = false;
+            // [Confluence] Tranquillity #348: once the Janus session is destroyed Janus sends no more events, so
+            // complete every pending request now rather than leaving its caller waiting.
+            FailOutstanding(SessionDestroyedReason);
             try
             {
                 JanusMessageResp resp = await SendToSession(new DestroySessionReq()).ConfigureAwait(false);
@@ -246,6 +249,61 @@ namespace osWebRtcVoice
         }
         private readonly ConcurrentDictionary<string, OutstandingRequest> _OutstandingRequests = new();
 
+        // [Confluence] Tranquillity #348: an ack'd request waits for its completing event for at most this long, then
+        // SendToJanus returns a synthetic error. [JanusWebRtcVoice] RequestTimeoutMs, default 5000 ms. It used to wait
+        // without limit (and the entry was never removed from _OutstandingRequests).
+        public const int DefaultRequestTimeoutMs = 5000;
+        public TimeSpan JanusRequestTimeout { get; set; } = TimeSpan.FromMilliseconds(DefaultRequestTimeoutMs);
+
+        // Error.reason of the synthetic "error" responses for a request that never got its event. Callers see an
+        // ordinary Janus error (ReturnCode "error", code 0 - never sent by Janus).
+        public const string RequestTimeoutReason = "timeout";
+        public const string SessionDestroyedReason = "session destroyed";
+        public const string LongPollExitedReason = "long poll exited";
+
+        // Requests parked waiting for their event (diagnostics and tests).
+        public int OutstandingRequestCount => _OutstandingRequests.Count;
+
+        // Removes pReq's entry only if the entry for its transaction is still pReq. TRUE if this call removed it:
+        // whoever removes the entry is the one that completes it.
+        private bool RemoveOutstanding(OutstandingRequest pReq)
+            => _OutstandingRequests.TryRemove(new KeyValuePair<string, OutstandingRequest>(pReq.TransactionId, pReq));
+
+        // Completes every parked request with a synthetic error. Called when no event can arrive any more
+        // (DestroySession, long-poll exit). An event that claimed an entry first simply wins.
+        private void FailOutstanding(string pReason)
+        {
+            int failed = 0;
+            foreach (KeyValuePair<string, OutstandingRequest> kvp in _OutstandingRequests)
+            {
+                if (RemoveOutstanding(kvp.Value))
+                {
+                    kvp.Value.TaskCompletionSource.TrySetResult(MakeErrorResp(kvp.Key, pReason));
+                    failed++;
+                }
+            }
+            if (failed > 0)
+                m_log.DebugFormat("{0} FailOutstanding: completed {1} pending request(s) with error \"{2}\"", LogHeader, failed, pReason);
+        }
+
+        private static JanusMessageResp MakeErrorResp(string pTransactionId, string pReason)
+        {
+            ErrorResp err = new();
+            err.TransactionId = pTransactionId;
+            err.SetError(0, pReason);
+            return err;
+        }
+
+        // "janus" op plus the plugin body's "request" when present, e.g. "message/join" (timeout log only).
+        private static string DescribeOp(JanusMessageReq pReq)
+        {
+            OSDMap body = pReq.RawBody;
+            string op = body.TryGetString("janus", out string janus) ? janus : "?";
+            if (body.TryGetOSDMap("body", out OSDMap pluginBody) && pluginBody.TryGetString("request", out string request))
+                op += "/" + request;
+            return op;
+        }
+
         // Send a request directly to the Janus server.
         // NOTE: this is probably NOT what you want to do. This is a direct call that is outside the session.
         private async Task<JanusMessageResp> SendToJanus(JanusMessageReq pReq)
@@ -274,7 +332,9 @@ namespace osWebRtcVoice
                 {
                     TransactionId = pReq.TransactionId,
                     RequestTime = DateTime.Now,
-                    TaskCompletionSource = new TaskCompletionSource<JanusMessageResp>()
+                    // Continuations run asynchronously, so completing it from the long-poll task or FailOutstanding
+                    // never runs this method's tail on that thread.
+                    TaskCompletionSource = new TaskCompletionSource<JanusMessageResp>(TaskCreationOptions.RunContinuationsAsynchronously)
                 };
                 _OutstandingRequests[pReq.TransactionId] = outReq;
 
@@ -305,9 +365,26 @@ namespace osWebRtcVoice
                         // If there is no OutstandingRequest, the request was not waiting for an event or already processed
 */
 
-                        // Wait on the local TaskCompletionSource instead of re-reading the dictionary.
-                        // This avoids a race where the long-poll thread already removed the request.
-                        ret = await outReq.TaskCompletionSource.Task;
+                        // Wait on the local TaskCompletionSource instead of re-reading the dictionary (an event can
+                        // beat the ack), bounded by JanusRequestTimeout ([Confluence] Tranquillity #348).
+                        Task done = await Task.WhenAny(outReq.TaskCompletionSource.Task,
+                                                       Task.Delay(JanusRequestTimeout, _CancelTokenSource.Token)).ConfigureAwait(false);
+                        if (done == outReq.TaskCompletionSource.Task || !RemoveOutstanding(outReq))
+                        {
+                            // Completed - or claimed at the deadline by the event task or FailOutstanding, which
+                            // complete it right after removing it.
+                            ret = await outReq.TaskCompletionSource.Task.ConfigureAwait(false);
+                        }
+                        else if (done.IsCanceled)
+                        {
+                            ret = MakeErrorResp(pReq.TransactionId, SessionDestroyedReason);
+                        }
+                        else
+                        {
+                            m_log.WarnFormat("{0} SendToJanus: request {1} ({2}) timed out after {3} ms (sent {4:HH:mm:ss.fff})",
+                                LogHeader, pReq.TransactionId, DescribeOp(pReq), (long)JanusRequestTimeout.TotalMilliseconds, outReq.RequestTime);
+                            ret = MakeErrorResp(pReq.TransactionId, RequestTimeoutReason);
+                        }
                     }
                     else 
                     {
@@ -417,7 +494,9 @@ namespace osWebRtcVoice
                 return false;
             }
 
-            if (_OutstandingRequests.TryGetValue(pTransactionId, out pOutstandingRequest))
+            // [Confluence] Tranquillity #348: claim (remove) the entry, so a request that timed out at the same moment
+            // is completed exactly once, and answered entries no longer stay in the dictionary.
+            if (_OutstandingRequests.TryRemove(pTransactionId, out pOutstandingRequest))
                 return true;
 
             pOutstandingRequest = null;
@@ -646,7 +725,7 @@ namespace osWebRtcVoice
                                         m_log.DebugFormat("{0} EventLongPoll: error {1}", LogHeader, resp.ToString());
                                         if (TryGetOutstandingRequest(resp.TransactionId, out OutstandingRequest outstandingRequest))
                                         {
-                                            outstandingRequest.TaskCompletionSource.SetResult(resp);
+                                            outstandingRequest.TaskCompletionSource.TrySetResult(resp);
                                         }
                                         else
                                         {
@@ -659,11 +738,12 @@ namespace osWebRtcVoice
                                         if (TryGetOutstandingRequest(resp.TransactionId, out OutstandingRequest outstandingRequest2))
                                         {
                                             // Someone is waiting for this event
-                                            outstandingRequest2.TaskCompletionSource.SetResult(resp);
+                                            outstandingRequest2.TaskCompletionSource.TrySetResult(resp);
                                         }
                                         else
                                         {
-                                            m_log.ErrorFormat("{0} EventLongPoll: event no outstanding request {1}", LogHeader, resp.ToString());
+                                            // [Confluence] Tranquillity #348: no longer logged as an error first; the
+                                            // branches below log at the level that fits.
                                             // Janus often pushes plugin events without a transaction id (normal async flow).
                                             // Keep unknown transaction ids visible, but do not treat missing transaction ids as errors.
                                             if (string.IsNullOrEmpty(resp.TransactionId))
@@ -725,6 +805,8 @@ namespace osWebRtcVoice
                                         }   
                                         // This will cause the long poll to exit
                                         running = false;
+                                        // Nothing will deliver the pending requests' events now.
+                                        FailOutstanding(LongPollExitedReason);
                                         OnDisconnect?.Invoke(eventResp);
                                         break;
                                     default:
@@ -743,6 +825,7 @@ namespace osWebRtcVoice
                     {
                         // This will cause the long poll to exit
                         running = false;
+                        FailOutstanding(LongPollExitedReason);   // as the GETERROR arm
                         m_log.ErrorFormat("{0} EventLongPoll: exception {1}", LogHeader, e);
                     }
                 }

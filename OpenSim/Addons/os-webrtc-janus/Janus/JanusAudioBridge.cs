@@ -26,9 +26,12 @@
  */
 
 using System;
+using System.Collections.Concurrent;
+using System.Threading;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
+using OpenMetaverse.StructuredData;
 
 using log4net;
 
@@ -103,11 +106,14 @@ namespace osWebRtcVoice
                 {
                     case "created":
                         ret = new JanusRoom(this, pRoomId);
+                        RoomCreated?.Invoke(pRoomId);
                         break;
                     case "event":
                         if (abResp.AudioBridgeErrorCode == 486)
                         {
-                            m_log.Info($"{LogHeader} CreateRoom. Room {pRoomId} already exists (reconnect).");
+                            // Every select sends a create first ([Confluence] Tranquillity #348), so "already exists"
+                            // is the normal answer on almost every provision - success, logged at debug.
+                            m_log.Debug($"{LogHeader} CreateRoom. Room {pRoomId} already exists. Reusing.");
                             if (m_log.IsDebugEnabled)
                             {
                                 m_log.Debug($"{LogHeader} CreateRoom. Reconnect details: {abResp}");
@@ -138,6 +144,44 @@ namespace osWebRtcVoice
                 m_log.Error($"{LogHeader} CreateRoom. Exception '{e.Message}'");
             }
             return ret;
+        }
+
+        // [Confluence] Tranquillity #348: called with the room number when a create is answered "created" (not for
+        // "already exists"), so the empty-room reaper watches only rooms this service made.
+        public Action<int> RoomCreated { get; set; }
+
+        // Participant count of every room on the gateway, or null when the list could not be read.
+        public async Task<IReadOnlyDictionary<int, int>> ListRoomParticipantCounts()
+        {
+            JanusMessageResp raw = await SendPluginMsg(new AudioBridgeListRoomsReq()).ConfigureAwait(false);
+            AudioBridgeResp resp = raw is null ? null : new AudioBridgeResp(raw);
+            if (resp?.PluginRespData is null || !resp.PluginRespData.TryGetValue("list", out OSD list) || list is not OSDArray rooms)
+                return null;
+            Dictionary<int, int> counts = new();
+            foreach (OSD item in rooms)
+            {
+                if (item is OSDMap room)
+                    counts[room["room"].AsInteger()] = room["num_participants"].AsInteger();
+            }
+            return counts;
+        }
+
+        // Destroys a room by number. True when it is gone afterwards: destroyed, or already absent (485).
+        public async Task<bool> DestroyRoomById(int pRoomId)
+        {
+            JanusMessageResp raw = await SendPluginMsg(new AudioBridgeDestroyRoomReq(pRoomId, false)).ConfigureAwait(false);
+            if (raw is null)
+                return false;
+            AudioBridgeResp resp = new(raw);
+            if (resp.AudioBridgeReturnCode == "destroyed" || resp.AudioBridgeErrorCode == 485)
+            {
+                m_log.DebugFormat("{0} DestroyRoom. Room {1} removed", LogHeader, pRoomId);
+                lock (_rooms)
+                    _rooms.Remove(pRoomId);
+                return true;
+            }
+            m_log.WarnFormat("{0} DestroyRoom. Room {1} was not removed: {2}", LogHeader, pRoomId, resp.ToString());
+            return false;
         }
 
         public async Task<bool> DestroyRoom(JanusRoom janusRoom)
@@ -185,9 +229,83 @@ namespace osWebRtcVoice
             BHash hashed = hasher.Finish();
             // The "Abs()" is because Janus room number must be a positive integer
             // And note that this is the BHash.GetHashCode() and not Object.getHashCode().
-            int roomNumber = Math.Abs(hashed.GetHashCode());
+            int roomNumber = FoldHashToRoom(hashed.GetHashCode());
             return roomNumber;
         }
+
+        // [Confluence] Tranquillity #348. Folds a 32-bit hash to a POSITIVE Janus room number. Math.Abs(int.MinValue)
+        // throws OverflowException, and because the hash inputs are stable per region+parcel (or channel), one unlucky
+        // combination would fail provisioning there for good. Only int.MinValue is redirected (to int.MaxValue); every
+        // other value maps as before, so no existing room renumbers.
+        public static int FoldHashToRoom(int hashCode)
+            => hashCode == int.MinValue ? int.MaxValue : Math.Abs(hashCode);
+
+        // [Confluence] Tranquillity #348. Runs a create attempt; if it comes back null (inconclusive - the room may
+        // have been created by another process meanwhile), runs it once more, where "already exists" means reuse.
+        public static async Task<JanusRoom> CreateWithRecheck(Func<Task<JanusRoom>> pAttempt)
+        {
+            JanusRoom ret = await pAttempt().ConfigureAwait(false);
+            if (ret is null)
+                ret = await pAttempt().ConfigureAwait(false);
+            return ret;
+        }
+
+        // [Confluence] Tranquillity #348. Room existence is grid-wide and Janus is the only source of truth for it: the
+        // mixer destroys empty rooms without telling the simulator, so a cached "it exists" goes stale and the JSEP join
+        // then fails (error 485, which cannot be re-sent on the same handle). So every select asks the mixer to create
+        // the room ("already exists" = success) before the join. Creates of one room number from this process are
+        // serialized by a per-room gate, so concurrent provisions send one create at a time; the cross-process race is
+        // absorbed by the 486. Idle gates are swept (at most once a minute) so the table does not grow forever.
+        private static readonly ConcurrentDictionary<int, SemaphoreSlim> _roomCreateLocks = new();
+        public static readonly TimeSpan RoomCreateLockIdle = TimeSpan.FromMinutes(10);
+        private static readonly ConcurrentDictionary<int, long> _roomLastUseMs = new();
+        private static long _lastRoomLockSweepMs = Environment.TickCount64;
+
+        public static async Task<JanusRoom> SelectRoomCoalesced(int pRoomNumber, Func<Task<JanusRoom>> pCreate)
+        {
+            long now = Environment.TickCount64;
+            MaybeSweepRoomCreateLocks(now);
+            _roomLastUseMs[pRoomNumber] = now;
+            SemaphoreSlim gate = _roomCreateLocks.GetOrAdd(pRoomNumber, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await pCreate().ConfigureAwait(false);
+            }
+            finally
+            {
+                _roomLastUseMs[pRoomNumber] = Environment.TickCount64;
+                gate.Release();
+            }
+        }
+
+        private static void MaybeSweepRoomCreateLocks(long pNowMs)
+        {
+            long last = Interlocked.Read(ref _lastRoomLockSweepMs);
+            if (pNowMs - last < 60_000 || Interlocked.CompareExchange(ref _lastRoomLockSweepMs, pNowMs, last) != last)
+                return;
+            SweepRoomCreateLocks(pNowMs, RoomCreateLockIdle);
+        }
+
+        // Evicts every room number whose last select is older than pIdle and whose gate is not held right now.
+        public static int SweepRoomCreateLocks(long pNowMs, TimeSpan pIdle)
+        {
+            int evicted = 0;
+            foreach (KeyValuePair<int, long> kvp in _roomLastUseMs)
+            {
+                if (pNowMs - kvp.Value < (long)pIdle.TotalMilliseconds)
+                    continue;
+                if (_roomCreateLocks.TryGetValue(kvp.Key, out SemaphoreSlim held) && held.CurrentCount == 0)
+                    continue;   // a select for this room is in progress
+                _roomCreateLocks.TryRemove(kvp.Key, out _);
+                _roomLastUseMs.TryRemove(kvp.Key, out _);
+                evicted++;
+            }
+            return evicted;
+        }
+
+        // Room numbers currently holding a create gate (diagnostics and tests).
+        public static int RoomCreateLockCount => _roomCreateLocks.Count;
 
         public async Task<JanusRoom> SelectRoom(string pRegionId, string pgridhash, string pChannelType, bool pSpatial, int pParcelLocalID, string pChannelID, string credentials)
         {
@@ -196,44 +314,23 @@ namespace osWebRtcVoice
             // Should be unique for the given use and channel type
             m_log.Debug($"{LogHeader} SelectRoom: roomNumber={roomNumber}");
 
-            // Check to see if the room has already been created
-            JanusRoom existingRoom;
-            lock (_rooms)
-            {
-                if (_rooms.TryGetValue(roomNumber, out existingRoom))
-                {
-                    return existingRoom;
-                }
-            }
-
-            // The room doesn't exist. Create it.
             string roomDesc;
             if(pChannelType == "local")
                 roomDesc = $"{pRegionId}/{pChannelType}/{pParcelLocalID}";
             else
                 roomDesc = $"{pgridhash}/{pChannelType}/{pChannelID}";
 
-            JanusRoom ret = await CreateRoom(roomNumber, pSpatial, roomDesc, credentials).ConfigureAwait(false);
+            // [Confluence] Tranquillity #348: always ask the mixer (see SelectRoomCoalesced). This used to return a
+            // cached room without asking, and on a race destroyed the room it had just created - a room another
+            // simulator could already be using.
+            JanusRoom ret = await SelectRoomCoalesced(roomNumber,
+                () => CreateWithRecheck(() => CreateRoom(roomNumber, pSpatial, roomDesc, credentials))).ConfigureAwait(false);
 
             if (ret is not null)
             {
                 lock (_rooms)
-                {
-                    if(!_rooms.TryGetValue(roomNumber, out existingRoom))
-                    {
-                        // If the room was created while we were waiting, 
-                        _rooms[roomNumber] = ret;
-                    }
-                }
+                    _rooms[roomNumber] = ret;
             }
-
-            if (existingRoom is not null)
-            {
-                // The room we created was already created by someone else. Delete ours and use the existing one
-                await DestroyRoom(ret).ConfigureAwait(false);
-                return existingRoom;
-            }
-
             return ret;
         }
 
