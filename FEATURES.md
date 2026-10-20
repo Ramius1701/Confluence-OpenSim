@@ -649,6 +649,16 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
   come back after the release. Attachments' llSetBuoyancy /
   llSetHoverHeight / llStopHover act on the wearer and end on detach
   (#282); a part unlinked from a moving linkset keeps its motion (#291).
+- **Per-network viewer addresses** (Tranquillity #302/#327, off unless configured): `[ViewerAddress]
+  Addresses` (OpenSim.ini and Robust.ini, per region in Regions.ini) is an ordered list of
+  `CIDR=address` / `CIDR` entries saying which region address each network of viewers is given at login,
+  teleports, crossings and neighbour announcements - for a grid whose host resolves its own public name to
+  a private address, where outside viewers could not cross borders. `LocalAddress` registers this
+  machine's LAN address with the grid (nullable `regions.viewerLocalAddress`: MySQL 12, PostgreSQL 10,
+  SQLite 2); `DnsServers` looks host names up through named DNS servers instead of the hosts file;
+  hypergrid destinations always keep their own address. A crossing a neighbour refused is not retried for
+  that avatar for 60 s, and `[Startup] ChildPresenceWaitSeconds` (default 30) sets the wait. Viewers are
+  classified by the address the HTTP layer resolved (`[Network] XFFTrustedProxies`).
 - Hypergrid teleports retry once on a pure transport failure (no reply
   reached the source at all) instead of failing outright on any single
   transient blip.

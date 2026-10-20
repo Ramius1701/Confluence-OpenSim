@@ -32,6 +32,15 @@ ExternalHostName = SYSTEMIP
 ;TargetEstate = 0
 
 ; *
+; * [Confluence] Tranquillity #302. Address given to viewers for this region, replacing the value of the same name in
+; * the [ViewerAddress] section of OpenSim.ini for this region only. Both are optional; see [ViewerAddress] in
+; * OpenSim.ini for what they do, the default (unset: every viewer is given the address ExternalHostName resolves to
+; * on this machine) and the known limit (the public port is InternalPort).
+; *
+; Addresses = ""
+; LocalAddress = ""
+
+; *
 ; * Variable-sized regions allows the creation of large, borderless spaces.
 ; * The default is 256 meters. For larger spaces, set these to multiples of 256.
 ; * For the time being, X and Y need to be the same.

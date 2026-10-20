@@ -971,6 +971,9 @@ namespace OpenSim.Region.Framework.Scenes
 
                 StartDisabled = startupConfig.GetBoolean("StartDisabled", false);
 
+                // [Confluence] Tranquillity #302.
+                ChildPresenceWait = TimeSpan.FromSeconds(Math.Max(0, startupConfig.GetInt("ChildPresenceWaitSeconds", 30)));
+
                 m_defaultDrawDistance = startupConfig.GetFloat("DefaultDrawDistance", m_defaultDrawDistance);
                 m_maxDrawDistance = startupConfig.GetFloat("MaxDrawDistance", m_maxDrawDistance);
                 m_maxRegionViewDistance = startupConfig.GetFloat("MaxRegionsViewDistance", m_maxRegionViewDistance);
@@ -4891,7 +4894,35 @@ Label_GroupsDone:
                 return true;
             }
 
+            // [Confluence] Tranquillity #302: say which address the viewer was given when it never arrived.
+            string neverConnected = ChildNeverConnectedWarning(cAgentData.AgentID);
+            if (neverConnected is not null)
+                m_log.Warn(neverConnected);
+
             return false;
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #302. How long an incoming agent update waits for the viewer to connect to this
+        /// region (the presence to appear). [Startup] ChildPresenceWaitSeconds; the default is 30 seconds, as before.
+        /// </summary>
+        public TimeSpan ChildPresenceWait { get; set; } = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// The warning for an agent that was authorised in this region but whose viewer never connected, or null when
+        /// no circuit was authorised for the agent.
+        /// </summary>
+        public string ChildNeverConnectedWarning(UUID agentID)
+        {
+            AgentCircuitData circuit = m_authenticateHandler.GetAgentCircuitData(agentID);
+            if (circuit is null)
+                return null;
+
+            return string.Format(
+                "[SCENE]: The viewer of agent {0} was authorised in {1} but never connected to {2}:{3}, the address this region " +
+                "gives out for itself (the address recorded for the viewer is {4}). Viewers outside this region's network " +
+                "cannot reach that address: list the address they should use for their network in [ViewerAddress] Addresses.",
+                agentID, RegionInfo.RegionName, RegionInfo.ExternalHostName, RegionInfo.InternalEndPoint.Port, circuit.IPAddress);
         }
 
         /// <summary>
@@ -4937,7 +4968,7 @@ Label_GroupsDone:
         /// <param name='agentID'></param>
         protected virtual ScenePresence WaitGetScenePresence(UUID agentID)
         {
-            int ntimes = 120; // 30s
+            int ntimes = (int)Math.Ceiling(ChildPresenceWait.TotalMilliseconds / 250.0); // [Startup] ChildPresenceWaitSeconds
             ScenePresence sp;
             while ((sp = GetScenePresence(agentID)) is null && (ntimes-- > 0))
                 Thread.Sleep(250);

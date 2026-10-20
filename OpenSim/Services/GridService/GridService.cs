@@ -369,6 +369,14 @@ namespace OpenSim.Services.GridService
             RegionData rdata = RegionInfo2RegionData(regionInfos);
             rdata.ScopeID = scopeID;
 
+            // [Confluence] Tranquillity #302. A region that no longer registers a local address clears the one stored
+            // for it. The key is only written when the stored row has a value, so a database without the column is never
+            // asked for it.
+            if (region != null && !rdata.Data.ContainsKey("viewerLocalAddress")
+                && region.Data.TryGetValue("viewerLocalAddress", out object storedLocalAddress)
+                && !string.IsNullOrEmpty(storedLocalAddress?.ToString()))
+                rdata.Data["viewerLocalAddress"] = string.Empty;
+
             int regionFlags = 0;
             if (region != null)
             {

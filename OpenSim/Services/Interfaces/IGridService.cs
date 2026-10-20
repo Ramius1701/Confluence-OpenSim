@@ -307,6 +307,7 @@ namespace OpenSim.Services.Interfaces
             Maturity = ConvertFrom.RegionSettings.Maturity;
             RegionSecret = ConvertFrom.regionSecret;
             EstateOwner = ConvertFrom.EstateSettings.EstateOwner;
+            ViewerLocalAddress = ConvertFrom.ViewerLocalAddress;
         }
 
         public GridRegion(GridRegion ConvertFrom)
@@ -328,6 +329,7 @@ namespace OpenSim.Services.Interfaces
             Maturity = ConvertFrom.Maturity;
             RegionSecret = ConvertFrom.RegionSecret;
             EstateOwner = ConvertFrom.EstateOwner;
+            ViewerLocalAddress = ConvertFrom.ViewerLocalAddress;
         }
 
         public GridRegion(Dictionary<string, object> kvp)
@@ -406,6 +408,11 @@ namespace OpenSim.Services.Interfaces
             if (kvp.ContainsKey("Token"))
                 Token = kvp["Token"].ToString();
 
+            // [Confluence] Tranquillity #302. Optional: a region of an older build does not send it, and a database row
+            // from before the column existed reads as null or empty.
+            if (kvp.TryGetValue("viewerLocalAddress", out object localAddress) && !string.IsNullOrEmpty(localAddress?.ToString()))
+                ViewerLocalAddress = localAddress.ToString();
+
             // m_log.DebugFormat("{0} New GridRegion. id={1}, loc=<{2},{3}>, size=<{4},{5}>",
             //                         LogHeader, RegionID, RegionLocX, RegionLocY, RegionSizeX, RegionSizeY);
         }
@@ -433,6 +440,8 @@ namespace OpenSim.Services.Interfaces
             kvp["regionSecret"] = RegionSecret;
             kvp["owner_uuid"] = EstateOwner.ToString();
             kvp["Token"] = Token.ToString();
+            if (!string.IsNullOrEmpty(ViewerLocalAddress))
+                kvp["viewerLocalAddress"] = ViewerLocalAddress;
             // Maturity doesn't seem to exist in the DB
 
             return kvp;
@@ -480,6 +489,12 @@ namespace OpenSim.Services.Interfaces
             get { return m_externalHostName; }
             set { m_externalHostName = value; }
         }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #302. The IPv4 address viewers on a local network use to reach this region, as the
+        /// region registered it. Null for a region that registered none (an older build, or nothing configured).
+        /// </summary>
+        public string ViewerLocalAddress { get; set; }
 
         public IPEndPoint InternalEndPoint
         {

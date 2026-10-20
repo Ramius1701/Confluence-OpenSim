@@ -535,6 +535,13 @@ namespace OpenSim
                 scene.SnmpService.BootInfo("Grid Registration in progress", scene);
             }
 
+            // [Confluence] Tranquillity #302: the address viewers on a local network use to reach this region is
+            // registered with the grid, so that regions on other machines can hand it out. Nothing is registered
+            // unless [ViewerAddress] LocalAddress is set.
+            IConfig viewerAddressSection = Config.Configs[ViewerAddressConfig.SectionName];
+            ViewerAddressConfig.ApplyRegionLocalAddress(viewerAddressSection, regionInfo, m_log);
+            ReportViewerAddressSection(viewerAddressSection);
+
             try
             {
                 scene.RegisterRegionWithGrid();
@@ -701,6 +708,21 @@ namespace OpenSim
                 regionInfo.EstateSettings.EstateOwner = account.PrincipalID;
                 m_estateDataService.StoreEstateSettings(regionInfo.EstateSettings);
             }
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #302. Logs once per server start that [ViewerAddress] is in use, when any of its
+        /// keys is set.
+        /// </summary>
+        private void ReportViewerAddressSection(IConfig section)
+        {
+            ViewerAddressConfig config = ViewerAddressConfig.FromConfig(section, null);
+            if (config.SetKeys.Count == 0)
+                return;
+
+            ViewerAddressSelector selector = ViewerAddressSelector.Create(config, m_log);
+            ViewerAddressStartupLog.Shared.ReportOnce(m_log, config, selector)
+                .ContinueWith(_ => selector.Dispose());
         }
 
         private void ShutdownRegion(Scene scene)

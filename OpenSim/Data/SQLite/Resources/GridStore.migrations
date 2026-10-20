@@ -48,3 +48,12 @@ CREATE INDEX IF NOT EXISTS regions_ScopeID ON regions(ScopeID);
 CREATE INDEX IF NOT EXISTS regions_flags ON regions(flags);
 
 COMMIT;
+
+:VERSION 2
+
+BEGIN TRANSACTION;
+
+-- [Confluence] Tranquillity #302: optional local viewer address a region registers ([ViewerAddress] LocalAddress)
+ALTER TABLE regions ADD COLUMN viewerLocalAddress varchar(64) NULL;
+
+COMMIT;

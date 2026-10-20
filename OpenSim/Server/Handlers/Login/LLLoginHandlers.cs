@@ -61,6 +61,11 @@ namespace OpenSim.Server.Handlers.Login
         public XmlRpcResponse HandleXMLRPCLogin(XmlRpcRequest request, IPEndPoint remoteClient)
         {
             Hashtable requestData = (Hashtable)request.Params[0];
+            // [Confluence] Tranquillity #302: the address a viewer is classified by, to choose the region address it is
+            // given, is the one the HTTP layer resolved for this connection (through [Network] XFFTrustedProxies only).
+            // The forwarded-for value in the login request below is still what is recorded for the login, as before,
+            // but a viewer that connects directly can put anything there, so it never picks the address.
+            IPAddress viewerSource = remoteClient?.Address;
             if (request.Params[3] != null)
             {
                 IPEndPoint ep = Util.GetClientIPFromXFF((string)request.Params[3]);
@@ -144,7 +149,7 @@ namespace OpenSim.Server.Handlers.Login
                         agree_to_tos = requestData["agree_to_tos"].ToString() == "1";
 
                     LoginResponse reply = null;
-                    reply = m_LocalService.Login(first, last, passwd, startLocation, scopeID, clientVersion, channel, mac, id0, remoteClient, agree_to_tos);
+                    reply = m_LocalService.Login(first, last, passwd, startLocation, scopeID, clientVersion, channel, mac, id0, remoteClient, agree_to_tos, viewerSource);
 
                     XmlRpcResponse response = new XmlRpcResponse();
                     response.Value = reply.ToHashtable();

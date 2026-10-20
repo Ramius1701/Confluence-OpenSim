@@ -390,9 +390,97 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                     = Math.Max(0, transferConfig.GetInt("RegionCrossingAttachmentCleanupDelayMS", RegionCrossingAttachmentCleanupDelayMS));
             }
 
+            m_viewerAddressSection = source.Configs[ViewerAddressConfig.SectionName];
+
             m_entityTransferStateMachine = new EntityTransferStateMachine(this);
 
             m_Enabled = true;
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #302. Crossings of an avatar into a region that did not take it a moment ago. After
+        /// one failed crossing the next one fails at once for <see cref="CrossingBackOff.Period"/> instead of waiting
+        /// for the neighbour again.
+        /// </summary>
+        public CrossingBackOff FailedCrossings { get; set; } = new();
+
+        private IConfig m_viewerAddressSection;
+        private ViewerAddressSelector m_viewerAddresses = ViewerAddressSelector.Disabled;
+
+        /// <summary>
+        /// [Confluence] Tranquillity #302/#327. Chooses the address of a region that a viewer is given. Built from
+        /// [ViewerAddress] when the region is added; the default hands every viewer the region's own endpoint.
+        /// </summary>
+        public ViewerAddressSelector ViewerAddresses
+        {
+            get => m_viewerAddresses;
+            set => m_viewerAddresses = value ?? ViewerAddressSelector.Disabled;
+        }
+
+        // Reads [ViewerAddress] for a region. An Addresses key in the region's own settings replaces the section's list
+        // for that region.
+        private static ViewerAddressSelector CreateViewerAddresses(IConfig section, RegionInfo regionInfo)
+        {
+            string addresses = section?.GetString("Addresses", string.Empty);
+
+            string regionAddresses = regionInfo?.GetSetting("Addresses");
+            if (!string.IsNullOrWhiteSpace(regionAddresses))
+                addresses = regionAddresses;
+
+            ViewerAddressConfig config = ViewerAddressConfig.Create(addresses,
+                section?.GetInt("RefreshMinutes", (int)ViewerAddressConfig.DefaultRefreshInterval.TotalMinutes)
+                    ?? (int)ViewerAddressConfig.DefaultRefreshInterval.TotalMinutes,
+                m_log,
+                dnsServers: section?.GetString("DnsServers", string.Empty));
+
+            return ViewerAddressSelector.Create(config, m_log);
+        }
+
+        /// <summary>
+        /// The endpoint of a region to give to a viewer: the region's own endpoint unless [ViewerAddress] is configured.
+        /// Only messages built for a viewer use this; server to server calls keep ExternalEndPoint.
+        /// </summary>
+        protected IPEndPoint ViewerEndPoint(GridRegion region, IPAddress viewerSource)
+        {
+            IPEndPoint local = region.ExternalEndPoint;
+            if (local is null || !m_viewerAddresses.Enabled)
+                return local;
+
+            // The local address the region registered with the grid, when it did and the grid handed it back: the
+            // address for a viewer on a local network when the region is on another machine than this one.
+            ViewerAddressConfig.TryParseLocalAddress(region.ViewerLocalAddress, out IPAddress registered);
+
+            return m_viewerAddresses.ForViewer(local.Port, local, viewerSource,
+                (m_viewerAddresses.HoldsGridAddress || registered is not null) && IsForeignRegion(region), registered);
+        }
+
+        /// <summary>
+        /// True for a region of another grid: marked as a hyperlink, or not in this grid's region table (the test the
+        /// hypergrid module uses for the same question, HGEntityTransferModule.NeedsClosing).
+        /// </summary>
+        protected virtual bool IsForeignRegion(GridRegion region)
+        {
+            if (region.RegionFlags is OpenSim.Framework.RegionFlags marked && (marked & OpenSim.Framework.RegionFlags.Hyperlink) != 0)
+                return true;
+
+            int flags = m_scene.GridService.GetRegionFlags(m_sceneRegionInfo.ScopeID, region.RegionID);
+            return flags == -1 || (flags & (int)OpenSim.Framework.RegionFlags.Hyperlink) != 0;
+        }
+
+        /// <summary>
+        /// The viewer's own address: its UDP source for a root agent, else the address recorded in its circuit.
+        /// </summary>
+        protected IPAddress ViewerSource(ScenePresence sp)
+        {
+            IClientAPI client = sp.ControllingClient;
+            if (!sp.IsChildAgent && client.RemoteEndPoint is IPEndPoint remote)
+                return remote.Address;
+
+            AgentCircuitData circuit = m_scene.AuthenticateHandler?.GetAgentCircuitData(client.CircuitCode);
+            if (circuit is not null && IPAddress.TryParse(circuit.IPAddress, out IPAddress recorded))
+                return recorded;
+
+            return client.RemoteEndPoint?.Address;
         }
 
         public virtual void PostInitialise()
@@ -409,6 +497,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
             m_sceneRegionInfo = scene.RegionInfo;
             m_sceneRegionHandler = m_sceneRegionInfo.RegionHandle;
             m_thisGridInfo = scene.SceneGridInfo;
+            m_viewerAddresses = CreateViewerAddresses(m_viewerAddressSection, m_sceneRegionInfo);
 
             m_interRegionTeleportAttempts =
                 new Stat(
@@ -494,6 +583,8 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                 StatsManager.DeregisterStat(m_interRegionTeleportFailures);
                 scene.EventManager.OnNewClient -= OnNewClient;
                 m_thisGridInfo = null;
+                m_viewerAddresses.Dispose();
+                m_viewerAddresses = ViewerAddressSelector.Disabled;
             }
         }
 
@@ -857,7 +948,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
             // Let's do DNS resolution only once in this process, please!
             // This may be a costly operation. The reg.ExternalEndPoint field is not a passive field,
             // it's actually doing a lot of work.
-            IPEndPoint endPoint = finalDestination.ExternalEndPoint;
+            IPEndPoint endPoint = ViewerEndPoint(finalDestination, ViewerSource(sp));
             if (endPoint == null || endPoint.Address == null)
             {
                 sp.ControllingClient.SendTeleportFailed("Could not resolve destination Address");
@@ -1850,7 +1941,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
             agentCircuit.CapsPath = CapsUtil.GetRandomCapsObjectPath();
             agent.AddNeighbourRegion(neighbourRegion, agentCircuit.CapsPath);
 
-            IPEndPoint endPoint = neighbourRegion.ExternalEndPoint;
+            IPEndPoint endPoint = ViewerEndPoint(neighbourRegion, ViewerSource(agent));
             if(endPoint is null)
             {
                 m_log.DebugFormat("CrossAgentCreateFarChild failed to resolve neighbour address {0}", neighbourRegion.ExternalHostName);
@@ -1904,10 +1995,18 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                     return agent;
                 }
 
-                IPEndPoint endpoint = neighbourRegion.ExternalEndPoint;
+                IPEndPoint endpoint = ViewerEndPoint(neighbourRegion, ViewerSource(agent));
                 if(endpoint == null)
                 {
                     m_log.DebugFormat("{0}: CrossAgentToNewRegionAsync: failed to resolve neighbour address {0} ",neighbourRegion.ExternalHostName);
+                    return agent;
+                }
+
+                // [Confluence] Tranquillity #302: a neighbour that did not take this avatar a moment ago is not asked again yet.
+                if (FailedCrossings.IsBlocked(agent.UUID, neighbourRegion.RegionHandle))
+                {
+                    m_log.DebugFormat("{0}: CrossAgentToNewRegionAsync: {1} did not get into {2} a moment ago, not trying again yet",
+                        LogHeader, agent.Name, neighbourRegion.RegionName);
                     return agent;
                 }
 
@@ -1966,7 +2065,10 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                 {
                     sucess = false;
                     reason = "agent update failed";
+                    FailedCrossings.Mark(agentUUID, neighbourRegion.RegionHandle);
                 }
+                else if (sucess)
+                    FailedCrossings.Clear(agentUUID, neighbourRegion.RegionHandle);
 
                 if(!sucess)
                 {
@@ -2192,7 +2294,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                 agent.Id0 = currentAgentCircuit.Id0;
             }
 
-            IPEndPoint external = region.ExternalEndPoint;
+            IPEndPoint external = ViewerEndPoint(region, ViewerSource(sp));
             if (external != null)
             {
                 ScenePresence avatar = sp;
@@ -2411,6 +2513,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                 };
                 //agentpos.ChildrenCapSeeds = seeds;
 
+                IPAddress viewerSource = ViewerSource(sp);
                 Util.FireAndForget(delegate
                 {
                     int count = 0;
@@ -2426,7 +2529,7 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
                         {
                             if (newneighbours.Contains(handler))
                             {
-                                ipe = neighbour.ExternalEndPoint;
+                                ipe = ViewerEndPoint(neighbour, viewerSource);
                                 if (ipe != null)
                                     InformClientOfNeighbourAsync(sp, cagents[count], neighbour, ipe, true);
                                 else
@@ -2526,12 +2629,13 @@ namespace OpenSim.Region.CoreModules.Framework.EntityTransfer
             {
                 int count = 0;
                 IPEndPoint ipe;
+                IPAddress viewerSource = ViewerSource(sp);
 
                 foreach (GridRegion neighbour in newneighbours)
                 {
                     try
                     {
-                        ipe = neighbour.ExternalEndPoint;
+                        ipe = ViewerEndPoint(neighbour, viewerSource);
                         if (ipe != null)
                             InformClientOfNeighbourAsync(sp, cagents[count], neighbour, ipe, true);
                         else

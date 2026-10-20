@@ -237,7 +237,8 @@ namespace OpenSim.Services.LLLoginService
             string where, string startlocation, Vector3 position, Vector3 lookAt, List<InventoryItemBase> gestures, string message,
 
             GridRegion home, IPEndPoint clientIP, string mapTileURL, string profileURL, string openIDURL, string searchURL, string currency,
-            string DSTZone, string destinationsURL, string avatarsURL, UUID realID, string classifiedFee,int maxAgentGroups)
+            string DSTZone, string destinationsURL, string avatarsURL, UUID realID, string classifiedFee,int maxAgentGroups,
+            ViewerAddressSelector viewerAddresses = null, IPAddress viewerSource = null, bool destinationIsLocal = true)
             : this()
         {
             FillOutInventoryData(invSkel, libService);
@@ -268,7 +269,7 @@ namespace OpenSim.Services.LLLoginService
             FillOutHomeData(pinfo, home);
             LookAt = String.Format("[r{0},r{1},r{2}]", lookAt.X, lookAt.Y, lookAt.Z);
 
-            FillOutRegionData(destination);
+            FillOutRegionData(destination, destinationIsLocal ? viewerAddresses : null, viewerSource ?? clientIP?.Address);
             m_log.DebugFormat("[LOGIN RESPONSE] LLLoginResponse create. sizeX={0}, sizeY={1}", RegionSizeX, RegionSizeY);
 
             FillOutSeedCap(aCircuit, destination, clientIP);
@@ -386,10 +387,20 @@ namespace OpenSim.Services.LLLoginService
                         pinfo.HomeLookAt.X, pinfo.HomeLookAt.Y, pinfo.HomeLookAt.Z);
         }
 
-        private void FillOutRegionData(GridRegion destination)
+        /// <param name="viewerAddresses">
+        /// [Confluence] Tranquillity #302. Chooses the address by the viewer's source address; null (no [ViewerAddress]
+        /// section, or a region of another grid) gives the region's own address, as before.
+        /// </param>
+        private void FillOutRegionData(GridRegion destination, ViewerAddressSelector viewerAddresses, IPAddress viewerSource)
         {
             IPEndPoint endPoint = destination.ExternalEndPoint;
             if (endPoint == null) return;
+            if (viewerAddresses is not null && viewerAddresses.Enabled)
+            {
+                // The local address the region registered with the grid, if any, for a viewer on a local network.
+                ViewerAddressConfig.TryParseLocalAddress(destination.ViewerLocalAddress, out IPAddress registered);
+                endPoint = viewerAddresses.ForViewer(endPoint.Port, endPoint, viewerSource, false, registered);
+            }
             SimAddress = endPoint.Address.ToString();
             SimPort = (uint)endPoint.Port;
             RegionX = (uint)destination.RegionLocX;

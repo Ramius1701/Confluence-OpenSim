@@ -367,6 +367,13 @@ namespace OpenSim.Framework
             set { m_externalHostName = value; }
         }
 
+        /// <summary>
+        /// [Confluence] Tranquillity #302. The IPv4 address viewers on a local network use to reach this region,
+        /// registered with the grid so that regions on other machines can hand it out. Null when the region does not
+        /// register one ([ViewerAddress] LocalAddress).
+        /// </summary>
+        public string ViewerLocalAddress { get; set; }
+
         public IPEndPoint InternalEndPoint
         {
             get { return m_internalEndPoint; }

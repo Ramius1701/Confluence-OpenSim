@@ -61,6 +61,8 @@ namespace OpenSim.Tests.Common
         // Test client specific events - for use by tests to implement some IClientAPI behaviour.
         public event Action<RegionInfo, Vector3, Vector3> OnReceivedMoveAgentIntoRegion;
         public event Action<ulong, IPEndPoint> OnTestClientInformClientOfNeighbour;
+        // [Confluence] Tranquillity #302: the endpoint a crossing hands the viewer.
+        public event Action<ulong, IPEndPoint> OnTestClientCrossRegion;
         public event TestClientOnSendRegionTeleportDelegate OnTestClientSendRegionTeleport;
 
         public event Action<ISceneEntity, PrimUpdateFlags> OnReceivedEntityUpdate;
@@ -478,9 +480,12 @@ namespace OpenSim.Tests.Common
             set { m_circuitCode = value; }
         }
 
+        /// <summary>The viewer's source address reported by <see cref="RemoteEndPoint"/>; loopback unless a test sets it.</summary>
+        public IPAddress RemoteAddress { get; set; } = IPAddress.Loopback;
+
         public IPEndPoint RemoteEndPoint
         {
-            get { return new IPEndPoint(IPAddress.Loopback, (ushort)m_circuitCode); }
+            get { return new IPEndPoint(RemoteAddress, (ushort)m_circuitCode); }
         }
 
         public List<uint> SelectedObjects {get; private set;}
@@ -735,6 +740,7 @@ namespace OpenSim.Tests.Common
             // It's ugly, but avoids needless communication setup. This is used in ScenePresenceTests.cs.
             // Arthur V.
 
+            OnTestClientCrossRegion?.Invoke(newRegionHandle, newRegionExternalEndPoint);
             wh.Set();
         }
 

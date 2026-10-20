@@ -240,3 +240,12 @@ ALTER TABLE regions ADD "parcelMapTexture" uuid NULL;
 
 COMMIT;
 
+
+:VERSION 10
+
+BEGIN TRANSACTION;
+
+-- [Confluence] Tranquillity #302: optional local viewer address a region registers ([ViewerAddress] LocalAddress)
+ALTER TABLE regions ADD "viewerLocalAddress" varchar(64) NULL;
+
+COMMIT;

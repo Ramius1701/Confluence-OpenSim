@@ -29107,3 +29107,41 @@ fail against the pre-#348 module). Settings documented in bin/config/os-webrtc-j
 Tests: WebRtcVoiceJanusSecretsAndTlsTests (own for the redaction and the warning, captured through log4net; the TLS
 cases are Tranquillity's, run against the handler directly with their TlsTestServer, taken unchanged). Documented in
 bin/config/os-webrtc-janus.ini.example and FEATURES.
+
+## Tranquillity #302 + #327: per-network viewer addresses (2026-10-20)
+
+Ported from Tranquillity's develop (#302's final form - an operator-written `[ViewerAddress] Addresses` list, nothing
+detected - plus #327's `DnsServers`). The gatekeeper half of #302 (`[UserAgentService] PublicAddress`) came with #319
+on 2026-10-19.
+
+- New in OpenSim.Framework, adapted to log4net through a small internal shim (`ViewerAddressLog`: their
+  `LogWarning`/`LogInformation` calls on an `ILog`, so the files read as theirs): LocalNetwork, PublicAddressResolver,
+  ViewerAddressConfig, ViewerAddressSelector, ViewerAddressStartupLog, DnsAddressQuery (#327, a small built-in UDP
+  A-record query). CrossingBackOff in CoreModules.
+- EntityTransferModule: every endpoint built for a viewer (teleport, both crossing paths, the agent update, both
+  neighbour announcements) goes through `ViewerEndPoint`; server-to-server calls keep `ExternalEndPoint`. A crossing
+  the neighbour refused is not retried for that avatar for 60 s. Regions of other grids keep their own address
+  (`IsForeignRegion`, alongside opensim #63's `IsHypergridRegion`).
+- Scene: `[Startup] ChildPresenceWaitSeconds` (default 30, the old fixed wait) and one warning naming the address a
+  region handed out when an authorised viewer never connected. OpenSimBase registers `LocalAddress` and logs the
+  section once.
+- Login: `LLLoginService` / `LLLoginResponse` choose the login region address per viewer. **Difference from
+  Tranquillity:** Confluence's login handler has no `[LoginService] HasProxy`; it classifies the viewer by the address
+  the HTTP layer resolved for the connection (`[Network] XFFTrustedProxies`, the 2026-10-19 XFF fix), never by the
+  forwarded-for copy in the XML-RPC request, which is still what is recorded. `ILoginService` gains the overload as a
+  default method next to Confluence's `agree_to_tos` one.
+- Grid: `GridRegion` / `RegionInfo.ViewerLocalAddress`, sent only when set; GridService clears a stored value when a
+  region stops registering one. **Migrations (Confluence's own numbers):** MySQL GridStore 12 (11 was utf8mb4),
+  PostgreSQL 10, and SQLite 2 (Tranquillity has no SQLite step) - one nullable `viewerLocalAddress varchar(64)`
+  column on `regions`. Applied by Robust at its next start.
+- Docs: `[ViewerAddress]` in OpenSim.ini.example, Robust.ini.example and Robust.HG.ini.example (the proxy paragraph
+  rewritten for XFFTrustedProxies), `ChildPresenceWaitSeconds` in [Startup], the per-region keys in Regions.ini.example.
+- TestClient: `RemoteAddress` and the `OnTestClientCrossRegion` hook (from the PR).
+
+With no `[ViewerAddress]` keys set nothing changes, which is Casperia's case: the grid host resolves its public name
+to its public address. Tests (all from the PRs, already xunit; their `ILogger` CapturingLogger replaced by a log4net
+`ILog` one in ViewerAddressTestLog.cs, the login-handler tests rewritten for the no-HasProxy rule, the wiring test given
+a main HTTP server as upstream's entity-transfer tests do): ViewerAddressTests, ViewerLocalAddressTests,
+ViewerAddressDnsServerTests, CrossingBackOffTests, ViewerAddressWiringTests, ViewerLocalAddressRegistrationTests,
+LoginViewerAddressTests - 207 pass - plus ViewerLocalAddressSqliteStoreTests (own: the SQLite migration on a fresh
+store). The MySQL and PostgreSQL migrations were not run against a database here.

@@ -205,6 +205,12 @@ namespace OpenSim.Services.LLLoginService
             if (groupConfig is not null)
                 m_MaxAgentGroups = groupConfig.GetInt("MaxAgentGroups", m_MaxAgentGroups);
 
+            // [Confluence] Tranquillity #302: which address a viewer is given for its region, by the viewer's source
+            // address. Without a [ViewerAddress] Addresses list every viewer is given the region's own address, as before.
+            ViewerAddressConfig viewerAddressConfig = ViewerAddressConfig.FromConfig(config.Configs[ViewerAddressConfig.SectionName], m_log);
+            m_ViewerAddresses = ViewerAddressSelector.Create(viewerAddressConfig, m_log);
+            ViewerAddressStartupLog.Shared.ReportOnce(m_log, viewerAddressConfig, m_ViewerAddresses);
+
             IConfig presenceConfig = config.Configs["PresenceService"];
             if (presenceConfig is not null)
             {
@@ -373,8 +379,21 @@ namespace OpenSim.Services.LLLoginService
             return response;
         }
 
+        protected ViewerAddressSelector m_ViewerAddresses = ViewerAddressSelector.Disabled;
+
         public LoginResponse Login(string firstName, string lastName, string passwd, string startLocation, UUID scopeID,
             string clientVersion, string channel, string mac, string id0, IPEndPoint clientIP, bool agree_to_tos = false)
+        {
+            return Login(firstName, lastName, passwd, startLocation, scopeID, clientVersion, channel, mac, id0, clientIP,
+                agree_to_tos, clientIP?.Address);
+        }
+
+        /// <param name="clientIP">The address recorded for the login.</param>
+        /// <param name="viewerSource">The address the viewer is classified by when its region address is chosen
+        /// ([Confluence] Tranquillity #302).</param>
+        public LoginResponse Login(string firstName, string lastName, string passwd, string startLocation, UUID scopeID,
+            string clientVersion, string channel, string mac, string id0, IPEndPoint clientIP, bool agree_to_tos,
+            IPAddress viewerSource)
         {
             if (m_AccessControlService != null)
             {
@@ -708,6 +727,10 @@ namespace OpenSim.Services.LLLoginService
                         destination.RegionName, destination.ExternalEndPoint, firstName, lastName);
                 }
 
+                // A region of another grid (reached through its gatekeeper) is given as its own address; the viewer
+                // address settings describe this grid's regions only.
+                bool destinationIsLocal = gatekeeper is null;
+
                 if (account.UserLevel >= 200)
                     flags |= TeleportFlags.Godlike;
 
@@ -755,7 +778,12 @@ namespace OpenSim.Services.LLLoginService
                         account, aCircuit, guinfo, destination, inventorySkel, friendsList, m_LibraryService,
                         where, startLocation, position, lookAt, gestures, processedMessage, home, clientIP,
                         m_MapTileURL, m_ProfileURL, m_OpenIDURL, m_SearchURL, m_Currency, m_DSTZone,
-                        m_DestinationGuide, m_AvatarPicker, realID, m_ClassifiedFee,m_MaxAgentGroups);
+                        m_DestinationGuide, m_AvatarPicker, realID, m_ClassifiedFee,m_MaxAgentGroups,
+                        m_ViewerAddresses, viewerSource, destinationIsLocal);
+
+                if (m_ViewerAddresses.Enabled)
+                    m_log.DebugFormat("[LLOGIN SERVICE]: Giving {0} {1} (viewer address {2}) region endpoint {3}:{4}",
+                        firstName, lastName, viewerSource, response.SimAddress, response.SimPort);
 
                     m_log.DebugFormat("[LLOGIN SERVICE]: All clear. Sending login response to {0} {1}", firstName, lastName);
 

@@ -56,3 +56,8 @@ ALTER TABLE `regions`
 	MODIFY COLUMN `regionName` varchar(128) CHARACTER SET utf8mb4 DEFAULT NULL;
 COMMIT;
 
+
+:VERSION 12         #----- [Confluence] Tranquillity #302: optional local viewer address a region registers ([ViewerAddress] LocalAddress)
+BEGIN;
+ALTER TABLE `regions` ADD COLUMN `viewerLocalAddress` varchar(64) DEFAULT NULL;
+COMMIT;
