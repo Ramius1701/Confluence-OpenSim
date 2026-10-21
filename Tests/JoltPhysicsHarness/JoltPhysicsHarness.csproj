@@ -1,17 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Offline physics harness for the Jolt module, from Legion's Tranquillity lane/jolt (Tests/JoltPhysicsHarness):
-       builds a Jolt scene with no region, steps it through the module's own Simulate at a chosen heartbeat rate, and
-       writes a CSV trace and a summary per scenario. Console tool; the Jolt test project drives the same scenarios as
-       regression tests. Confluence project file: references the Confluence module paths and the shared bin\ DLLs.
-       Hand-maintained and outside OpenSim.sln. -->
+  <!-- [Confluence] From Tranquillity develop (Tests/JoltPhysicsHarness/JoltPhysicsHarness.csproj), with Confluence paths: the modules under
+       OpenSim\Region\PhysicsModules, bin\ references, xunit packages as the Phlox suite. Hand-maintained and outside
+       OpenSim.sln. Run: dotnet test Tests\JoltPhysicsHarness -c Release -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
-    <Nullable>disable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>JoltPhysicsHarness</AssemblyName>
     <RootNamespace>OpenSim.Region.PhysicsModules.Jolt.Harness</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsPublishable>false</IsPublishable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
@@ -21,9 +19,21 @@
   <ItemGroup>
     <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt.Backend\OpenSim.Region.PhysicsModules.Jolt.Backend.csproj" />
     <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt\OpenSim.Region.PhysicsModules.Jolt.csproj" />
+    <!-- [Confluence] the harness's seam scenarios use the mesher directly; Tranquillity's module brings it along -->
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Meshing\OpenSim.Region.PhysicsModule.Meshing.csproj" />
   </ItemGroup>
 
-  <!-- The module takes these from bin\ without copying them; an executable needs them beside it. -->
+  <ItemGroup>
+    <Compile Include="..\JoltTestShared\MaterialPins.cs" Link="MaterialPins.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- [Confluence] the shipped defaults are bin\OpenSimDefaults.ini here (RegionServerDefaults.ini in Tranquillity) -->
+    <Content Include="..\..\bin\OpenSimDefaults.ini" Link="RegionServerDefaults.ini" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="ci\**\*" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+  <!-- [Confluence] The modules take these from bin\ without copying them; the test host needs them beside it. -->
   <ItemGroup>
     <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
     <Reference Include="Mono.Addins"><HintPath>..\..\bin\Mono.Addins.dll</HintPath></Reference>
@@ -32,10 +42,6 @@
     <Reference Include="OpenMetaverseTypes"><HintPath>..\..\bin\OpenMetaverseTypes.dll</HintPath></Reference>
     <Reference Include="OpenMetaverse.StructuredData"><HintPath>..\..\bin\OpenMetaverse.StructuredData.dll</HintPath></Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath></Reference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="ci\**\*" CopyToOutputDirectory="Never" />
   </ItemGroup>
 
   <!-- Keeps the native package's unused files (joltc_double, Android) out of the output. -->

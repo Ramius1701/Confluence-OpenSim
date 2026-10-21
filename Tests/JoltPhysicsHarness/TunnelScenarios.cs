@@ -34,6 +34,8 @@ public static class TunnelScenarios
     /// <summary>The volume-detect slab of tunnel-vd-wall: its thickness, and the gap from its far face to the wall.</summary>
     public const float SlabThickness = 1f, SlabToWall = 2f;
     public const uint SlabLocalId = PhantomScenarios.FirstPartId;
+    /// <summary>The thickness of the volume-detect slab of tunnel-vd-slab (m).</summary>
+    public const float ThinSlab = 0.1f;
 
     private static float Ball(Run r) => r.Options.ShotBall;
     private static float Ground(Run r) => r.GroundAt(TargetX, ShotY);
@@ -42,9 +44,7 @@ public static class TunnelScenarios
     private static void AddBall(Run r, float face, float z, bool phantom = false)
     {
         float d = Ball(r);
-        r.AddSphere(d, new Vector3(face - StartGap - d * 0.5f, ShotY, z));
-        if (phantom)
-            r.Actor.Phantom = true;
+        r.AddSphere(d, new Vector3(face - StartGap - d * 0.5f, ShotY, z), phantom);
     }
 
     // Shoot on the first heartbeat after the load heartbeat.
@@ -96,9 +96,7 @@ public static class TunnelScenarios
             {
                 float ground = Ground(r);
                 r.AddOtherBox(new Vector3(BoxSize, BoxSize, BoxSize), new Vector3(TargetX, ShotY, ground + BoxSize * 0.5f),
-                              Quaternion.Identity, true);
-                if (boxPhantom)
-                    r.Other.Phantom = true;
+                              Quaternion.Identity, true, boxPhantom);
                 AddBall(r, TargetX - BoxSize * 0.5f, ground + MathF.Max(BoxSize * 0.5f, Ball(r) * 0.5f + 0.01f));
                 r.ReleaseAt = r.Dt;
             },
@@ -154,6 +152,23 @@ public static class TunnelScenarios
                 PhantomScenarios.AddPart(r, "slab", new Vector3(SlabThickness, WallSpan, WallSpan), new Vector3(slabX, ShotY, ground + WallSpan * 0.5f),
                                          false, false, true, true);
                 AddBall(r, slabX - SlabThickness * 0.5f, ground + ShotHeight);
+                r.ReleaseAt = r.Dt;
+            },
+            Input = r => Shoot(r, Vector3.UnitX),
+            PassedThrough = (r, s) => s.Position.X > TargetX,
+        },
+        new()
+        {
+            Name = "tunnel-vd-slab",
+            Description = "A physical ball shot along x through a fixed volume-detect slab 0.1 m thick, with nothing beyond it.",
+            UsesShot = true,
+            DefaultDuration = _ => 0.5f,
+            Setup = r =>
+            {
+                float ground = Ground(r);
+                PhantomScenarios.AddPart(r, "slab", new Vector3(ThinSlab, WallSpan, WallSpan), new Vector3(TargetX, ShotY, ground + WallSpan * 0.5f),
+                                         false, false, true, true);
+                AddBall(r, TargetX - ThinSlab * 0.5f, ground + ShotHeight);
                 r.ReleaseAt = r.Dt;
             },
             Input = r => Shoot(r, Vector3.UnitX),

@@ -90,21 +90,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public override string ToString() => $"Character({Value})";
     }
 
-    /// <summary>Opaque reference to a joint/constraint between two bodies.</summary>
-    public readonly struct ConstraintId : IEquatable<ConstraintId>
-    {
-        public static readonly ConstraintId Invalid = default;
-
-        public readonly uint Value;
-        public ConstraintId(uint value) => Value = value;
-
-        public bool IsValid => Value != 0u;
-        public bool Equals(ConstraintId other) => Value == other.Value;
-        public override bool Equals(object? o) => o is ConstraintId c && Equals(c);
-        public override int GetHashCode() => (int)Value;
-        public override string ToString() => $"Constraint({Value})";
-    }
-
     // ---------------------------------------------------------------------
     // Enums
     // ---------------------------------------------------------------------
@@ -153,6 +138,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// name Sensor, the same as a volume detector.
         /// </summary>
         Phantom = 7,
+
+        /// <summary>
+        /// A non-physical prim that keyframed motion is moving: a kinematic body that collides exactly as
+        /// <see cref="Static"/> does. It sits in the moving broad phase, so that each move does not touch the large
+        /// tree of fixed prims; the prim goes back to <see cref="Static"/> when the motion ends.
+        /// </summary>
+        MovingStatic = 8,
     }
 
     /// <summary>
@@ -227,29 +219,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// <summary>Everything a default llCastRay should see.</summary>
         Default = Terrain | Static | Dynamic | Avatar,
         All = Terrain | Static | Dynamic | Avatar | Sensor,
-    }
-
-    public enum ConstraintKind : byte
-    {
-        Fixed = 0,
-        Point = 1,
-        Distance = 2,   // supports spring parameters
-        Hinge = 3,
-        Slider = 4,
-        Cone = 5,
-        SwingTwist = 6,
-        SixDof = 7,
-        Pulley = 8,
-        Gear = 9,
-        RackAndPinion = 10,
-        Path = 11,      // smooth spline path
-    }
-
-    public enum MotorMode : byte
-    {
-        Off = 0,
-        Velocity = 1,
-        Position = 2,
     }
 
     // ---------------------------------------------------------------------
@@ -379,38 +348,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             PushStrength = 1.0f,
             JumpSpeed = 4.0f,
         };
-    }
-
-    public struct ConstraintDesc
-    {
-        public ConstraintKind Kind;
-        public BodyId BodyA;
-        /// <summary>Invalid = attach to world.</summary>
-        public BodyId BodyB;
-
-        /// <summary>Anchor points in each body's local space.</summary>
-        public Vector3 AnchorA;
-        public Vector3 AnchorB;
-
-        /// <summary>Primary axis in local space. Hinge axis, slider axis, cone axis.</summary>
-        public Vector3 AxisA;
-        public Vector3 AxisB;
-
-        /// <summary>Kind-dependent limits. Hinge/Slider: [min,max]. Cone: half-angle in X.</summary>
-        public Vector2 Limits;
-        public bool LimitsEnabled;
-
-        /// <summary>Distance constraint spring. Frequency in Hz, damping 0-1.</summary>
-        public float SpringFrequency;
-        public float SpringDamping;
-
-        /// <summary>Gear / rack-and-pinion ratio.</summary>
-        public float Ratio;
-
-        /// <summary>Break force threshold in newtons. 0 = unbreakable.</summary>
-        public float BreakForce;
-
-        public uint UserData;
     }
 
     // ---------------------------------------------------------------------
@@ -727,6 +664,15 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         ShapeId CreateMeshShape(ReadOnlySpan<Vector3> vertices, ReadOnlySpan<int> indices);
         ShapeId CreateCompoundShape(ReadOnlySpan<CompoundChild> children);
 
+        /// <summary>
+        /// One shape made of convex hulls that already exist (CreateConvexHullShape), each at the shape's origin: how a
+        /// mesh asset's hull list is cooked. Unlike a linkset's CreateCompoundShape the parts are not prims: a hit on it
+        /// names the body, SetBodyPartMaterial treats it as one shape, and SetShapeDensity sets the density of every hull.
+        /// Needs at least two hulls (use the single hull directly otherwise). The hull handles may be released after
+        /// the call; the shape keeps the hulls alive.
+        /// </summary>
+        ShapeId CreateHullCompoundShape(ReadOnlySpan<ShapeId> hulls);
+
         ShapeId CreateHeightFieldShape(
             ReadOnlySpan<float> heights, int sampleCountX, int sampleCountY, Vector3 scale);
 
@@ -737,6 +683,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// </summary>
         ShapeId CreateScaledShape(ShapeId baseShape, Vector3 scale);
 
+        /// <summary>
+        /// True when the shape can be scaled by exactly this scale (CreateScaledShape would otherwise change it to the
+        /// nearest valid one: a sphere or capsule needs a uniform scale, a cylinder a uniform radial one). False for a
+        /// shape that is not live.
+        /// </summary>
+        bool IsScaleValid(ShapeId shape, Vector3 scale);
+
         void AddShapeRef(ShapeId shape);
         void ReleaseShape(ShapeId shape);
 
@@ -746,6 +699,15 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         void RemoveBody(BodyId body);
         bool IsBodyValid(BodyId body);
 
+        /// <summary>
+        /// Attaches a provider that changes <paramref name="body"/>'s velocities before every collision step of an
+        /// Update (see <see cref="IStepForceProvider"/>). The backend registers one step listener with the engine when the
+        /// first provider attaches and removes it when the last detaches; both happen between Updates. Dispose the result
+        /// to detach. Never call this, or dispose the result, from inside a provider. Removing the body detaches its
+        /// providers.
+        /// </summary>
+        IDisposable AttachStepForceProvider(BodyId body, IStepForceProvider provider);
+
         void SetBodyShape(BodyId body, ShapeId shape, bool recomputeMass);
         void SetBodyMotionType(BodyId body, BodyMotionType motionType, bool activate);
         /// <summary>Moves a live body to another layer in place: its transform, velocity and id are kept.</summary>
@@ -754,12 +716,31 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         void SetBodySensor(BodyId body, bool isSensor);
 
         void SetBodyTransform(BodyId body, Vector3 position, Quaternion orientation, bool activate);
+
+        /// <summary>
+        /// Moves a kinematic body so that it reaches the given pose after <paramref name="seconds"/> of simulation, by
+        /// giving it the linear and angular velocity that cover the way in that time. What touches or stands on the body
+        /// is carried or pushed by it. Nothing happens for a body that is not kinematic or a time that is not positive.
+        /// </summary>
+        void MoveKinematicBody(BodyId body, Vector3 position, Quaternion orientation, float seconds);
+
+        /// <summary>
+        /// Puts a body at a pose with the given velocities at once, with no travel in between: a teleport when the
+        /// velocities are zero (what touches it is not flung), and the way to stop a kinematic body at a place.
+        /// </summary>
+        void SetBodyPoseAndVelocity(BodyId body, Vector3 position, Quaternion orientation, Vector3 linearVelocity, Vector3 angularVelocity);
+
         void SetBodyLinearVelocity(BodyId body, Vector3 velocity);
         void SetBodyAngularVelocity(BodyId body, Vector3 velocity);
 
         void SetBodyMass(BodyId body, float mass);
         /// <summary>Read the body's assigned mass (explicit, or shape Volume x Density). 0 if unknown/static.</summary>
         float GetBodyMass(BodyId body);
+
+        /// <summary>True when the body (or the avatar) has Jolt's enhanced internal edge removal on (PhysicsBackendSettings
+        /// BodyInternalEdgeRemoval, AvatarInternalEdgeRemoval). False for a handle that is not live.</summary>
+        bool GetBodyEnhancedEdgeRemoval(BodyId body);
+        bool GetCharacterEnhancedEdgeRemoval(CharacterId character);
         /// <summary>Local principal moments of inertia (diagonal), kg*m^2. Zero for non-dynamic bodies.
         /// The vehicle controller's vertical attractor scales its restoring torque by this (the
         /// BulletSim equivalent is the prim's CalculateLocalInertia result).</summary>
@@ -776,6 +757,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// parts' values: friction sqrt(f1 x f2), restitution r1 x r2. SetBodyFriction and SetBodyRestitution set every
         /// part. A recreated body starts again from its BodyDesc values.</summary>
         void SetBodyPartMaterial(BodyId body, uint partUserData, float friction, float restitution);
+        /// <summary>true: every contact this body takes part in combines friction with <see cref="MaterialCombine.Min"/>, whatever
+        /// the world's rule is, so a part whose friction is 0 stays frictionless on any surface. false (the default of a new
+        /// body): the world's rule.</summary>
+        void SetBodyFrictionMin(BodyId body, bool min);
         /// <summary>A live shape's geometric volume (m^3); 0 for an unknown handle.</summary>
         float GetShapeVolume(ShapeId shape);
         /// <summary>A live shape's centre of mass in the shape's own frame (m), as Jolt computes it from the geometry at a
@@ -783,7 +768,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         Vector3 GetShapeCenterOfMass(ShapeId shape);
         /// <summary>The density (kg/m^3) a convex shape gives its mass properties; Jolt's default is 1000. A compound
         /// built from shapes afterwards weights each sub-shape's mass, centre of mass and inertia by it. A body made on the
-        /// shape alone is not affected: its mass is set from BodyDesc. No-op for a non-convex shape or an unknown handle.</summary>
+        /// shape alone is not affected: its mass is set from BodyDesc. A hull compound (CreateHullCompoundShape) sets it on
+        /// every hull. No-op for any other non-convex shape or an unknown handle.</summary>
         void SetShapeDensity(ShapeId shape, float density);
         /// <summary>A convex shape's density (kg/m^3); 0 for a non-convex shape or an unknown handle.</summary>
         float GetShapeDensity(ShapeId shape);
@@ -795,9 +781,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// Kept across later mass and density changes; a new body starts with none.</summary>
         void SetBodyRotationLocks(BodyId body, bool lockX, bool lockY, bool lockZ);
 
-        /// <summary>Lock translation/rotation on world axes. Backs ExtendedPhysics axis locks.</summary>
-        void SetBodyAxisLocks(BodyId body, Vector3 allowedTranslation, Vector3 allowedRotation);
-
         void ApplyForce(BodyId body, Vector3 force);
         void ApplyTorque(BodyId body, Vector3 torque);
         void ApplyImpulse(BodyId body, Vector3 impulse);
@@ -805,9 +788,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         void ApplyAngularImpulse(BodyId body, Vector3 angularImpulse);
 
         /// <summary>
-        /// Archimedes impulse for one step. The water plane and the object's
-        /// submerged fraction are computed by the engine from the shape.
-        /// This is what boat vehicles should ride on rather than hand-rolled lift.
+        /// Archimedes impulse for one step. NOT IMPLEMENTED: the call changes nothing (a non-finite argument is still
+        /// counted and dropped). The vehicle buoyancy model applies its own lift, and Jolt's buoyancy impulse needs a
+        /// step length and a fluid velocity that these arguments do not carry.
         /// </summary>
         void ApplyBuoyancy(
             BodyId body, float waterHeight, float buoyancy, float linearDrag, float angularDrag);
@@ -845,11 +828,18 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
 
         // -- characters ---------------------------------------------------
 
+        /// <summary>Makes an avatar controller. On a backend that has been disposed it makes nothing and returns <see cref="CharacterId.Invalid"/>.</summary>
         CharacterId CreateCharacter(in CharacterDesc desc);
         void RemoveCharacter(CharacterId character);
 
         void SetCharacterTransform(CharacterId character, Vector3 position, Quaternion orientation);
         void SetCharacterShape(CharacterId character, float capsuleHalfHeight, float capsuleRadius);
+
+        /// <summary>
+        /// Sets the mass a loose object meets the avatar with, and that an avatar's push is divided by (a push is a change
+        /// of momentum, so the speed it gives is the impulse over this mass). A mass that is not finite and above 0 is ignored.
+        /// </summary>
+        void SetCharacterMass(CharacterId character, float mass);
 
         /// <summary>
         /// Atomically (under the character gate, so it cannot race the per-step CharacterVirtual update)
@@ -877,6 +867,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// above AvatarPushMaxSpeed, or above the speed it already had.
         /// </summary>
         void AddCharacterImpulse(CharacterId character, Vector3 velocityChange);
+
+        /// <summary>
+        /// The horizontal velocity an avatar arrived with from another region (or a teleport that keeps it): momentum, not a walk
+        /// command. The avatar keeps it while it is off the ground; on the ground it gives way to the velocity the avatar's
+        /// controls ask for, over a tenth of a second, so an avatar holding a key goes on
+        /// at its walking speed and one holding none comes to rest. The vertical part is the controller's own.
+        /// </summary>
+        void SetCharacterCarry(CharacterId character, Vector3 velocity);
 
         void SetCharacterMovement(
             CharacterId character, Vector3 desiredVelocity, bool jump, bool flying);
@@ -907,15 +905,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         void SetCharacterConstantForce(CharacterId character, Vector3 acceleration);
 
         bool TryGetCharacterState(CharacterId character, out CharacterState state);
-
-        // -- constraints --------------------------------------------------
-
-        ConstraintId CreateConstraint(in ConstraintDesc desc);
-        void RemoveConstraint(ConstraintId constraint);
-        void SetConstraintEnabled(ConstraintId constraint, bool enabled);
-        void SetConstraintMotor(ConstraintId constraint, MotorMode mode, float target, float maxForce);
-        void SetConstraintLimits(ConstraintId constraint, float min, float max);
-        bool IsConstraintBroken(ConstraintId constraint);
 
         // -- world --------------------------------------------------------
 
@@ -965,6 +954,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             ShapeId shape, Vector3 origin, Quaternion orientation, Vector3 direction,
             float maxDistance, QueryFilter filter, out RayHit hit);
 
+        /// <summary>
+        /// Whether the body, where it is now, sinks deeper than <paramref name="tolerance"/> into another static or dynamic
+        /// body (terrain, avatars and sensors are not counted). A body that only rests against another does not.
+        /// </summary>
+        bool BodyPenetratesOthers(BodyId body, float tolerance);
+
         // -- health -------------------------------------------------------
 
         /// <summary>Cumulative capacity / input-rejection counters. Cheap; safe from any thread.</summary>
@@ -984,9 +979,36 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             Span<ContactReport> contacts);
     }
 
+    /// <summary>How the materials of two touching surfaces combine into the one value a contact uses.</summary>
+    public enum MaterialCombine
+    {
+        /// <summary>(a + b) / 2. PhysX's default combine mode, which Halcyon's tree never changes.</summary>
+        Average = 0,
+        /// <summary>sqrt(a x b). Jolt's own rule for friction.</summary>
+        GeometricMean,
+        /// <summary>a x b. The ubODE rule for restitution.</summary>
+        Multiply,
+        Min,
+        /// <summary>Jolt's own rule for restitution.</summary>
+        Max,
+    }
+
     public struct PhysicsBackendSettings
     {
         public Vector3 Gravity;
+
+        /// <summary>How two surfaces' friction combines in a contact. <see cref="MaterialCombine.Average"/> in an unset struct.</summary>
+        public MaterialCombine FrictionCombine;
+
+        /// <summary>How two surfaces' restitution combines in a contact. <see cref="MaterialCombine.Average"/> in an unset struct.</summary>
+        public MaterialCombine RestitutionCombine;
+
+        /// <summary>The terrain body's friction and restitution (<see cref="DefaultTerrainFriction"/> and
+        /// <see cref="DefaultTerrainRestitution"/> in <see cref="Default"/>; 0 in an unset struct).</summary>
+        public float TerrainFriction;
+        public float TerrainRestitution;
+        public const float DefaultTerrainFriction = 0.4f;
+        public const float DefaultTerrainRestitution = 0.05f;
 
         /// <summary>Upper bound on bodies. Jolt preallocates; size for worst case.</summary>
         public int MaxBodies;
@@ -1039,6 +1061,37 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public float MaxBodyLinearSpeed;
         public float MaxBodyAngularSpeed;
 
+        /// <summary>
+        /// Jolt's enhanced internal edge removal (BodyCreationSettings mEnhancedInternalEdgeRemoval; CharacterVirtualSettings
+        /// mEnhancedInternalEdgeRemoval): extra work to drop the contacts a body makes with the shared edges inside a
+        /// triangle mesh or a heightfield, which push it off its path. For bodies that move under physics, and for avatars.
+        /// Off in an unset struct, which is the engine's own default.
+        /// </summary>
+        public bool BodyInternalEdgeRemoval;
+        public bool AvatarInternalEdgeRemoval;
+
+        /// <summary>
+        /// Cook every triangle mesh shape (CreateMeshShape) with a reversed copy of each triangle, so a moving body meets
+        /// it from either side. A simulated contact with a mesh ignores its back faces, and the stock native library has no
+        /// setting that changes that. Doubles the mesh's triangles. Off in an unset struct, which is one-sided.
+        /// </summary>
+        public bool TwoSidedMeshes;
+
+        /// <summary>
+        /// How far apart two shapes can be, in metres, and still make a contact that stops them closing (Jolt's
+        /// PhysicsSettings mSpeculativeContactDistance). Null (an unset struct) leaves the engine's own value, 0.02. A body that
+        /// rests a few millimetres into a surface sees the end face of the next prim along as a wall within this distance, which
+        /// is how a box sliding across two abutted prims can be stopped and tipped at the seam; 0 turns the speculative contacts
+        /// off, at the cost of contacts that begin only on overlap.
+        /// </summary>
+        public float? SpeculativeContactDistance;
+
+        /// <summary>
+        /// The speed in metres per second under which a body counts as still for sleeping (Jolt's PhysicsSettings
+        /// mPointVelocitySleepThreshold). Null (an unset struct) leaves the engine's own value, 0.03.
+        /// </summary>
+        public float? SleepVelocityThreshold;
+
         public const float JoltMaxLinearSpeed = 500f;
         public const float JoltMaxAngularSpeed = 0.25f * MathF.PI * 60f;
 
@@ -1089,7 +1142,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// move avatars.
         /// </summary>
         public float AvatarPushMaxSpeed;
-        public const float DefaultAvatarPushMaxSpeed = 10f;
+        public const float DefaultAvatarPushMaxSpeed = 100f;
 
         /// <summary>
         /// How fast an avatar's push allowance refills, in m/s per second. Below gravity (9.8), repeated pushes cannot
@@ -1098,9 +1151,25 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public float AvatarPushRecovery;
         public const float DefaultAvatarPushRecovery = 5f;
 
+        /// <summary>
+        /// What an avatar walking or running into a loose object pushes it with, as a force in newtons per unit of the
+        /// avatar's momentum into the object (its mass times its speed): force = mass x speed x this, so a heavier or faster
+        /// avatar pushes harder, and running pushes harder than walking. Halcyon's rule (PhysxCharacter.KickOrRideOnPrim:
+        /// impulse = mass x distance moved x 100 each step, which is a force of mass x speed x 100). The force is held to
+        /// <see cref="AvatarObjectPushMaxForce"/>.
+        /// </summary>
+        public float AvatarObjectPushPerMomentum;
+        public const float DefaultAvatarObjectPushPerMomentum = 100f;
+
+        /// <summary>The most force, in newtons, an avatar pushes a loose object with (before the character's PushStrength).</summary>
+        public float AvatarObjectPushMaxForce;
+        public const float DefaultAvatarObjectPushMaxForce = 2000f;
+
         public static PhysicsBackendSettings Default => new PhysicsBackendSettings
         {
             Gravity = new Vector3(0f, 0f, -9.80665f),
+            TerrainFriction = DefaultTerrainFriction,
+            TerrainRestitution = DefaultTerrainRestitution,
             MaxBodies = 65536,
             MaxBodyPairs = 65536,
             MaxContactConstraints = 16384,
@@ -1117,6 +1186,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             RayCastMaxTestedHits = DefaultRayCastMaxTestedHits,
             AvatarPushMaxSpeed = DefaultAvatarPushMaxSpeed,
             AvatarPushRecovery = DefaultAvatarPushRecovery,
+            AvatarObjectPushPerMomentum = DefaultAvatarObjectPushPerMomentum,
+            AvatarObjectPushMaxForce = DefaultAvatarObjectPushMaxForce,
         };
     }
 }

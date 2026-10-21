@@ -47,7 +47,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         private Quaternion _orientation = Quaternion.Identity;
         private bool _flying;
         private bool _setAlwaysRun;
-        private bool _targetIsMomentum;     // _targetVelocity came from SetMomentum: a velocity, not a request to scale
 
         // Jump is a LATCH, not a one-shot. The animator calls AvatarJump ONCE, but ScenePresence writes
         // TargetVelocity every movement update (and zeroes its Z - the vertical only ever comes through
@@ -61,7 +60,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // Every controller tuning knob is held here so feel is a knob-turning problem, not an architecture one.
         private float _capsuleHalfHeight;   // EXCLUDING the caps (Jolt convention)
         private float _capsuleRadius;
-        private readonly float _mass = CharacterDesc.Default.Mass;
+        private float _mass;
 
         private int _subscribedMs;
 
@@ -92,8 +91,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         internal float FeetOffset => _feetOffset;
 
         internal JoltCharacter(JoltScene module, IPhysicsBackend backend, uint localid, string name,
-                               Vector3 position, Vector3 size, float feetOffset, bool isFlying)
+                               Vector3 position, Vector3 size, float feetOffset, bool isFlying, bool allowOutsideRegion = false)
         {
+            // set before the controller exists: it is stepped from the moment CreateCharacterInternal has made it
+            AllowOutsideRegion = allowOutsideRegion;
             _module = module;
             _backend = backend;
             LocalID = localid;
@@ -104,6 +105,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             _flying = isFlying;
 
             CapsuleFromSize(size, out _capsuleHalfHeight, out _capsuleRadius);
+            _mass = MassFor(size);
             CreateCharacterInternal();
         }
 
@@ -116,6 +118,30 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             float totalHalf = MathF.Max(r + 0.1f, size.Z * 0.5f);   // half-height must exceed a single cap
             radius = r;
             halfHeight = MathF.Max(0.05f, totalHalf - r);
+        }
+
+        // The mass of a default-size avatar. Second Life's llGetObjectMass page: avatar mass "was fixed at 1.954922
+        // lindogram" and "is now relative to Avatar shape/size". Mass here is in the same units as a prim's (llGetMass).
+        internal const float DefaultAvatarMass = 1.954922f;
+
+        // The box core hands AddAvatar for the default appearance (X width, Y depth, Z height): the appearance's 0.45 x 0.6 x 1.9
+        // with 0.2 m added to the height (AvatarAppearance AVBOXAJUST).
+        private static readonly Vector3 DefaultAvatarSize = new Vector3(0.45f, 0.6f, 2.1f);
+
+        // Mass from shape and size: the default avatar's mass scaled by the volume of the capsule the size gives, against
+        // the default size's. Halcyon does the same by volume (PhysxCharacter: density x capsule volume); the density is
+        // set so the default avatar weighs the Second Life figure.
+        internal static float MassFor(Vector3 size)
+        {
+            float v = CapsuleVolume(size);
+            float v0 = CapsuleVolume(DefaultAvatarSize);
+            return DefaultAvatarMass * (v / v0);
+        }
+
+        private static float CapsuleVolume(Vector3 size)
+        {
+            CapsuleFromSize(size, out float hh, out float r);
+            return MathF.PI * r * r * (2f * hh + 4f / 3f * r);
         }
 
         // The stand-half for a given appearance size, WITHOUT constructing a character - the scene needs
@@ -156,7 +182,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // _position directly, so it never trips the Position setter (which would force a transform).
         internal void ApplyCharacterState(in CharacterState s)
         {
+            _positionBeforeStep = _position;
             _position = new Vector3(s.Position.X, s.Position.Y, s.Position.Z);
+            KeepInRegion();
             _velocity = new Vector3(s.LinearVelocity.X, s.LinearVelocity.Y, s.LinearVelocity.Z);
             _isSupported = s.IsSupported;
             _isSliding = s.IsSliding;
@@ -184,6 +212,27 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             RequestPhysicsterseUpdate();
         }
 
+        // The avatar's x and y are kept 0.01 m inside the region's edges after every step, as ubODE does
+        // (ODECharacter: "check outbounds forcing to be in world"). An avatar left outside (stood up from a seat that
+        // waits past the edge) would otherwise make ScenePresence.CheckForBorderCrossing start a crossing every frame.
+        // A walking or flying avatar still crosses: core reads position plus velocity times the frame time.
+        private const float EdgeMargin = 0.01f;
+
+        private void KeepInRegion()
+        {
+            // an avatar carried in by an object stands where the object puts it, possibly outside the region
+            if (AllowOutsideRegion)
+                return;
+            float maxX = _module.RegionSizeX - EdgeMargin, maxY = _module.RegionSizeY - EdgeMargin;
+            float x = Math.Clamp(_position.X, EdgeMargin, maxX), y = Math.Clamp(_position.Y, EdgeMargin, maxY);
+            if (x == _position.X && y == _position.Y)
+                return;
+            _position.X = x;
+            _position.Y = y;
+            if (_character.IsValid)
+                _backend.SetCharacterTransform(_character, ToS(_position), ToS(_orientation));
+        }
+
         // One channel for all movement intent: desired velocity + a one-shot jump + the flying flag. The
         // backend integrates gravity, ground velocity and the jump in StepCharacter; jump is consumed there
         // exactly once, so we clear the local pending flag after pushing it.
@@ -202,11 +251,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // flying, running (always run on) or walking. A walk or run scales the horizontal part only (the controller
         // takes no vertical intent off a flight); a flight scales all three, so straight up goes as fast as level, and
         // its downward part by the fly-down factor, since Second Life documents a faster descent (22.87 m/s against 16.00).
-        // A momentum handed over by SetMomentum is a velocity the avatar already had, so it goes through as it is.
         internal Vector3 DesiredVelocity()
         {
-            if (_targetIsMomentum)
-                return _targetVelocity;
             if (_flying)
             {
                 Vector3 v = _targetVelocity * _module.AvatarFlySpeedFactor;
@@ -256,10 +302,24 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             _position = pos;
             _velocity = Vector3.Zero;
             _targetVelocity = Vector3.Zero;
-            _targetIsMomentum = false;
             if (_character.IsValid)
                 _backend.ReGroundCharacter(_character, ToS(pos));
         }
+
+        // The object this avatar stands on was set back (JoltPrim.FinishBorderPin) from where it stood before the step to
+        // `objectNow`. The avatar goes to the same place on it that it had before the step, and loses the velocity the object
+        // gave it on the way out, so that it is still on the object and not thrown off it. Its walking request stays.
+        internal void PlaceBackOnGround(Vector3 objectBefore, Vector3 objectNow)
+        {
+            _position = objectNow + (_positionBeforeStep - objectBefore);
+            _velocity = Vector3.Zero;
+            if (_character.IsValid)
+                _backend.ReGroundCharacter(_character, ToS(_position));
+            RequestPhysicsterseUpdate();
+        }
+
+        // Where the last drain before this one left the avatar.
+        private Vector3 _positionBeforeStep;
 
         // Facing is radially symmetric for a vertical capsule, so orientation does not change collision.
         // Cache it (the viewer's display rotation comes from the client's body-rot, not physics) and avoid
@@ -285,7 +345,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             {
                 if (!NonFiniteGuard.Ok(value)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "avatar", LocalID, "Velocity", value.ToString()); return; }
                 _targetVelocity = value;
-                _targetIsMomentum = false;
                 PushMovement();
             }
         }
@@ -298,7 +357,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             {
                 if (!NonFiniteGuard.Ok(value)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "avatar", LocalID, "TargetVelocity", value.ToString()); return; }
                 _targetVelocity = value;
-                _targetIsMomentum = false;
                 PushMovement();
             }
         }
@@ -321,8 +379,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             if (!NonFiniteGuard.Ok(momentum)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "avatar", LocalID, "Momentum", momentum.ToString()); return; }
             _velocity = momentum;
-            _targetVelocity = momentum;
-            _targetIsMomentum = true;
+            // The velocity an avatar arrived with is handed to the backend as momentum, which gives way to whatever its controls ask
+            // for: on the ground over a short fade, flying likewise. Held as the movement request, it would go on at that velocity
+            // until the avatar's controls next set one, and an avatar that crossed with no key held would never stop. A flight's
+            // vertical part is not carried: a flying avatar's climb and descent follow its controls, as they do when a key is let go.
+            if (_character.IsValid)
+                _backend.SetCharacterCarry(_character, ToS(momentum));
             PushMovement();
         }
 
@@ -335,8 +397,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (_size == value) return;
                 _size = value;
                 CapsuleFromSize(value, out _capsuleHalfHeight, out _capsuleRadius);
+                _mass = MassFor(value);
                 if (_character.IsValid)
+                {
+                    _backend.SetCharacterMass(_character, _mass);
                     _backend.SetCharacterShape(_character, _capsuleHalfHeight, _capsuleRadius);
+                }
             }
         }
 
@@ -393,8 +459,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         public override void LockAngularMotion(byte axislocks) { }
 
         // A push: llPushObject on this avatar, or an attachment's llApplyImpulse on its wearer (both reach here as an
-        // impulse). The avatar's velocity changes by impulse / mass, within the push limits the backend holds it to
-        // ([Jolt] AvatarPushMaxSpeed, AvatarPushRecovery). Second Life ignores the angular part on an avatar
+        // impulse). The avatar's velocity changes by impulse / its mass (the shape-and-size mass above), within the push
+        // limits the backend holds it to ([Jolt] AvatarPushMaxSpeed, AvatarPushRecovery). Second Life ignores the angular part on an avatar
         // (llPushObject ignores the angular impulse for agents and their attachments, wiki.secondlife.com/wiki/LlPushObject), so AddAngularForce
         // stays inert.
         public override void AddForce(Vector3 force, bool pushforce)

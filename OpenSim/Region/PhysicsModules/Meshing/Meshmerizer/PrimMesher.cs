@@ -1234,6 +1234,12 @@ namespace PrimMesher
         public float xScale;
         public float yScale;
         public float percentOfPath;
+
+        /// <summary>[Confluence] Tranquillity #325: the angle in radians the layer's rotation turns about the path's axis (0 on a straight path).</summary>
+        public float turn;
+
+        /// <summary>The twist in radians applied to the layer about the path's own direction.</summary>
+        public float twist;
     }
 
     public enum PathType { Linear = 0, Circular = 1, Flexible = 2 }
@@ -1321,6 +1327,8 @@ namespace PrimMesher
                     newNode.rotation = new Quat(new Coord(0.0f, 0.0f, 1.0f), twist);
                     newNode.position = new Coord(xOffset, yOffset, zOffset);
                     newNode.percentOfPath = percentOfPath;
+                    newNode.turn = 0.0f;
+                    newNode.twist = twist;
 
                     pathNodes.Add(newNode);
 
@@ -1427,6 +1435,8 @@ namespace PrimMesher
                         newNode.rotation *= new Quat(new Coord(0.0f, 0.0f, 1.0f), twist);
 
                     newNode.percentOfPath = percentOfPath;
+                    newNode.turn = angle + this.topShearY;
+                    newNode.twist = twist;
 
                     pathNodes.Add(newNode);
 
@@ -1546,6 +1556,115 @@ namespace PrimMesher
         public bool HasHollow
         {
             get { return hasHollow; }
+        }
+
+        // [Confluence] Tranquillity #325: the profile layout and the layers' turns and twists, kept after Extrude.
+        private int profileOuterVertexCount = 0;
+        private int profileHollowVertexCount = 0;
+        private bool profileHasCentreVertex = false;
+        private float[] profileVertexAngles = Array.Empty<float>();
+        private float[] layerTurns = Array.Empty<float>();
+        private float[] layerTwists = Array.Empty<float>();
+
+        /// <summary>
+        /// After Extrude: the number of outer-ring vertices in each layer of coords. 0 until Extrude has run.
+        /// </summary>
+        public int ProfileOuterVertexCount
+        {
+            get { return profileOuterVertexCount; }
+        }
+
+        /// <summary>
+        /// After Extrude: the number of hollow-ring vertices in each layer of coords (0 when the profile has no hollow).
+        /// </summary>
+        public int ProfileHollowVertexCount
+        {
+            get { return profileHollowVertexCount; }
+        }
+
+        /// <summary>
+        /// After Extrude: true when each layer of coords starts with one vertex at the centre of the profile.
+        /// </summary>
+        public bool ProfileHasCentreVertex
+        {
+            get { return profileHasCentreVertex; }
+        }
+
+        /// <summary>
+        /// After Extrude: the angle in radians of each vertex of a layer, as seen from the centre of the profile, indexed
+        /// like a layer of coords (an optional centre vertex, then the outer ring, then the hollow ring). The outer ring
+        /// runs counter-clockwise from the first vertex, so its angles increase; the layer stores the hollow ring in the
+        /// opposite direction, so its angles decrease along the index. The hollow ring is measured from the same zero as
+        /// the outer ring, so a vertex of either ring at the same angle lies on the same ray from the centre. A centre
+        /// vertex has angle 0. The angles are the profile's own, before the layer is rotated into place.
+        /// </summary>
+        public IReadOnlyList<float> ProfileVertexAngles
+        {
+            get { return profileVertexAngles; }
+        }
+
+        /// <summary>
+        /// After Extrude: for each layer in order, the angle in radians its rotation turns about the path's axis
+        /// (0 on a straight path). The difference between two layers is how far the path turns between them.
+        /// </summary>
+        public IReadOnlyList<float> LayerTurns
+        {
+            get { return layerTurns; }
+        }
+
+        /// <summary>
+        /// After Extrude: for each layer in order, the twist in radians applied to the layer about the path's direction.
+        /// </summary>
+        public IReadOnlyList<float> LayerTwists
+        {
+            get { return layerTwists; }
+        }
+
+        /// <summary>
+        /// The angle of each vertex of a profile layer, see <see cref="ProfileVertexAngles"/>.
+        /// </summary>
+        private static float[] MeasureProfileAngles(Profile profile)
+        {
+            int centre = profile.coords.Count - profile.numOuterVerts - profile.numHollowVerts;
+            float[] angles = new float[profile.coords.Count];
+            if (profile.numOuterVerts == 0)
+                return angles;
+
+            double previous = double.NegativeInfinity;
+            double zero = 0.0;
+            for (int k = 0; k < profile.numOuterVerts; k++)
+            {
+                Coord c = profile.coords[centre + k];
+                double a = Math.Atan2(c.Y, c.X);
+                if (k == 0)
+                    zero = a;
+                else
+                    while (a < previous - 1.0e-4)
+                        a += 2.0 * Math.PI;
+                previous = a;
+                angles[centre + k] = (float)(a - zero);
+            }
+
+            if (profile.numHollowVerts > 0)
+            {
+                // the layer stores the hollow ring reversed: walk it counter-clockwise from the same ray as the first outer vertex
+                int first = centre + profile.numOuterVerts;
+                previous = zero;
+                for (int j = 0; j < profile.numHollowVerts; j++)
+                {
+                    int index = first + profile.numHollowVerts - 1 - j;
+                    Coord c = profile.coords[index];
+                    double a = Math.Atan2(c.Y, c.X);
+                    while (a < previous - 1.0e-4)
+                        a += 2.0 * Math.PI;
+                    while (j == 0 && a > zero + Math.PI)
+                        a -= 2.0 * Math.PI;
+                    previous = a;
+                    angles[index] = (float)(a - zero);
+                }
+            }
+
+            return angles;
         }
 
 
@@ -1708,6 +1827,11 @@ namespace PrimMesher
 
             this.numPrimFaces = profile.numPrimFaces;
 
+            this.profileOuterVertexCount = profile.numOuterVerts;
+            this.profileHollowVertexCount = profile.numHollowVerts;
+            this.profileHasCentreVertex = profile.coords.Count - profile.numOuterVerts - profile.numHollowVerts > 0;
+            this.profileVertexAngles = MeasureProfileAngles(profile);
+
             int cut1FaceNumber = profile.bottomFaceNumber + 1;
             int cut2FaceNumber = cut1FaceNumber + 1;
             if (!needEndFaces)
@@ -1766,6 +1890,14 @@ namespace PrimMesher
             path.stepsPerRevolution = stepsPerRevolution;
 
             path.Create(pathType, steps);
+
+            this.layerTurns = new float[path.pathNodes.Count];
+            this.layerTwists = new float[path.pathNodes.Count];
+            for (int nodeIndex = 0; nodeIndex < path.pathNodes.Count; nodeIndex++)
+            {
+                this.layerTurns[nodeIndex] = path.pathNodes[nodeIndex].turn;
+                this.layerTwists[nodeIndex] = path.pathNodes[nodeIndex].twist;
+            }
 
             for (int nodeIndex = 0; nodeIndex < path.pathNodes.Count; nodeIndex++)
             {

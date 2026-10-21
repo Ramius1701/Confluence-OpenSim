@@ -692,8 +692,11 @@ after a region restart. Since 2026-10-14 it also has every function YEngine has 
 avatar freeze and fly/walk flags, viewer name, link inventory giving, NPC tags/follow/say-to/look-at, the
 environment and return functions, and `llCastRayV3`, the Experience trust queries, `llSetSculptAnim`), so a
 script behaves the same on either engine. A grid owner turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on
-the engine its first line names (`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`,
-which stays YEngine. Since 2026-10-21 `llSetEnvironment` (every sky, water and day rule, region or parcel) and
+the engine its first line names (`//YEngine:` or `//InWorldz.Phlox:`, OpenSim's engine header since the 2008
+XEngine/DotNetEngine days), else on the engine that already holds saved state for it, else on
+`[Startup] DefaultScriptEngine`, which stays YEngine (Tranquillity #304, 2026-10-21). So a region can make Phlox its
+default without resetting anything: running scripts stay on YEngine with their state, and only new or edited scripts go
+to Phlox. `[InWorldz.Phlox] ScriptEnginesPath` moves Phlox's state and bytecode cache out of the binary tree. Since 2026-10-21 `llSetEnvironment` (every sky, water and day rule, region or parcel) and
 `llSetAgentEnvironment` run the same rule parsers as YEngine (`EnvironmentRules`), where Phlox had day length and offset
 only and a stub. Built with the solution; its test suite runs 5,561 tests (2026-10-16), and its SLua
 conformance runner gives 60 pass / 0 divergent / 3 gaps. Port notes, the core hooks it needs and test details:
@@ -789,9 +792,14 @@ hardcoded default:
   Confluence-compatible: Mono.Addins registration, late-arriving mesh and
   sculpt assets rebuilt instead of left as boxes, flying avatars not held
   to the floor, and fixes for the Jolt 5.6 API (reversed avatar contact
-  normals, a teardown heap corruption). Built with the solution; its
-  2,099 tests pass. Off by default: no region selects it until its ini
-  does. Settings: `[Jolt]` in `OpenSimDefaults.ini`; operator notes:
+  normals, a teardown heap corruption). Synced 2026-10-21 to Tranquillity
+  develop `7c74cb6bed`, where Legion's series was merged (#329, #334,
+  #338-#344: Halcyon vehicle motors and the InWorldz vehicle behaviour,
+  prim hulls, a complexity limit, move-to / hover / look-at kept across a
+  crossing, the `jolt` test commands in their own assembly) with its
+  `[Jolt]` defaults and #325's mesher shape data. Built with the solution;
+  its tests (8 projects) pass: 5,627, with 5 skipped. Off by default: no region selects it
+  until its ini does. Settings: `[Jolt]` in `OpenSimDefaults.ini`; operator notes:
   `doc/JoltPhysics.md`; what differs from Legion's:
   `OpenSim/Region/PhysicsModules/Jolt/CONFLUENCE.md`. The
   `/features` page's Platform Overview lists which engines are actually

@@ -58,7 +58,7 @@ public class ShapeAndAllocatorRuleTests
     private static List<Instruction> Decode(MethodBase method)
     {
         var list = new List<Instruction>();
-        byte[]? il = method.GetMethodBody()?.GetILAsByteArray();
+        byte[] il = method.GetMethodBody()?.GetILAsByteArray();
         if (il == null)
             return list;
         int i = 0;
@@ -105,9 +105,9 @@ public class ShapeAndAllocatorRuleTests
     private static IEnumerable<MethodBase> AllMethods(Assembly assembly)
         => assembly.GetTypes().SelectMany(t => t.GetMethods(Everything).Cast<MethodBase>().Concat(t.GetConstructors(Everything)));
 
-    private static MethodBase? Resolve(MethodBase caller, int token)
+    private static MethodBase Resolve(MethodBase caller, int token)
     {
-        Type? t = caller.DeclaringType;
+        Type t = caller.DeclaringType;
         try
         {
             return caller.Module.ResolveMethod(token,
@@ -133,9 +133,9 @@ public class ShapeAndAllocatorRuleTests
                 {
                     if (ins.Op != OpCodes.Call && ins.Op != OpCodes.Callvirt && ins.Op != OpCodes.Newobj && ins.Op != OpCodes.Ldftn)
                         continue;
-                    MethodBase? callee = Resolve(caller, ins.Token);
+                    MethodBase callee = Resolve(caller, ins.Token);
                     string key = $"{callee?.DeclaringType?.FullName}.{callee?.Name}";
-                    if (callee != null && found.TryGetValue(key, out SortedSet<string>? callers))
+                    if (callee != null && found.TryGetValue(key, out SortedSet<string> callers))
                         callers.Add($"{caller.DeclaringType!.Name}.{caller.Name}");
                 }
         return found;
@@ -175,8 +175,8 @@ public class ShapeAndAllocatorRuleTests
                 {
                     if (ins.Op != OpCodes.Call && ins.Op != OpCodes.Callvirt && ins.Op != OpCodes.Ldftn)
                         continue;
-                    MethodBase? callee = Resolve(caller, ins.Token);
-                    if (callee?.DeclaringType == typeof(JoltPhysicsBackend) && callersOf.TryGetValue(callee.Name, out SortedSet<string>? set))
+                    MethodBase callee = Resolve(caller, ins.Token);
+                    if (callee?.DeclaringType == typeof(JoltPhysicsBackend) && callersOf.TryGetValue(callee.Name, out SortedSet<string> set))
                         set.Add($"{caller.DeclaringType!.Name}.{caller.Name}");
                 }
         Assert.Equal(new[] { "JoltPhysicsBackend.Step" }, callersOf["StepLocked"]);
@@ -201,12 +201,14 @@ public class ShapeAndAllocatorRuleTests
         Assert.DoesNotContain(il, x => x.Op == OpCodes.Ldsfld || x.Op == OpCodes.Ldfld);   // no field can supply a depth
     }
 
-    // No step listener: the stock joltc keeps its map of physics systems (s_PhysicsSystems) without a lock, and only its
-    // step listener callback reads that map during a step. With no listener, nothing reads the map while another
-    // region's system is created or destroyed. So no Jolt assembly adds a step listener, implements one, or takes a
-    // binding object's step listener view (a vehicle constraint's AsPhysicsStepListener).
+    // Only the backend uses a step listener: the stock joltc keeps its map of physics systems (s_PhysicsSystems) without a
+    // lock, and only its step listener callback reads that map during a step. The backend creates and destroys every
+    // physics system with all pool gates held, so no Update is running to read the map; any other code that registered a
+    // listener would not have that protection. So the only listener type is the backend's own ForceStepListener, and the
+    // only code that adds, removes or creates one is the backend (no other Jolt assembly, no binding object's step
+    // listener view such as a vehicle constraint's AsPhysicsStepListener).
     [Fact]
-    public void No_step_listener_is_used()
+    public void Only_the_backend_uses_a_step_listener()
     {
         Assembly[] assemblies =
         {
@@ -221,7 +223,7 @@ public class ShapeAndAllocatorRuleTests
         var listenerTypes = assemblies.SelectMany(a => a.GetTypes())
             .Where(t => t.GetInterfaces().Any(i => i.FullName == "JoltPhysicsSharp.IPhysicsStepListener"))
             .Select(t => t.FullName).ToArray();
-        Assert.Empty(listenerTypes);
+        Assert.Equal(new[] { "OpenSim.Region.PhysicsModules.Jolt.Backend.JoltPhysicsBackend+ForceStepListener" }, listenerTypes);
 
         var calls = new SortedSet<string>();
         foreach (Assembly assembly in assemblies)
@@ -230,7 +232,9 @@ public class ShapeAndAllocatorRuleTests
                 {
                     if (ins.Op != OpCodes.Call && ins.Op != OpCodes.Callvirt && ins.Op != OpCodes.Newobj && ins.Op != OpCodes.Ldftn)
                         continue;
-                    MethodBase? callee = Resolve(caller, ins.Token);
+                    MethodBase callee = Resolve(caller, ins.Token);
+                    if (caller.DeclaringType?.FullName?.StartsWith("OpenSim.Region.PhysicsModules.Jolt.Backend.JoltPhysicsBackend", StringComparison.Ordinal) == true)
+                        continue;   // the backend's own use
                     if (callee?.DeclaringType?.Namespace == "JoltPhysicsSharp" && callee.Name.Contains("StepListener", StringComparison.Ordinal))
                         calls.Add($"{caller.DeclaringType!.Name}.{caller.Name} -> {callee.DeclaringType.Name}.{callee.Name}");
                 }

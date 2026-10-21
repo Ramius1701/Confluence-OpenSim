@@ -100,12 +100,12 @@ namespace OpenSim.Region.Framework.Scenes
 
         /// <summary>
         /// The script engine that will run a script: the engine named on the script's first line
-        /// ("//engine:language") if that engine is loaded, otherwise the default engine; null if neither is loaded.
-        /// (Tranquillity #217.)
+        /// ("//engine:language") if loaded, otherwise an engine with matching saved state (default first),
+        /// otherwise the default engine; null if no suitable engine is loaded. (Tranquillity #217, #304.)
         /// </summary>
         /// <param name="defaultEngine">the engine name the caller passes to CreateScriptInstance (DefaultScriptEngine)</param>
         /// <param name="scriptSource">the script source, or null if not known</param>
-        public IScriptModule ResolveScriptEngine(string defaultEngine, string scriptSource)
+        public IScriptModule ResolveScriptEngine(string defaultEngine, string scriptSource, TaskInventoryItem item = null)
         {
             IScriptModule[] engines = RequestModuleInterfaces<IScriptModule>();
 
@@ -129,12 +129,33 @@ namespace OpenSim.Region.Framework.Scenes
                 }
             }
 
+            // [Confluence] Tranquillity #304: an unheaded script whose item and asset an engine holds saved state for runs
+            // on that engine (the default engine first), so changing [Startup] DefaultScriptEngine does not move running
+            // scripts and reset them. A new or edited script (a new asset) has no matching state and gets the default.
+            IScriptModule defaultModule = null;
             foreach (IScriptModule engine in engines)
             {
                 if (engine.ScriptEngineName == defaultEngine)
-                    return engine;
+                {
+                    defaultModule = engine;
+                    break;
+                }
             }
-            return null;
+
+            if (item is not null)
+            {
+                if (defaultModule is IScriptStateProvider defaultState
+                    && defaultState.HasSavedScriptState(item.ItemID, item.AssetID))
+                    return defaultModule;
+
+                foreach (IScriptModule engine in engines)
+                {
+                    if (engine != defaultModule && engine is IScriptStateProvider savedState
+                        && savedState.HasSavedScriptState(item.ItemID, item.AssetID))
+                        return engine;
+                }
+            }
+            return defaultModule;
         }
 
         /// <summary>

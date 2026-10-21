@@ -47,7 +47,7 @@ using Mono.Addins;
 namespace OpenSim.Region.PhysicsModule.Meshing
 {
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Meshmerizer")]
-    public class Meshmerizer : IMesher, INonSharedRegionModule
+    public class Meshmerizer : IMesher, IMesherShapeData, INonSharedRegionModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static string LogHeader = "[MESH]";
@@ -804,9 +804,63 @@ namespace OpenSim.Region.PhysicsModule.Meshing
         private bool GenerateCoordsAndFacesFromPrimShapeData(
             string primName, PrimitiveBaseShape primShape, Vector3 size, float lod, out List<Coord> coords, out List<Face> faces)
         {
-            PrimMesh primMesh;
             coords = new List<Coord>();
             faces = new List<Face>();
+
+            if (!ExtrudePrimShape(primName, primShape, lod, out PrimMesh primMesh))
+                return false;
+
+            primMesh.DumpRaw(baseDir, primName, "primMesh");
+
+            primMesh.Scale(size.X, size.Y, size.Z);
+
+            coords = primMesh.coords;
+            faces = primMesh.faces;
+
+            return true;
+        }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #325. The rings the mesher extrudes a prim from, for a prim made from its own profile
+        /// and path (not a sculpt or a mesh): the vertices it builds the prim's mesh from, scaled by
+        /// <paramref name="size"/>, and how they are laid out (see <see cref="PrimProfileRings"/>). No change to the meshes
+        /// produced. False for a sculpt or mesh prim, or when the extrusion fails.
+        /// </summary>
+        public bool TryGetPrimProfileRings(
+            string primName, PrimitiveBaseShape primShape, Vector3 size, float lod, out PrimProfileRings rings)
+        {
+            rings = null;
+            if (primShape == null || primShape.SculptEntry)
+                return false;
+
+            if (!ExtrudePrimShape(primName, primShape, lod, out PrimMesh primMesh))
+                return false;
+
+            primMesh.Scale(size.X, size.Y, size.Z);
+
+            int layerCount = primMesh.LayerTurns.Count;
+            int layerSize = primMesh.ProfileVertexAngles.Count;
+            if (layerCount == 0 || layerSize == 0 || primMesh.coords.Count != layerCount * layerSize)
+                return false;
+
+            Vector3[] vertices = new Vector3[primMesh.coords.Count];
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Coord c = primMesh.coords[i];
+                vertices[i] = new Vector3(c.X, c.Y, c.Z);
+            }
+
+            rings = new PrimProfileRings(
+                layerCount, layerSize, primMesh.ProfileHasCentreVertex, primMesh.ProfileOuterVertexCount,
+                primMesh.ProfileHollowVertexCount, primMesh.ProfileVertexAngles, primMesh.LayerTurns, primMesh.LayerTwists,
+                vertices);
+            return true;
+        }
+
+        /// <summary>Extrudes the prim's profile along its path, unscaled. True if the prim was extruded.</summary>
+        private bool ExtrudePrimShape(
+            string primName, PrimitiveBaseShape primShape, float lod, out PrimMesh primMesh)
+        {
 
             float pathShearX = primShape.PathShearX < 128 ? (float)primShape.PathShearX * 0.01f : (float)(primShape.PathShearX - 256) * 0.01f;
             float pathShearY = primShape.PathShearY < 128 ? (float)primShape.PathShearY * 0.01f : (float)(primShape.PathShearY - 256) * 0.01f;
@@ -938,13 +992,6 @@ namespace OpenSim.Region.PhysicsModule.Meshing
                     return false;
                 }
             }
-
-            primMesh.DumpRaw(baseDir, primName, "primMesh");
-
-            primMesh.Scale(size.X, size.Y, size.Z);
-
-            coords = primMesh.coords;
-            faces = primMesh.faces;
 
             return true;
         }

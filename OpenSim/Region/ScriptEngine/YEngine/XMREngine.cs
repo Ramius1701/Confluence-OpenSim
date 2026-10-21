@@ -67,7 +67,7 @@ using SceneScriptEvents = OpenSim.Region.Framework.Scenes.scriptEvents;
 namespace OpenSim.Region.ScriptEngine.Yengine
 {
     [Mono.Addins.Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "YEngine")]
-    public partial class Yengine: INonSharedRegionModule, IScriptEngine, IScriptModule
+    public partial class Yengine: INonSharedRegionModule, IScriptEngine, IScriptModule, IScriptStateProvider
     {
         public static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -1307,8 +1307,36 @@ namespace OpenSim.Region.ScriptEngine.Yengine
         //  script      = script source code
         //  startParam  = value passed to 'on_rez' event handler
         //  postOnRez   = true to post an 'on_rez' event to script on load
-        //  defEngine   = default script engine
+        //  defEngine   = engine selected by the scene (saved-state owner or default)
         //  stateSource = post this event to script on load
+
+        // [Confluence] Tranquillity #304: whether this engine holds saved state for the item at this asset, so that the
+        // scene keeps an unheaded script on YEngine when [Startup] DefaultScriptEngine names another engine. A state file
+        // that cannot be read keeps the script here, where loading it reports the problem as before.
+        public bool HasSavedScriptState(UUID itemID, UUID assetID)
+        {
+            try
+            {
+                using FileStream stream = XMRInstance.OpenSavedState(m_ScriptBasePath, itemID);
+                using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit });
+                reader.MoveToContent();
+                return reader.Name == "ScriptState" && reader.GetAttribute("Asset") == assetID.ToString();
+            }
+            catch (FileNotFoundException)
+            {
+                return false;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return false;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or XmlException)
+            {
+                m_log.ErrorFormat("[YEngine]: Cannot check saved state for {0} under {1}; retaining YEngine ownership for normal state loading: {2}",
+                    itemID, m_ScriptBasePath, e.Message);
+                return true;
+            }
+        }
 
         public void OnRezScript(uint localID, UUID itemID, string script,
                 int startParam, bool postOnRez, string defEngine, int stateSource)

@@ -21,9 +21,8 @@
 //
 // The record also says whether a build is safe for more than one job pool. The stock joltc gives every physics system
 // one process-wide TempAllocator, so two physics updates at once on two pools stop the process; on it the backend runs
-// one pool whatever [Jolt] JobPools asks (JoltPhysicsBackend.ResolveJobPools). This project's patched build
-// (native/joltc/README.md) gives each system its own allocator; an operator who puts it in place of the stock file
-// gets the pools [Jolt] JobPools asks for.
+// one pool whatever [Jolt] JobPools asks (JoltPhysicsBackend.ResolveJobPools). More than one pool needs a joltc that
+// gives each system its own allocator; no recorded build does.
 
 using System;
 using System.Collections.Generic;
@@ -40,8 +39,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
     {
         /// <summary>The stock file of the JoltPhysics.Native package (<see cref="JoltNative.PackageId"/>).</summary>
         Package,
-        /// <summary>This project's patched build, made by .github/workflows/joltc-native.yml (native/joltc/README.md).</summary>
-        PatchedBuild,
     }
 
     /// <summary>One joltc build the module has a record of.</summary>
@@ -54,7 +51,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// <summary>Upper-case hex.</summary>
         public string Sha256 { get; }
         public JoltNativeOrigin Origin { get; }
-        /// <summary>The package version for <see cref="JoltNativeOrigin.Package"/>; null for the patched build.</summary>
+        /// <summary>The package version for <see cref="JoltNativeOrigin.Package"/>.</summary>
         public string? PackageVersion { get; }
         /// <summary>Each physics system has its own scratch allocator, so more than one job pool may step at once.</summary>
         public bool SafeForMultiplePools { get; }
@@ -73,10 +70,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             TestedByProject = testedByProject;
         }
 
-        /// <summary>Where the file comes from, in words: "stock JoltPhysics.Native 1.0.4" or "patched build (native/joltc)".</summary>
-        public string Source => Origin == JoltNativeOrigin.Package
-            ? $"stock {JoltNative.PackageId} {PackageVersion}"
-            : "patched build (native/joltc)";
+        /// <summary>Where the file comes from, in words: "stock JoltPhysics.Native 1.0.4".</summary>
+        public string Source => $"stock {JoltNative.PackageId} {PackageVersion}";
     }
 
     /// <summary>What was loaded: the platform, the file, its SHA-256 and the record it matched, if any.</summary>
@@ -150,8 +145,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
 
         /// <summary>
         /// Every joltc build the module knows, with its SHA-256 (upper-case hex). The package entries are read from the
-        /// JoltPhysics.Native package of <see cref="PackageVersion"/>; the patched entries are the files the
-        /// joltc-native workflow builds (its joltc-&lt;rid&gt; artifacts), listed in native/joltc/README.md.
+        /// JoltPhysics.Native package of <see cref="PackageVersion"/>.
         /// </summary>
         // [Confluence: the JoltPhysics.Native 1.1.0 files, read from the package on 2026-10-12; win-x64 is the one
         // Confluence's tests run on. lane/jolt's patched builds are compiled from the joltc behind 1.0.4, whose
@@ -170,9 +164,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         private static JoltNativeBuild Stock(string folder, string file, string sha256, bool tested)
             => new JoltNativeBuild(folder, file, sha256, JoltNativeOrigin.Package, PackageVersion, safeForMultiplePools: false, tested);
 
-        private static JoltNativeBuild Patched(string folder, string file, string sha256)
-            => new JoltNativeBuild(folder, file, sha256, JoltNativeOrigin.PatchedBuild, null, safeForMultiplePools: true, testedByProject: true);
-
         public static string SupportedList => string.Join(", ", Platforms.Keys);
 
         /// <summary>The recorded build for the platform with this hash, or null.</summary>
@@ -190,13 +181,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// against another joltc build. Never set by the module.
         /// </summary>
         internal static bool AcceptUnrecordedForTest;
-
-        /// <summary>
-        /// TEST-ONLY: the folder the runtimes/ tree is read from instead of the assembly's folder. The Jolt tests set it
-        /// from JOLT_TEST_NATIVE_BASE (TestNativeOverride) to run a child test host on a patched build supplied to the
-        /// tests. Never set by the module.
-        /// </summary>
-        internal static string? BaseDirectoryForTest;
 
         private static readonly object s_gate = new object();
         private static JoltNativeInfo? s_loaded;
@@ -235,8 +219,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         /// <summary>The folder the runtimes/ tree sits in: the folder of this assembly, else the application's base folder.</summary>
         public static string DefaultBaseDirectory()
         {
-            if (BaseDirectoryForTest != null)
-                return BaseDirectoryForTest;
             string location = typeof(JoltNative).Assembly.Location;
             string? dir = string.IsNullOrEmpty(location) ? null : System.IO.Path.GetDirectoryName(location);
             return string.IsNullOrEmpty(dir) ? AppContext.BaseDirectory : dir;
@@ -291,8 +273,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             if (build == null && !allowUnrecorded)
                 throw new JoltNativeException(
                     $"Jolt physics: {path} has sha256 {hash}, which is not a joltc build this module has a record of for {rid} " +
-                    $"(recorded: {RecordedFor(rid)}). Put back the file from the {PackageId} {PackageVersion} package or this " +
-                    "project's patched build (native/joltc/README.md), or set [Jolt] AllowUnrecordedNative = true to run a build you made yourself.");
+                    $"(recorded: {RecordedFor(rid)}). Put back the file from the {PackageId} {PackageVersion} package, " +
+                    "or set [Jolt] AllowUnrecordedNative = true to run a build you made yourself.");
             return new JoltNativeInfo(rid, path, hash, build);
         }
 

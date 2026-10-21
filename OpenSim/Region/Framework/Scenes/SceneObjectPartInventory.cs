@@ -460,22 +460,30 @@ namespace OpenSim.Region.Framework.Scenes
 
             Scene scene = m_part.ParentGroup.Scene;
 
+            // [Confluence] Tranquillity #304: offer state carried with the object to the engines before an engine is
+            // chosen (an engine that takes it then owns the script), but keep the object's copy if starting is denied.
+            UUID restoredStateID = item.OldItemID;
+            if (m_part.ParentGroup.m_savedScriptState != null)
+                restoredStateID = RestoreSavedScriptState(item.LoadedItemID, item.OldItemID, item.ItemID);
+
             // Only when a loaded engine enforces the parcel script rules itself do we need to know which engine will
             // run this script, and for that the script's first line. Otherwise this is the same check as before.
             // (Tranquillity #217.)
             bool engineEnforcesParcelRules = false;
+            IScriptModule selectedEngine = null;
             AssetBase asset = null;
             string script = null;
             if (scene.AnyScriptEngineEnforcesParcelRules())
             {
-                // a trusted-binaries crossing hands the engines no source, so they use the default engine
+                // A trusted-binaries crossing has no header to inspect, but saved state still selects the engine.
                 if (!(stateSource == 2 && scene.m_trustBinaries))
                 {
                     asset = scene.AssetService.Get(item.AssetID.ToString());
                     if (asset is not null)
                         script = Utils.BytesToString(asset.Data);
                 }
-                engineEnforcesParcelRules = scene.ResolveScriptEngine(engine, script) is IParcelScriptPolicyEngine policy
+                selectedEngine = scene.ResolveScriptEngine(engine, script, item);
+                engineEnforcesParcelRules = selectedEngine is IParcelScriptPolicyEngine policy
                         && policy.EnforcesParcelScriptRules;
             }
 
@@ -509,11 +517,15 @@ namespace OpenSim.Region.Framework.Scenes
             if (stateSource == 2 && m_part.ParentGroup.Scene.m_trustBinaries)
             {
                 // Prim crossing
+                m_part.ParentGroup.m_savedScriptState?.Remove(restoredStateID);
                 m_items.LockItemsForWrite(true);
+                it.OldItemID = restoredStateID;
                 it.PermsMask = 0;
                 it.PermsGranter = UUID.Zero;
                 m_items.LockItemsForWrite(false);
 
+                selectedEngine ??= scene.ResolveScriptEngine(engine, String.Empty, item);
+                engine = selectedEngine?.ScriptEngineName ?? engine;
                 m_part.ParentGroup.Scene.EventManager.TriggerRezScript(
                     m_part.LocalId, itemID, String.Empty, startParam, postOnRez, engine, stateSource);
                 StoreScriptErrors(itemID, null);
@@ -534,9 +546,8 @@ namespace OpenSim.Region.Framework.Scenes
                 return false;
             }
 
-            if (m_part.ParentGroup.m_savedScriptState != null)
-                item.OldItemID = RestoreSavedScriptState(item.LoadedItemID, item.OldItemID, itemID);
-
+            m_part.ParentGroup.m_savedScriptState?.Remove(restoredStateID);
+            item.OldItemID = restoredStateID;
             m_items.LockItemsForWrite(true);
             it.OldItemID = item.OldItemID;
             it.PermsMask = 0;
@@ -544,6 +555,9 @@ namespace OpenSim.Region.Framework.Scenes
             m_items.LockItemsForWrite(false);
 
             script ??= Utils.BytesToString(asset.Data);
+            // Resolve once: an engine may consume carried state as soon as its rez callback runs.
+            selectedEngine ??= scene.ResolveScriptEngine(engine, script, item);
+            engine = selectedEngine?.ScriptEngineName ?? engine;
             m_part.ParentGroup.Scene.EventManager.TriggerRezScript(
                 m_part.LocalId, itemID, script, startParam, postOnRez, engine, stateSource);
             StoreScriptErrors(itemID, null);
@@ -574,12 +588,11 @@ namespace OpenSim.Region.Framework.Scenes
                 }
                 catch (XmlException e)
                 {
-                    // Unreadable saved state is dropped: this script starts fresh and the rez goes on
+                    // Unreadable saved state cannot be applied: this script starts fresh and the rez goes on
                     // instead of failing for every script in the object.
                     m_log.WarnFormat(
                         "[PRIM INVENTORY]: Ignoring unreadable saved script state for item {0} in part {1} of {2}: {3}",
                         newID, m_part.Name, m_part.ParentGroup.Name, e.Message);
-                    m_part.ParentGroup.m_savedScriptState.Remove(stateID);
                     return stateID;
                 }
 
@@ -625,8 +638,7 @@ namespace OpenSim.Region.Framework.Scenes
                             break;
                     }
                 }
-
-                m_part.ParentGroup.m_savedScriptState.Remove(stateID);
+                // [Confluence] Tranquillity #304: the caller removes the object's copy once the script is allowed to start.
             }
 
             return stateID;

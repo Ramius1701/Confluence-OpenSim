@@ -28,6 +28,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
     {
         internal const string Section = "Jolt";
 
+        /// <summary>Whose basic-forces behaviour the engine follows where InWorldz and Second Life differ: for now the physics material presets.</summary>
+        internal enum BasicForces { InWorldz = 0, SecondLife }
+
         // 65536 bodies per standard 256 x 256 m region, scaled by AREA for varregions.
         internal const int BaseMaxBodies = 65536;
         internal const long BaseArea = 256L * 256L;
@@ -58,21 +61,35 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         public int PhysicsStepCollisionSteps = 2;  // solver sub-steps per physics step, used only when PhysicsStepRate is on; at least 60 Hz (CollisionStepsAt)
         public float VehicleGroundGravityFactor = 1f;   // gravity on a car or sled touching something; 1 = whole
         public VehiclePresetSet VehiclePresets = VehiclePresetSet.Documented;   // the values llSetVehicleType gives each type
+        public bool VehiclePresetsSet = false;     // VehiclePresets came from a valid value in the configuration
+        public VehicleBehaviour VehicleBehaviour = VehicleBehaviour.InWorldz;   // whose behaviour the vehicle code follows where they differ
 
         // The limits a script's vehicle parameters are held to (VehicleSettings says what each one does).
         public float VehicleMaxLinearSpeed = VehicleLimits.MaxLinearVelocity;       // m/s
         public float VehicleReferenceSpeed = VehicleLimits.MaxLegacyLinearVelocity; // m/s
         public float VehicleMaxAngularSpeed = VehicleLimits.MaxAngularVelocity;     // rad/s
+        public float VehicleAngularLimiterFloor = VehicleLimits.AngularLimiterFloor;// share; 1 = no limiter
         public float VehicleMinTimescale = VehicleLimits.MinPhysicsTimestep;        // s
         public float VehicleMaxTimescale = VehicleLimits.MaxTimescale;              // s
         public float VehicleMaxDecayTimescale = VehicleLimits.MaxDecayTimescale;    // s
+        public bool VehicleMaxDecayTimescaleSet;    // the key is set (else the behaviour chooses: 120 s, or 1000 s under InWorldz)
         public float VehicleMaxHoverTimescale = VehicleLimits.MaxHoverTimescale;    // s
         public float VehicleMaxAttractTimescale = VehicleLimits.MaxAttractTimescale;// s
         public float VehicleMaxMotorOffset = VehicleLimits.MaxLinearOffset;         // m
         public float VehicleMinHoverHeight = VehicleLimits.MinRegionHeight;         // m
         public float VehicleMaxHoverHeight = VehicleLimits.MaxRegionHeight;         // m
         public float VehicleSledAssist = VehicleSettings.DefaultSledAssist;         // share of gravity
-        public float VehicleContactFriction = 0f;                                   // contact friction of a vehicle body
+        // Halcyon's cut of velocity spikes in a vehicle's step (VehicleController, "Spike mitigation"). null: on under
+        // VehicleBehaviour = InWorldz, off under SecondLife; true or false forces it.
+        public bool? VehicleSpikeMitigation = null;
+        public bool VehicleMotorTargetOnUndrivenAxes = false;                       // InWorldz: the motor's target also replaces a lower velocity on an axis it has no direction on
+        public float? VehicleContactFriction;                                       // contact friction of every part of a vehicle body; null = each part's material
+        public float SledContactFriction = 0f;                                      // contact friction of every part of a sled
+        public BasicForces BasicForcesBehaviour = BasicForces.InWorldz;             // which preset table llSetPhysicsMaterial's materials use
+        public MaterialCombine FrictionCombine = MaterialCombine.Average;           // how two surfaces' friction combines
+        public MaterialCombine RestitutionCombine = MaterialCombine.Average;        // how two surfaces' restitution combines
+        public float TerrainFriction = PhysicsBackendSettings.DefaultTerrainFriction;
+        public float TerrainRestitution = PhysicsBackendSettings.DefaultTerrainRestitution;
         public float VehicleRestSpeed = VehicleSettings.DefaultRestSpeed;           // m/s; 0 = no rest rule
 
         // The engine's own speed caps on every moving body (Jolt's BodyCreationSettings defaults).
@@ -85,6 +102,49 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         public bool AllowUnrecordedNative = false; // true: load a joltc whose hash the module has no record of
 
+        // true: a non-physical mesh whose physics shape type is CONVEX is one convex hull of its points, not its triangle
+        // mesh. Core gives every mesh CONVEX unless the upload says otherwise, so this turns hollow mesh into solid.
+        public bool HonourConvexMesh = false;
+
+        // The most collision shapes one physical object (the whole linkset) may have: 1 for each prim that is a plain box, sphere
+        // or cylinder, and for each of the others the number of convex hulls it is made of (a prim of shape type NONE has none).
+        // An object over it is refused physical status and the owner is told. 0 = no limit.
+        public int MaxPhysicalComplexity = 0;
+
+        // Jolt's enhanced internal edge removal, for bodies that move under physics and for avatars: the contacts with the
+        // shared edges inside a triangle mesh or a heightfield that can push a body off its path. Costs more per contact.
+        public bool BodyEnhancedEdgeRemoval = false;
+        public bool AvatarEnhancedEdgeRemoval = false;
+
+        // A non-physical mesh prim's triangles are met from their front face only by a moving body, as Jolt does for a
+        // simulated contact: a box or a ball that reaches a one-sided wall or floor from behind passes through it.
+        // true cooks every triangle mesh with a reversed copy of each triangle, so the mesh is met from both sides.
+        // Doubles the triangles of each mesh shape (memory and cook time). Avatars already meet both sides.
+        public bool TwoSidedMeshCollision = false;
+
+        // Jolt's speculative contact distance in metres (PhysicsSettings mSpeculativeContactDistance; the engine's own value is
+        // 0.02, which is the default). A box sliding across two abutted prims can be stopped and tipped at the seam by the next
+        // prim's end face seen from within this distance; 0.0025 and less remove that, 0.005 and more do not, and every value
+        // under 0.02 also changes how other contacts settle. See "Seams between prims" in Docs/JoltPhysics.md.
+        public float SpeculativeContactDistance = 0.02f;
+
+        // Jolt's point velocity sleep threshold in metres per second (PhysicsSettings mPointVelocitySleepThreshold; the engine's
+        // own value is 0.03, which is the default). A body falls asleep once every point of it, and of everything resting on it,
+        // has moved slower than this for the engine's time before sleep. A tall stack sways a little above 0.03 at one physics
+        // step per heartbeat, and whether it falls asleep then depends on float rounding, which differs between CPUs.
+        public float SleepVelocityThreshold = 0.03f;
+
+        // true: avatars and physical objects standing on a prim that keyframed motion (llSetKeyframedMotion) is moving are
+        // carried with it, as Second Life does. false: the prim is a fixed body that is set to each new place, and what
+        // stands on it is left behind.
+        public bool KeyframedMotionCarriesRiders = true;
+
+        // true: a non-physical prim that a series of position or rotation sets moves with no keyframed-motion hint
+        // (llSetPos, llSetRegionPos, llSetPrimitiveParams, the build tool) carries what stands on it while the series lasts.
+        // false (the default): such a prim is a fixed body set to each new place and what stands on it is left behind, as in
+        // Second Life. A prim that keyframed motion moves is not affected: KeyframedMotionCarriesRiders decides.
+        public bool MovedPrimsCarryRiders = false;
+
         // Script ray casts (llCastRay) and pushes on avatars (llPushObject): limits on what scripts can make one region
         // do. They guard against abuse, so each defaults to its safe value.
         public float RayCastBudgetMs = PhysicsBackendSettings.DefaultRayCastBudgetMs;         // script casts, per region per heartbeat
@@ -93,6 +153,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         public int RayCastMaxHits = MaxRayCastHits;                                          // hits one cast returns
         public float AvatarPushMaxSpeed = PhysicsBackendSettings.DefaultAvatarPushMaxSpeed;   // m/s; 0 = pushes do not move avatars
         public float AvatarPushRecovery = PhysicsBackendSettings.DefaultAvatarPushRecovery;   // m/s per second
+        public float AvatarObjectPushPerMomentum = PhysicsBackendSettings.DefaultAvatarObjectPushPerMomentum;   // N per kg m/s of an avatar walking into a loose object
+        public float AvatarObjectPushMaxForce = PhysicsBackendSettings.DefaultAvatarObjectPushMaxForce;         // N
 
         // What ScenePresence asks an avatar's physics for: AgentControlNormalVel (4.096 m/s) for a held movement key,
         // walking or running alike (the viewer sends running as the separate SetAlwaysRun flag), and four times that
@@ -120,7 +182,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         // The default PhysicsStepRate: fixed 45 Hz physics steps, whatever the heartbeat.
         internal const float DefaultPhysicsStepRate = 45f;
-        internal const float DefaultPrimLinearDamping = 0.05f;
+        internal const float DefaultPrimLinearDamping = 0.02f;   // Halcyon's, for every physical object, vehicles included (PhysxActorFactory.cs)
         internal const float DefaultPrimAngularDamping = 0.05f;
 
         /// <summary>Parse [Jolt]. Missing keys keep their defaults; each invalid one adds a line to <paramref name="warnings"/>.</summary>
@@ -142,6 +204,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             c.MaxContactConstraints = I(cfg, "MaxContactConstraints", c.MaxContactConstraints, 1, 8_388_607, warnings);
             c.ScaleCapsWithArea = B(cfg, "ScaleCapsWithArea", c.ScaleCapsWithArea, warnings);
             c.AllowUnrecordedNative = B(cfg, "AllowUnrecordedNative", c.AllowUnrecordedNative, warnings);
+            c.HonourConvexMesh = B(cfg, "HonourConvexMesh", c.HonourConvexMesh, warnings);
+            c.BodyEnhancedEdgeRemoval = B(cfg, "BodyEnhancedEdgeRemoval", c.BodyEnhancedEdgeRemoval, warnings);
+            c.AvatarEnhancedEdgeRemoval = B(cfg, "AvatarEnhancedEdgeRemoval", c.AvatarEnhancedEdgeRemoval, warnings);
+            c.TwoSidedMeshCollision = B(cfg, "TwoSidedMeshCollision", c.TwoSidedMeshCollision, warnings);
+            c.SpeculativeContactDistance = F(cfg, "SpeculativeContactDistance", c.SpeculativeContactDistance, 0f, 0.5f, warnings);
+            c.SleepVelocityThreshold = F(cfg, "SleepVelocityThreshold", c.SleepVelocityThreshold, 0.001f, 1f, warnings);
+            c.KeyframedMotionCarriesRiders = B(cfg, "KeyframedMotionCarriesRiders", c.KeyframedMotionCarriesRiders, warnings);
+            c.MovedPrimsCarryRiders = B(cfg, "MovedPrimsCarryRiders", c.MovedPrimsCarryRiders, warnings);
             c.BodyUpdateBufferMax = I(cfg, "BodyUpdateBufferMax", c.BodyUpdateBufferMax, 1, 8_388_607, warnings);
             c.CharacterUpdateBufferMax = I(cfg, "CharacterUpdateBufferMax", c.CharacterUpdateBufferMax, 1, 65536, warnings);
             c.ContactBufferMax = I(cfg, "ContactBufferMax", c.ContactBufferMax, 0, 16_777_216, warnings);
@@ -158,13 +228,17 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             c.PhysicsStepRateSet = TryF(cfg.GetString("PhysicsStepRate", null), 0f, MaxPhysicsStepRate, out _);
             c.PhysicsStepCollisionSteps = I(cfg, "PhysicsStepCollisionSteps", c.PhysicsStepCollisionSteps, 1, 64, warnings);
             c.VehicleGroundGravityFactor = F(cfg, "VehicleGroundGravityFactor", c.VehicleGroundGravityFactor, 0f, 1f, warnings);
-            c.VehiclePresets = E(cfg, "VehiclePresets", c.VehiclePresets, warnings);
+            c.VehiclePresets = E(cfg, "VehiclePresets", c.VehiclePresets, warnings, out bool presetsValid);
+            c.VehiclePresetsSet = presetsValid && cfg.GetString("VehiclePresets", null) != null;
+            c.VehicleBehaviour = E(cfg, "VehicleBehaviour", c.VehicleBehaviour, warnings, out _);
             c.VehicleMaxLinearSpeed = F(cfg, "VehicleMaxLinearSpeed", c.VehicleMaxLinearSpeed, 1f, 10000f, warnings);
             c.VehicleReferenceSpeed = F(cfg, "VehicleReferenceSpeed", c.VehicleReferenceSpeed, 0.1f, 10000f, warnings);
             c.VehicleMaxAngularSpeed = F(cfg, "VehicleMaxAngularSpeed", c.VehicleMaxAngularSpeed, 0.1f, 1000f, warnings);
+            c.VehicleAngularLimiterFloor = F(cfg, "VehicleAngularLimiterFloor", c.VehicleAngularLimiterFloor, 0f, 1f, warnings);
             c.VehicleMinTimescale = F(cfg, "VehicleMinTimescale", c.VehicleMinTimescale, (float)VehicleMotorSolver.MinTimescale, 1f, warnings);
             c.VehicleMaxTimescale = F(cfg, "VehicleMaxTimescale", c.VehicleMaxTimescale, 1f, VehicleLimits.MaxTimescale, warnings);
             c.VehicleMaxDecayTimescale = F(cfg, "VehicleMaxDecayTimescale", c.VehicleMaxDecayTimescale, 1f, VehicleLimits.MaxTimescale, warnings);
+            c.VehicleMaxDecayTimescaleSet = TryF(cfg.GetString("VehicleMaxDecayTimescale", null), 1f, VehicleLimits.MaxTimescale, out _);
             c.VehicleMaxHoverTimescale = F(cfg, "VehicleMaxHoverTimescale", c.VehicleMaxHoverTimescale, 1f, VehicleLimits.MaxTimescale, warnings);
             c.VehicleMaxAttractTimescale = F(cfg, "VehicleMaxAttractTimescale", c.VehicleMaxAttractTimescale, 1f, VehicleLimits.MaxTimescale, warnings);
             c.VehicleMaxMotorOffset = F(cfg, "VehicleMaxMotorOffset", c.VehicleMaxMotorOffset, 0f, 10000f, warnings);
@@ -177,10 +251,27 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 c.VehicleMaxHoverHeight = VehicleLimits.MaxRegionHeight;
             }
             c.VehicleSledAssist = F(cfg, "VehicleSledAssist", c.VehicleSledAssist, 0f, 10f, warnings);
-            c.VehicleContactFriction = F(cfg, "VehicleContactFriction", c.VehicleContactFriction, 0f, 10f, warnings);
+            string spikeRaw = cfg.GetString("VehicleSpikeMitigation", null);
+            if (spikeRaw != null)
+            {
+                if (bool.TryParse(spikeRaw.Trim(), out bool spikeCut)) c.VehicleSpikeMitigation = spikeCut;
+                else warnings?.Add($"[{Section}] VehicleSpikeMitigation = \"{spikeRaw}\" is invalid (expected true or false); using the behaviour's own choice.");
+            }
+            c.VehicleMotorTargetOnUndrivenAxes = B(cfg, "VehicleMotorTargetOnUndrivenAxes", c.VehicleMotorTargetOnUndrivenAxes, warnings);
+            // Unset (or empty) leaves each part of a vehicle its material's friction; a number replaces it.
+            string contactFriction = cfg.GetString("VehicleContactFriction", null);
+            if (!string.IsNullOrWhiteSpace(contactFriction))
+                c.VehicleContactFriction = TryF(contactFriction, 0f, 10f, out float vcf) ? vcf : WarnNull(contactFriction, "VehicleContactFriction", warnings);
+            c.SledContactFriction = F(cfg, "SledContactFriction", c.SledContactFriction, 0f, 10f, warnings);
+            c.BasicForcesBehaviour = E(cfg, "BasicForcesBehaviour", c.BasicForcesBehaviour, warnings, out _);
+            c.FrictionCombine = E(cfg, "FrictionCombine", c.FrictionCombine, warnings, out _);
+            c.RestitutionCombine = E(cfg, "RestitutionCombine", c.RestitutionCombine, warnings, out _);
+            c.TerrainFriction = F(cfg, "TerrainFriction", c.TerrainFriction, 0f, JoltPrim.MaxFriction, warnings);
+            c.TerrainRestitution = F(cfg, "TerrainRestitution", c.TerrainRestitution, 0f, 1f, warnings);
             c.VehicleRestSpeed = F(cfg, "VehicleRestSpeed", c.VehicleRestSpeed, 0f, 1f, warnings);
             c.BodyMaxLinearSpeed = F(cfg, "BodyMaxLinearSpeed", c.BodyMaxLinearSpeed, 1f, 100000f, warnings);
             c.BodyMaxAngularSpeed = F(cfg, "BodyMaxAngularSpeed", c.BodyMaxAngularSpeed, 0.1f, 10000f, warnings);
+            c.MaxPhysicalComplexity = I(cfg, "MaxPhysicalComplexity", c.MaxPhysicalComplexity, 0, 1_000_000, warnings);
             c.PrimLinearDamping = F(cfg, "PrimLinearDamping", c.PrimLinearDamping, 0f, 100f, warnings);
             c.PrimAngularDamping = F(cfg, "PrimAngularDamping", c.PrimAngularDamping, 0f, 100f, warnings);
             c.RayCastBudgetMs = F(cfg, "RayCastBudgetMs", c.RayCastBudgetMs, 0.1f, 1000f, warnings);
@@ -189,26 +280,62 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             c.RayCastMaxHits = I(cfg, "RayCastMaxHits", c.RayCastMaxHits, 1, MaxRayCastHits, warnings);
             c.AvatarPushMaxSpeed = F(cfg, "AvatarPushMaxSpeed", c.AvatarPushMaxSpeed, 0f, 1000f, warnings);
             c.AvatarPushRecovery = F(cfg, "AvatarPushRecovery", c.AvatarPushRecovery, 0f, 1000f, warnings);
+            c.AvatarObjectPushPerMomentum = F(cfg, "AvatarObjectPushPerMomentum", c.AvatarObjectPushPerMomentum, 0f, 100000f, warnings);
+            c.AvatarObjectPushMaxForce = F(cfg, "AvatarObjectPushMaxForce", c.AvatarObjectPushMaxForce, 0f, 1000000f, warnings);
             return c;
+        }
+
+        /// <summary>
+        /// The preset values llSetVehicleType gives: VehiclePresets where the configuration sets it; otherwise the
+        /// InWorldz presets (legacy) under VehicleBehaviour = InWorldz and the documented presets under SecondLife.
+        /// </summary>
+        internal VehiclePresetSet EffectivePresets
+            => VehiclePresetsSet ? VehiclePresets
+             : VehicleBehaviour == VehicleBehaviour.InWorldz ? VehiclePresetSet.Legacy
+             : VehiclePresetSet.Documented;
+
+        /// <summary>
+        /// The settings a region runs with, in one line for the region log, so an operator can check what a start-up read from
+        /// [Jolt] without opening the file: the vehicle behaviour and the preset values in force, the avatar push keys, the
+        /// physical complexity limit, the two rider-carrying settings, and the physics step rate the region got (<paramref name="effectiveStepRate"/>, 0 when it takes one step per heartbeat).
+        /// </summary>
+        internal string StartupSummary(float effectiveStepRate)
+        {
+            string N(float v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+            string B(bool v) => v ? "true" : "false";
+            return $"VehicleBehaviour={VehicleBehaviour}, VehiclePresets={EffectivePresets}, BasicForcesBehaviour={BasicForcesBehaviour}, " +
+                   $"FrictionCombine={FrictionCombine}, RestitutionCombine={RestitutionCombine}, TerrainFriction={N(TerrainFriction)}, TerrainRestitution={N(TerrainRestitution)}, " +
+                   $"VehicleContactFriction={(VehicleContactFriction.HasValue ? N(VehicleContactFriction.Value) : "material")}, SledContactFriction={N(SledContactFriction)}, " +
+                   $"AvatarPushMaxSpeed={N(AvatarPushMaxSpeed)}, AvatarPushRecovery={N(AvatarPushRecovery)}, " +
+                   $"AvatarObjectPushPerMomentum={N(AvatarObjectPushPerMomentum)}, AvatarObjectPushMaxForce={N(AvatarObjectPushMaxForce)}, " +
+                   $"MaxPhysicalComplexity={MaxPhysicalComplexity}, KeyframedMotionCarriesRiders={B(KeyframedMotionCarriesRiders)}, " +
+                   $"MovedPrimsCarryRiders={B(MovedPrimsCarryRiders)}, " +
+                   (effectiveStepRate > 0f ? $"physics step rate={N(effectiveStepRate)} Hz" : "physics step rate=one step per heartbeat");
         }
 
         /// <summary>The vehicle settings every vehicle controller in a region with this configuration shares.</summary>
         internal VehicleSettings ToVehicleSettings() => new VehicleSettings
         {
-            Presets = VehiclePresets,
+            Presets = EffectivePresets,
+            Behaviour = VehicleBehaviour,
             MaxLinearSpeed = VehicleMaxLinearSpeed,
             ReferenceSpeed = VehicleReferenceSpeed,
             MaxAngularSpeed = VehicleMaxAngularSpeed,
+            AngularLimiterFloor = VehicleAngularLimiterFloor,
             MinTimescale = VehicleMinTimescale,
             MaxTimescale = VehicleMaxTimescale,
             MaxDecayTimescale = VehicleMaxDecayTimescale,
+            MaxDecayTimescaleSet = VehicleMaxDecayTimescaleSet,
             MaxHoverTimescale = VehicleMaxHoverTimescale,
             MaxAttractTimescale = VehicleMaxAttractTimescale,
             MaxMotorOffset = VehicleMaxMotorOffset,
             MinHoverHeight = VehicleMinHoverHeight,
             MaxHoverHeight = VehicleMaxHoverHeight,
             SledAssist = VehicleSledAssist,
+            MotorTargetOnUndrivenAxes = VehicleMotorTargetOnUndrivenAxes,
+            SpikeMitigation = VehicleSpikeMitigation,
             ContactFriction = VehicleContactFriction,
+            SledContactFriction = SledContactFriction,
             RestSpeed = VehicleRestSpeed,
         };
 
@@ -277,6 +404,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             PhysicsBackendSettings s = PhysicsBackendSettings.Default;
             s.Gravity = new SVector3(0f, 0f, Gravity);
+            s.FrictionCombine = FrictionCombine;
+            s.RestitutionCombine = RestitutionCombine;
+            s.TerrainFriction = TerrainFriction;
+            s.TerrainRestitution = TerrainRestitution;
             s.MaxBodies = MaxBodies > 0 ? MaxBodies : ScaleByArea(BaseMaxBodies, sizeX, sizeY);
             s.MaxBodyPairs = ScaleCapsWithArea ? ScaleByArea(MaxBodyPairs, sizeX, sizeY) : MaxBodyPairs;
             s.MaxContactConstraints = ScaleCapsWithArea ? ScaleByArea(MaxContactConstraints, sizeX, sizeY) : MaxContactConstraints;
@@ -290,11 +421,18 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             s.JobPoolFairHandoff = JobPoolFairHandoff;
             s.MaxBodyLinearSpeed = BodyMaxLinearSpeed;
             s.MaxBodyAngularSpeed = BodyMaxAngularSpeed;
+            s.BodyInternalEdgeRemoval = BodyEnhancedEdgeRemoval;
+            s.AvatarInternalEdgeRemoval = AvatarEnhancedEdgeRemoval;
+            s.TwoSidedMeshes = TwoSidedMeshCollision;
+            s.SpeculativeContactDistance = SpeculativeContactDistance;
+            s.SleepVelocityThreshold = SleepVelocityThreshold;
             s.RayCastBudgetMs = RayCastBudgetMs;
             s.RayCastSimulatorBudgetMs = RayCastSimulatorBudgetMs;
             s.RayCastMaxTestedHits = RayCastMaxTestedHits;
             s.AvatarPushMaxSpeed = AvatarPushMaxSpeed;
             s.AvatarPushRecovery = AvatarPushRecovery;
+            s.AvatarObjectPushPerMomentum = AvatarObjectPushPerMomentum;
+            s.AvatarObjectPushMaxForce = AvatarObjectPushMaxForce;
             return s;
         }
 
@@ -324,6 +462,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                    && float.IsFinite(v) && v >= min && v <= max;
         }
 
+        // An invalid VehicleContactFriction: warn, and leave the vehicle its material's friction.
+        private static float? WarnNull(string raw, string key, List<string> warnings)
+        {
+            warnings?.Add($"[{Section}] {key} = \"{raw}\" is invalid (expected a finite number in [0, 10], or nothing for the material's value); using the material's.");
+            return null;
+        }
+
         private static int I(IConfig cfg, string key, int def, int min, int max, List<string> warnings)
         {
             string raw = cfg.GetString(key, null);
@@ -335,13 +480,17 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         }
 
         // An enum value by its name, case ignored (numbers are not accepted).
-        private static T E<T>(IConfig cfg, string key, T def, List<string> warnings) where T : struct, Enum
+        private static T E<T>(IConfig cfg, string key, T def, List<string> warnings, out bool valid) where T : struct, Enum
         {
+            valid = false;
             string raw = cfg.GetString(key, null);
             if (raw == null) return def;
             string name = raw.Trim();
             if (name.Length > 0 && !char.IsDigit(name[0]) && name[0] != '-' && Enum.TryParse(name, true, out T v) && Enum.IsDefined(v))
+            {
+                valid = true;
                 return v;
+            }
             warnings?.Add($"[{Section}] {key} = \"{raw}\" is invalid (expected one of {string.Join(", ", Enum.GetNames<T>())}); using the default {def}.");
             return def;
         }

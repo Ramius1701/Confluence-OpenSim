@@ -1,2 +1,2 @@
 scenario,slope_deg,rate_hz,steps,top_speed,release_t,release_speed,steady_speed,steady_hspeed,dist_before_release,dist_after_release,time_to_rest,peak_height,peak_rise,z_range,max_tilt_deg,end_x,end_y,end_z,left_region_t,nonfinite,sleep_after,active_at_end,impact_t,arrival_speed,leaving_speed,penetration,tunneled,push_range_early,push_range_late,push_penetration,crash_rise,ray_casts,ray_us_per_cast,ray_refused,ray_cut_short
-crash-headon,0,11,88,17.803,1000.000,0.003,-,-,28.849,0.000,-,0.250,0.000,0.003,0.2,129.006,84.794,25.250,-,0,-,2,2.364,17.803,0.188,0.0174,0,0.0111,-,0.0001,0.0014,0,-,0,0
+crash-headon,0,11,88,28.032,1000.000,19.916,-,-,128.864,0.000,-,0.292,0.000,0.063,2.1,212.229,148.334,25.230,-,0,-,2,2.727,19.246,28.032,0.2492,0,53.3711,-,-7.4056,0.0885,0,-,0,0

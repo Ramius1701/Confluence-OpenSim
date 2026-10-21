@@ -30,16 +30,18 @@ Two settings decide which engine runs a script:
 
 - **`[InWorldz.Phlox] Enabled`** loads Phlox. When the section is missing, or `Enabled` is
   false, Phlox does nothing at all.
-- **`[Startup] DefaultScriptEngine`** names the engine that runs every script without an
-  engine header. The shipped `OpenSimDefaults.ini` sets it to `"InWorldz.Phlox"`, with
-  both engines enabled. The code default, used only when no ini file sets it, is
-  `"YEngine"`.
+- **`[Startup] DefaultScriptEngine`** names the engine for new scripts, and for scripts that
+  have neither an engine header nor matching saved state in a loaded engine. Confluence ships
+  with it unset, which means `"YEngine"`, and with Phlox disabled. (Tranquillity ships Phlox
+  as the default, with both engines enabled.)
 - **Keep YEngine enabled.** With Phlox the default and YEngine still loaded, YEngine is the
-  backup: any script whose first line is `//YEngine:` stays on YEngine. With Phlox loaded but
-  YEngine the default, Phlox runs only scripts whose first line is `//InWorldz.Phlox:`.
-- **Keep the default engine enabled.** YEngine takes a script without a header only when
-  YEngine is itself the default. If `DefaultScriptEngine` names Phlox, Phlox must be
-  enabled, or no engine takes those scripts.
+  backup: unheaded scripts with matching YEngine state stay on YEngine unless the default
+  engine already has matching state. A `//YEngine:` header always selects YEngine. With
+  Phlox loaded but YEngine the default, Phlox runs scripts whose first line is
+  `//InWorldz.Phlox:`, and unheaded scripts it already holds matching state for.
+- **Keep the default engine enabled.** If `DefaultScriptEngine` names Phlox but Phlox is
+  disabled, scripts with matching YEngine state can still run on YEngine, but new scripts
+  without an explicit loaded-engine header have no engine to compile them.
 
 The engine name is case-sensitive: `InWorldz.Phlox` and `YEngine`, exactly.
 
@@ -58,7 +60,7 @@ default { state_entry() { llOwnerSay("I run on YEngine"); } }
   must end with a line break.
 - **Names.** `//YEngine:` keeps a script on YEngine; `//InWorldz.Phlox:` puts it on Phlox.
 - **Unknown names.** A header naming an engine that is not loaded in the region is ignored,
-  and the script runs on the default engine.
+  and saved-state routing applies, with the default engine as the final fallback.
 - **The language part.** Text after the colon is a language name. Both engines read it the
   same way: blanks around it are ignored, case does not matter, and a single character
   written directly after the colon is ignored.
@@ -72,14 +74,38 @@ default { state_entry() { llOwnerSay("I run on YEngine"); } }
 An LSL header is an ordinary comment to the compiler, so the same script compiles on either
 engine.
 
+**Where the header comes from.** It is OpenSim's own convention, not something Phlox
+invented. In September 2008, when a region could load both the old DotNetEngine and the then
+new XEngine, OpenSim began letting a script choose its engine with a first-line comment:
+`//XEngine:` or `//DotNetEngine:`, optionally followed by a language, as in `//XEngine:lsl`
+(OpenSim commits 1602ba6175 and 79ac01fb0c). The next day's change made sure only the named
+engine ran the script. DotNetEngine and XEngine are gone, but YEngine kept the same rule
+(`XMREngine.OnRezScript`), and Phlox reads the header exactly as YEngine does. A script
+written for that convention needs no change: `//YEngine:` and `//InWorldz.Phlox:` are the
+names today.
+
 ## What changing the default engine does to existing scripts
 
-- **Scripts without a header move.** Changing `DefaultScriptEngine` moves every such script
-  to the new default engine the next time it starts: at region start, on rez, or when it is
-  saved.
-- **They start fresh.** The engines do not share saved state, so a script that changes
-  engine starts from `state_entry` with its globals at their initial values. This includes
-  timers, listens and the current state.
+Since Tranquillity #304, saved state decides which engine runs a script without a header, so
+switching the default does not reset the scripts already running in a region.
+
+- **Saved state chooses the engine for unheaded scripts.** At region start, on rez, when an
+  object crosses in, and on reload, the default engine's state is checked first. If it has no
+  matching state, the other loaded engines are checked in the order they registered. The
+  default is the final fallback when none has state. With Phlox the default, its state wins
+  over YEngine state when both exist.
+- **Unchanged YEngine scripts stay on YEngine.** Its per-region `.state` files keep an
+  unchanged script running with its existing globals, timers, listens and current state.
+  Phlox uses its SQLite state rows and any state carried with the object. Both engines check
+  the item and the script asset; state for an older version of the script does not select an
+  engine.
+- **New or edited scripts use the default.** Saving a script gives it a new asset, so older
+  state no longer matches. Without an explicit header it compiles on the default engine,
+  starts fresh, and from then on saves that engine's state. Resetting a running script does
+  not change its engine; save (recompile) it to move it.
+- **No state conversion is performed.** A script that moves engines starts from
+  `state_entry` with its globals at their initial values; state is never translated between
+  the engines.
 - **Phlox keeps its saved state.** When Phlox hands a script to another engine, it keeps its
   own saved state for that script. If you switch back, a script that comes back to Phlox
   unchanged resumes where it left off under Phlox. What happened under the other engine is
@@ -87,9 +113,34 @@ engine.
 - **Headed scripts stay.** Scripts whose first line names a loaded engine keep that engine
   and their state.
 
-Before switching a region that runs scripts which must keep their state (counters, vendors,
-door states held in globals), either add `//YEngine:` as their first line or accept that they
-start fresh on the other engine.
+Before switching, back up the existing script state (YEngine's `ScriptEngines` folder and,
+if Phlox has run before, its `script_state.db`) and keep YEngine enabled. Unchanged scripts
+with saved YEngine state need no edits. A script with no saved state starts fresh on the
+default engine. When a state store cannot be read, the error is logged and that engine keeps
+the script, so its normal loader reports or retries the problem, rather than the script
+silently moving to another engine.
+
+### Trying Phlox on one region
+
+To move a region to Phlox gradually, set it in that region server's ini only:
+
+```ini
+[Startup]
+    DefaultScriptEngine = "InWorldz.Phlox"
+
+[InWorldz.Phlox]
+    Enabled = true
+
+[YEngine]
+    Enabled = true
+```
+
+After the restart, every script that was already running stays on YEngine with its state.
+Each script placed or saved from then on runs on Phlox. To try Phlox on one existing script,
+open it and save it (with or without an `//InWorldz.Phlox:` header); to keep one on YEngine
+for good, give it a `//YEngine:` header. Going back is the reverse: set the default to
+`"YEngine"` (or remove the line). Scripts with Phlox state stay on Phlox while it is enabled,
+and resume under YEngine only once they are saved again or Phlox is disabled.
 
 ## Settings in `[InWorldz.Phlox]`
 
@@ -118,6 +169,7 @@ This is every key the engine reads from the section. All of them are optional.
 | `SensorMaxRange` | `96.0` | Largest range in metres a sensor may use. |
 | `SensorMaxResults` | `16` | Most objects or avatars one sensor reports. |
 | `StateRowMaxAgeDays` | `0` | Deletes saved-state rows not saved or loaded for this many days whose scripts are not loaded in the simulator; checked every 6 hours, first 1 hour after start. `0`: never (the default). |
+| `ScriptEnginesPath` | `ScriptEngines` | Parent folder for saved state and the bytecode cache. See [Where Phlox keeps its files](#where-phlox-keeps-its-files). |
 
 Setting any anti-abuse switch to `false` removes that slowdown and nothing else.
 
@@ -166,16 +218,29 @@ script chat travels, as for every other listener.
 
 ## Where Phlox keeps its files
 
-Both paths are relative to the region server's working directory, and neither is
-configurable. `[YEngine] ScriptEnginesPath` does not move them.
+Both live under `[InWorldz.Phlox] ScriptEnginesPath` with `Phlox` appended. The setting
+defaults to `ScriptEngines`; a relative value is relative to the region server's working
+directory. Set it to keep script state out of the published binary tree, in its own data
+directory:
 
-- **Saved script state:** `ScriptEngines/Phlox/state/script_state.db`, one SQLite database
+```ini
+[InWorldz.Phlox]
+    ScriptEnginesPath = "D:/OpenSimData/ScriptEngines"
+```
+
+which puts the files below under `D:/OpenSimData/ScriptEngines/Phlox/`. Unlike YEngine, no
+region id is appended: every region in the process shares the one folder. Moving an existing
+installation means moving the `Phlox` folder to the new location before the next start;
+otherwise scripts start with no saved state and recompile. `[YEngine] ScriptEnginesPath`
+moves YEngine's files only: each engine reads the key from its own section.
+
+- **Saved script state:** `<ScriptEnginesPath>/Phlox/state/script_state.db`, one SQLite database
   shared by every region in the process.
   - Each row is keyed by the script item and checked against the script asset. A row for an
     older version of the script is discarded.
   - Changed state is written every 2.5 s, and when a script unloads.
   - A reset deletes the script's row.
-- **Bytecode cache:** `ScriptEngines/Phlox/bytecode/`, one `.plx` file per script asset.
+- **Bytecode cache:** `<ScriptEnginesPath>/Phlox/bytecode/`, one `.plx` file per script asset.
   - Files are grouped in sub-folders named by the first two characters of the asset id.
   - A `.schema_version` file records the cache format.
 

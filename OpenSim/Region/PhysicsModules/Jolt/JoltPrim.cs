@@ -18,6 +18,7 @@
 // cylinder axis-correction ordering must be unambiguous (left operand applied first).
 
 using System;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 using OpenSim.Framework;
 using OpenSim.Region.PhysicsModules.SharedBase;
@@ -43,6 +44,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         private Vector3 _size;
         private Quaternion _orientation;
         private bool _isPhysical;
+        // Set first thing in Destroy. The scene's per-frame lists refuse a prim once it is set, so a script's late write
+        // to a removed prim's actor cannot put it back on a list the scene keeps.
+        internal volatile bool IsRemoved;
         // Phantom (STATUS_PHANTOM) and volume detect (llVolumeDetect), and PRIM_PHYSICS_SHAPE_TYPE. The scene adds a
         // volume detector as phantom and then calls SetVolumeDetect(1); volume detect wins over phantom. On a welded
         // linkset child these are stored but the root's body carries the linkset's flags.
@@ -88,13 +92,34 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             (0.6f, 0.5f),   // light
         };
 
-        // The linear and angular damping of a physical prim that is not a vehicle, per second: [Jolt] PrimLinearDamping and
-        // PrimAngularDamping, 0.05 by default (Jolt's own). The SL wiki gives no figure (llSetPhysicsMaterial notes that two
+        // The same two numbers under [Jolt] BasicForcesBehaviour = InWorldz (the default): InWorldz's own preset table, from
+        // Halcyon's InWorldz.PhysxPhysics/Material.cs (BuiltinMaterialInit, the first value of each CreateMaterial call; PhysX
+        // has a static and a dynamic friction, Jolt one, so the static one is used). PRIM_MATERIAL_LIGHT is mapped to wood there
+        // ("which makes no sense is remapped to wood").
+        internal static readonly (float Friction, float Restitution)[] InWorldzMaterialTable =
+        {
+            (0.5f, 0.05f),  // stone, made "mostly like ground" for navigable roads
+            (0.3f, 0.4f),   // metal
+            (0.2f, 0.7f),   // glass
+            (0.6f, 0.5f),   // wood
+            (0.9f, 0.3f),   // flesh
+            (0.4f, 0.7f),   // plastic
+            (0.9f, 0.9f),   // rubber
+            (0.6f, 0.5f),   // light, as wood
+        };
+
+        /// <summary>The preset table <paramref name="behaviour"/> selects.</summary>
+        internal static (float Friction, float Restitution)[] MaterialTableFor(JoltConfig.BasicForces behaviour)
+            => behaviour == JoltConfig.BasicForces.SecondLife ? MaterialTable : InWorldzMaterialTable;
+
+        // The linear and angular damping of a physical prim, vehicles included, per second: [Jolt] PrimLinearDamping and
+        // PrimAngularDamping, 0.02 and 0.05 by default (Halcyon's, PhysxActorFactory.cs DEFAULT_LINEAR_DAMPING and
+        // DEFAULT_ANGULAR_DAMPING, applied to every physical actor). The SL wiki gives no figure (llSetPhysicsMaterial notes that two
         // objects of restitution 1.0 still do not bounce perfectly, because the engine damps; llSetAngularVelocity, that a
         // spun cube with gravity 0 slows down; wiki.secondlife.com). ubODE's, as a rate, are 0.1001 and 0.0250
         // (ODEPrim: dBodySetDamping(Body, .002f, .0005f), which ODE applies as v x (1 - scale) every 0.020 s step). Jolt
-        // applies v x (1 - rate x step) each step, the same decay per second at any step rate. A vehicle has none (its
-        // controller does its own friction).
+        // applies v x (1 - rate x step) each step, the same decay per second at any step rate. A vehicle's controller
+        // does its own friction on top.
         private float PrimLinearDamping => _module.PrimLinearDamping;
         private float PrimAngularDamping => _module.PrimAngularDamping;
 
@@ -113,9 +138,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // live body, makes it stick. Set when the vehicle becomes active; runtime llSetVehicleType sets it too
         // (harmless - the body is already live so it sticks first time).
         private float _reassertVehicleTime;
-        // Whether that re-assertion also zeroes the body's velocity (below, in StepVehicle): for a type a script sets, and for
-        // a saved vehicle handed back while the region is loading; not for one handed back with the region running, which
-        // keeps the velocity the simulator replays onto it (a vehicle crossing in at speed), as on ubODE.
+        // Whether that re-assertion also zeroes the body's velocity (below, in StepVehicle): for a vehicle made while the region
+        // is loading, by a script or from its saved record; not for one made with the region running (a script's type call, or a
+        // vehicle crossing in at speed, which keeps the velocity the simulator replays onto it), as on ubODE.
         private bool _reassertZeroesVelocity;
 
         // How long after a vehicle becomes active its body params are re-asserted and, with no linear motor set, its
@@ -144,6 +169,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         internal BodyId BodyHandle => _body;
         internal string ShapeKind => _shapeKind;
+        internal ShapeId ShapeHandle => _shape;
         // Read by the `jolt reloadcheck` / `jolt vehiclestatus` console commands.
         internal Vector3 BirthPos => _birthPos;
         internal Vector3 CurrentPos => _position;
@@ -154,6 +180,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // The mass of this prim's body, the one the engine moves (a welded linkset's root: the whole linkset's); 0 without
         // a body. Read by the console test commands.
         internal float BodyMass => _body.IsValid ? _backend.GetBodyMass(_body) : 0f;
+        /// <summary>The compound shape a linkset's root body is made of (invalid for anything else), for the tests.</summary>
+        internal ShapeId CompoundHandle => _compoundShape;
 
         // Live vehicle state for the `jolt vehiclestatus` console command (type / buoyancy / active).
         internal string VehicleInfo()
@@ -206,26 +234,248 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         private PhysicsLayer BodyLayer
             => _isVolumeDetect ? PhysicsLayer.Sensor
              : _isPhantom ? PhysicsLayer.Phantom
-             : _isPhysical ? PhysicsLayer.Dynamic : PhysicsLayer.Static;
+             : _isPhysical ? PhysicsLayer.Dynamic
+             : _kinematicBody ? PhysicsLayer.MovingStatic : PhysicsLayer.Static;
 
         // A mesher shape is cooked as a convex hull when the prim is physical (a triangle mesh has no volume, so no
         // mass), or when a non-mesh prim asks for PRIM_PHYSICS_SHAPE_CONVEX: "Use the convex hull formulas for
-        // generating the prim's physics-shape" (PRIM_PHYSICS_SHAPE_TYPE, wiki.secondlife.com). A mesh prim's CONVEX,
-        // its default, means the asset's own hull list, which this module does not read yet; one hull of every mesh
-        // point would close the inside of every mesh building, so a non-physical mesh keeps its triangle mesh.
+        // generating the prim's physics-shape" (PRIM_PHYSICS_SHAPE_TYPE, wiki.secondlife.com). One hull of every mesh
+        // point would close the inside of every mesh building, so a non-physical mesh keeps its triangle mesh, unless
+        // [Jolt] HonourConvexMesh is on: then a non-physical mesh marked CONVEX is one hull. A physical mesh of shape
+        // type PRIM is cooked from its asset's hull list when it has one (UseHullList); this is the fallback hull.
         private bool CookAsHull
-            => _isPhysical || (_shapeType == (byte)PhysShapeType.convex && _pbs?.SculptType != (byte)SculptType.Mesh);
+            => _isPhysical || (_shapeType == (byte)PhysShapeType.convex && (_pbs?.SculptType != (byte)SculptType.Mesh || _module.HonourConvexMesh));
+
+        // A physical mesh prim of shape type PRIM collides as the hull list its asset carries, one convex hull per entry
+        // (Second Life's behaviour for a physical mesh); the asset's list is cooked in JoltScene.CookHullList. A mesh without
+        // one, a CONVEX mesh and every other prim are cooked as before.
+        // A physical prim of shape type PRIM that is made from its own profile and path (not a mesh, not a sculpt) collides as
+        // a compound of convex cells when it is not convex (JoltScene.CookPrimCells), so a hollow or cut prim keeps its
+        // cavities; CONVEX stays one hull.
+        private bool UseHullList => _isPhysical && _shapeType == (byte)PhysShapeType.prim;
+
+        /// <summary>How many convex hulls this prim's shape is made of: its cells or its asset's hulls, else 1. The count a
+        /// physics complexity limit adds up (1 for a simple shape plus one for each hull).</summary>
+        internal int HullCount => _hullCount;
+        private int _hullCount = 1;
+
+        /// <summary>How many collision shapes this prim adds to its object: 1 for a plain box, sphere or cylinder, its hull count
+        /// for any other shape (<see cref="HullCount"/>), none when its physics shape type is NONE. The sum over a physical
+        /// object's parts is what [Jolt] MaxPhysicalComplexity limits and what the object reports as its physics cost. The same
+        /// count Halcyon's PhysxPrim.TotalComplexity gives (one per simple shape plus one per convex hull).</summary>
+        internal int ComplexityCount => _shapeType == (byte)PhysShapeType.none ? 0 : _hullCount;
+
+        /// <summary>The prim's collision shape count, reported as its physics cost (the scene does not scale it by size).</summary>
+        public override float PhysicsCost => ComplexityCount;
+        public override bool PhysicsCostIsShapeCount => true;
+
+        // Set while the object is being put together (core sets it on the root, then every part, then clears it): a check made
+        // before it is cleared would only see part of the object.
+        private bool _building;
+
+        public override bool Building
+        {
+            get => _building;
+            set
+            {
+                _building = value;
+                if (!value)
+                    CheckComplexity();
+            }
+        }
+
+        /// <summary>The collision shapes in this prim's whole object: its root's and every part linked to the root.</summary>
+        internal int ObjectComplexity()
+        {
+            JoltPrim root = _linkRoot ?? this;
+            int total = root.ComplexityCount;
+            System.Collections.Generic.List<JoltPrim> parts = root._linkChildren;
+            if (parts != null)
+                for (int i = 0; i < parts.Count; i++)
+                    total += parts[i].ComplexityCount;
+            return total;
+        }
+
+        // [Jolt] MaxPhysicalComplexity: when this prim's object is physical and has more collision shapes than the limit, tell
+        // core (as Halcyon's PhysxPrim does with TriggerComplexityError), which alerts the owner and makes the object non-physical.
+        // Called wherever a count can grow: a prim made physical, a part linked in, a shape or size changed, a mesh arriving, the
+        // end of building. Never inside the shape lock: core's answer takes the object out of physics.
+        private void CheckComplexity()
+        {
+            // Halcyon checks the complexity before it builds the actor (DynamicsPrecheck) and the sizes after (DynamicsPostcheck):
+            // an object refused for its complexity is not checked for its size, so the owner is told one reason.
+            if (!CheckComplexityLimit())
+                CheckPhysicalSize();
+        }
+
+        // True when the object was reported as too complex.
+        private bool CheckComplexityLimit()
+        {
+            int limit = _module.MaxPhysicalComplexity;
+            if (limit <= 0 || IsRemoved)
+                return false;
+            JoltPrim root = _linkRoot ?? this;
+            if (!root._isPhysical || root._building)
+                return false;
+            int total = ObjectComplexity();
+            if (total <= limit)
+                return false;
+            root.RaiseComplexityError(string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0} of {1} convex hulls)", total, limit));
+            return true;
+        }
+
+        // Under [Jolt] BasicForcesBehaviour = InWorldz, Halcyon's limits on how small or large a physical object may be
+        // (HalcyonPhysicalLimits; PhysxPrim.stability.cs DynamicsPostcheck): checked at the same moments as the complexity,
+        // on the box that holds the whole object, lined up with the region's axes. Halcyon leaves the object inert with its
+        // physical flag still set and tells nobody; so does this.
+        private void CheckPhysicalSize()
+        {
+            if (_module.BasicForcesBehaviour != JoltConfig.BasicForces.InWorldz || IsRemoved)
+                return;
+            JoltPrim root = _linkRoot ?? this;
+            if (!root._isPhysical || root._building)
+                return;
+            var min = new SVector3(float.PositiveInfinity);
+            var max = new SVector3(float.NegativeInfinity);
+            HalcyonPhysicalLimits.Include(ToS(root.Position), Unit(root.Orientation), ToS(root._size), ref min, ref max);
+            System.Collections.Generic.List<JoltPrim> parts = root._linkChildren;
+            if (parts != null)
+                for (int i = 0; i < parts.Count; i++)
+                    HalcyonPhysicalLimits.Include(ToS(parts[i].Position), Unit(parts[i].Orientation), ToS(parts[i]._size), ref min, ref max);
+            SVector3 extent = max - min;
+            HalcyonPhysicalLimits.Verdict verdict = HalcyonPhysicalLimits.Check(extent.X, extent.Y, extent.Z);
+            // Halcyon makes the actor kinematic, tells nobody and leaves the physical flag set (PhysxPrim.stability.cs,
+            // EnforceMinimumDynamicDimensions and EnforceMaximumDynamicDimensions): the object is held where it is, like a
+            // selected one, until a resize brings it inside the limits.
+            bool refused = verdict != HalcyonPhysicalLimits.Verdict.Ok;
+            if (refused != root._sizeHeld)
+            {
+                root._sizeHeld = refused;
+                root.SetKeptStill(root._userSelected || root._held || refused);
+            }
+        }
+
+        // The real volume (m^3, at the prim's size) a physical concave prim weighs when it is cooked as cells: the volume of the
+        // mesher's closed mesh, which the cells (they hold the whole solid, a little over) stand in for in collision, the
+        // centre of mass and how the mass is spread. 0 when the shape's own volume is the weight: every other shape, and a
+        // concave prim whose mesh volume cannot be trusted (JoltScene.CookPrimCells). Set where the shape is cooked.
+        private double _massVolume;
+        private float _massFactor = 1f;   // _massVolume over the volume of the cooked cells: 1 for every other shape
+
+        // A prim may take a cooked shape another prim of the same asset holds (at its size or scaled to it). A part of a linkset
+        // may too, unless its density differs from the root's: the linkset gives each part's shape that part's own density
+        // relative to the root's (SetShapeDensity), and a shape in use elsewhere keeps the engine's default. A part of the
+        // root's own density needs none set, so it can use the shared shape (or a scaled shape over it, which takes no density).
+        // A concave prim that weighs less than its cells' volume (_massFactor under 1) is given a density of its own in a
+        // linkset as well (SetShapeDensity, see ShapeMassFactor), so in a linkset it takes a shape of its own too.
+        private bool MayShareShape
+            => _linkRoot != null ? PhysicalDensity == _linkRoot.PhysicalDensity && !NeedsOwnDensity
+                                 : !NeedsOwnDensity || _linkChildren == null || _linkChildren.Count == 0;
+
+        // Under this much (2 %) of difference between what a concave prim weighs and its cells' volume, its place in a linkset's
+        // compound is the same to the eye as with the shared shape's default density.
+        private const float OwnDensityMargin = 0.02f;
+        private bool NeedsOwnDensity => MathF.Abs(_massFactor - 1f) > OwnDensityMargin;
+
+        // Takes a shape of its own in place of a shared one, before this prim becomes a part of a linkset's compound, when
+        // the part's density has to be written into its shape.
+        private void MakeShapePrivate()
+        {
+            if (!_shape.IsValid || !_module.IsSharedShape(_shape) || MayShareShape)
+                return;
+            ShapeId old = _shape;
+            _shape = CookOwnShape(out _axisCorrection, out _shapeKind);
+            _ownMass = null;
+            _module.ReleaseShape(_backend, old);
+        }
+
+        // The bytes of a mesh asset that has just arrived, set only while this prim is cooked from them (MeshAssetArrived).
+        private byte[] _meshBytes;
+        // Set when the last cook left a mesh prim a bounding box for want of its asset (RequestMeshAssetIfNeeded asks).
+        private bool _meshAssetWanted;
+        // Held while the shape is swapped or the prim is removed, so an asset arriving on another thread never cooks for,
+        // or puts a shape on, a prim that is being destroyed.
+        private readonly object _shapeLock = new object();
+
+        // Cook this prim's shape as it is now. A mesh asset that has just arrived goes on a copy of the shape for the cook,
+        // so the part's own shape never holds the bytes.
+        private ShapeId CookOwnShape(out SQuaternion axisCorrection, out string kind)
+        {
+            PrimitiveBaseShape pbs = _pbs;
+            byte[] bytes = _meshBytes;
+            if (bytes != null && pbs != null)
+            {
+                pbs = pbs.Copy();
+                pbs.SculptData = bytes;
+            }
+            // Cooked on the thread that built or changed the prim, never on the step: the one cook the step reaches
+            // (RebuildCompoundNow -> MakeShapePrivate) is of a shared shape, and only a mesh asset's shape is shared, so a
+            // prim cooked as cells is never cooked there.
+            ShapeId shape = _module.CookPrimShape(_backend, pbs, _size, CookAsHull, out axisCorrection, out kind, out int hullCount, out double massVolume, _isPhysical, UseHullList, MayShareShape);
+            _hullCount = hullCount;
+            _massVolume = massVolume;
+            _massFactor = massVolume > 0.0 ? ShapeMassFactorOf(shape, massVolume) : 1f;
+            _meshAssetWanted = bytes == null && kind == JoltScene.BoxFallbackKind && _module.WantsMeshAsset(_pbs);
+            return shape;
+        }
+
+        /// <summary>Asks the scene for this prim's mesh asset if the last cook was a box for want of it. Called once the prim
+        /// is in the scene and after a re-cook, never inside a cook, because the answer can come before the call returns.</summary>
+        internal void RequestMeshAssetIfNeeded()
+        {
+            PrimitiveBaseShape pbs = _pbs;
+            if (!_meshAssetWanted || IsRemoved || pbs == null)
+                return;
+            _meshAssetWanted = false;
+            _module.RequestMeshAsset(this, pbs.SculptTexture);
+        }
+
+        internal enum MeshArrival { Skipped, Cooked, Unreadable }
+
+        /// <summary>The mesh asset this prim asked for has arrived: cook the shape from it, on the same body. Skipped when the
+        /// prim has been removed or no longer uses that mesh.</summary>
+        internal MeshArrival MeshAssetArrived(UUID assetId, byte[] data)
+        {
+            MeshArrival arrival = CookArrivedMesh(assetId, data);
+            if (arrival == MeshArrival.Cooked && _isPhysical)
+                CheckComplexity();
+            return arrival;
+        }
+
+        private MeshArrival CookArrivedMesh(UUID assetId, byte[] data)
+        {
+            lock (_shapeLock)
+            {
+                PrimitiveBaseShape pbs = _pbs;
+                if (IsRemoved || pbs == null || !(JoltScene.IsMeshPrim(pbs) || JoltScene.IsSculptPrim(pbs)) || pbs.SculptTexture != assetId)
+                    return MeshArrival.Skipped;
+                _meshBytes = data;
+                try { Rebuild(); }
+                finally { _meshBytes = null; }
+                if (_shapeKind == JoltScene.BoxFallbackKind)
+                    return MeshArrival.Unreadable;
+                // What rested on the box now meets a different surface, and a body whose shape changed has contacts to find
+                // again: wake it (a physical one at the next step, as a new body is) or what rests on a fixed one.
+                if (_linkRoot != null)
+                    _module.RegisterPendingActivation(_linkRoot);
+                else if (_isPhysical)
+                    _module.RegisterPendingActivation(this);
+                else
+                    WakeWhatRestsOn(_position, _orientation);
+                return MeshArrival.Cooked;
+            }
+        }
 
         // Cook the shape and create the body. Also reached when a prim has lost its body (the engine refused one at
         // MaxBodies), so the shape it held is released once the new body is made.
         private void Build()
         {
             ShapeId old = _shape;
-            _shape = _module.CookPrimShape(_backend, _pbs, _size, CookAsHull, out _axisCorrection, out _shapeKind);
+            _shape = CookOwnShape(out _axisCorrection, out _shapeKind);
             _ownMass = null;
             CreateBodyInternal();
             if (old.IsValid)
-                _backend.ReleaseShape(old);
+                _module.ReleaseShape(_backend, old);
         }
 
         // A part of a welded linkset: a child with no body of its own, or the root whose body is the compound. Such a part
@@ -239,12 +489,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // old handle is released now.
         private void RecookLinkedShape()
         {
-            ShapeId old = _shape;
-            _shape = _module.CookPrimShape(_backend, _pbs, _size, CookAsHull, out _axisCorrection, out _shapeKind);
-            _ownMass = null;
-            if (old.IsValid)
-                _backend.ReleaseShape(old);
-            _module.MarkLinksetDirty(_linkRoot ?? this);
+            lock (_shapeLock)
+            {
+                ShapeId old = _shape;
+                _shape = CookOwnShape(out _axisCorrection, out _shapeKind);
+                _ownMass = null;
+                if (old.IsValid)
+                    _module.ReleaseShape(_backend, old);
+                _module.MarkLinksetDirty(_linkRoot ?? this);
+            }
+            RequestMeshAssetIfNeeded();
         }
 
         // Create the Jolt body for the CURRENT _isPhysical / _shape / _axisCorrection and cached
@@ -289,6 +543,19 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 _rotationalVelocity = Vector3.Zero;
             }
 
+            // A prim keyframed motion moves is made a kinematic body, which can be moved to a pose over a time and so carries
+            // what stands on it; every other non-physical prim stays a body with no motion at all.
+            _kinematicBody = KinematicWanted;
+            _module.SetKinematicTracked(this, _kinematicBody);
+            _kinMoving = false;
+            _segActive = false;
+            lock (_kinLock)
+            {
+                _kinTarget = _position;
+                _kinRotation = _orientation;
+                _kinPending = false;
+            }
+
             BodyDesc desc = BodyDesc.Default;
             desc.Shape = _compoundShape.IsValid ? _compoundShape : _shape;   // linkset root -> the compound
             desc.Position = ToS(_position);
@@ -306,6 +573,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 desc.MotionType = BodyMotionType.Dynamic;
                 desc.Mass = 0f;                        // <=0 -> backend computes Volume*Density
                 desc.Density = PhysicalDensity;        // honour the SOP density (BulletSim mass parity)
+                // A concave prim weighs its real volume: the body's inertia is the cells' scaled to that mass (a linkset's mass is
+                // set just below from its parts).
+                if (_massVolume > 0.0 && !_compoundShape.IsValid)
+                    desc.Mass = LoneMass();
                 desc.LinearDamping = PrimLinearDamping;
                 desc.AngularDamping = PrimAngularDamping;
                 desc.GravityFactor = ScriptGravityFactor;   // llSetBuoyancy (a vehicle sets its own just below)
@@ -318,6 +589,15 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 // (AddPrimShape + SetVehicle are synchronous) AND StepVehicles has asserted the vehicle's
                 // gravity-cancellation for this frame. So a reloaded boat is NEVER a live gravity body before
                 // its buoyancy is in force -> it cannot free-fall during the load / the reload stall.
+                desc.StartActive = false;
+            }
+            else if (_kinematicBody)
+            {
+                desc.MotionType = BodyMotionType.Kinematic;
+                desc.LinearVelocity = SVector3.Zero;   // it moves only when StepKinematic moves it
+                desc.AngularVelocity = SVector3.Zero;
+                desc.Mass = 0f;
+                desc.Ccd = ContinuousCollision.Off;
                 desc.StartActive = false;
             }
             else
@@ -387,6 +667,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // viewer interpolating a rested object.
         internal void ApplyStepState(in BodyState s)
         {
+            // A kinematic prim's pose is the one its object was given (the body only follows it), and a drain that wrote the
+            // body's place back could overwrite a pose set since the step.
+            if (_kinematicBody)
+                return;
             var newPos = new Vector3(s.Position.X, s.Position.Y, s.Position.Z);
             // A position that is not a number is dropped (the last good transform is kept): handed to the simulator it
             // would become the object's position.
@@ -411,7 +695,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     outOfBounds = true;
                 }
                 else if (_isPhysical && !InRegion(newPos))
-                    LeaveAcrossEdge(newPos, newRot, newVel, newAngVel);
+                {
+                    if (_keptInsideBorder)
+                        KeepAtBorder(newPos, newRot, newVel, newAngVel);
+                    else
+                        LeaveAcrossEdge(newPos, newRot, newVel, newAngVel);
+                }
                 else
                 {
                     _position = newPos;
@@ -450,6 +739,47 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         private bool InRegion(Vector3 p)   // Scene.PositionIsInCurrentRegion
             => p.X >= 0f && p.X < _module.RegionSizeX && p.Y >= 0f && p.Y < _module.RegionSizeY;
+
+        // While an object that crossed in with riders waits before it may cross out again (PhysicsActor.KeepInsideBorder), the
+        // body stays in the engine at the border. Taken out as for any crossing, it would leave the avatars standing on it with
+        // nothing under them and the speed it gave them, and core would put it back at rest and higher, once a step for as long
+        // as its script pushes it. Halcyon leaves the object in its scene and sets it back inside the region, stopped
+        // (PhysxPrim.CrossingFailure). Here the body is set back to half a metre inside, as core puts a stayed object back
+        // (SceneObjectGroup.CrossAsyncCompleted), loses its speed outward, and the avatars on it are set back with it.
+        private volatile bool _keptInsideBorder;
+
+        public override void KeepInsideBorder(bool keep) => _keptInsideBorder = keep && InWorldzBasicForces;
+
+        private const float BorderKeepMargin = 0.5f;
+
+        private void KeepAtBorder(Vector3 pos, Quaternion rot, Vector3 velocity, Vector3 angularVelocity)
+        {
+            float sx = _module.RegionSizeX, sy = _module.RegionSizeY;
+            Vector3 inside = pos;
+            inside.X = Math.Clamp(pos.X, BorderKeepMargin, sx - BorderKeepMargin);
+            inside.Y = Math.Clamp(pos.Y, BorderKeepMargin, sy - BorderKeepMargin);
+            if (inside.X != pos.X && Math.Sign(velocity.X) == Math.Sign(pos.X - inside.X)) velocity.X = 0f;
+            if (inside.Y != pos.Y && Math.Sign(velocity.Y) == Math.Sign(pos.Y - inside.Y)) velocity.Y = 0f;
+            Vector3 before = _position;
+            _position = inside;
+            _orientation = rot;
+            _velocity = velocity;
+            _rotationalVelocity = angularVelocity;
+            _module.QueueBorderPin(this, before);
+        }
+
+        // The second half, after the avatars' step state is in (JoltScene.FlushBorderPins).
+        internal void FinishBorderPin(Vector3 before)
+        {
+            lock (_awayLock)
+            {
+                if (_away != Away.None || !_body.IsValid)
+                    return;
+                _backend.SetBodyTransform(_body, ToS(_position), BodyOrientationOf(_orientation), activate: true);
+                _backend.SetBodyLinearVelocity(_body, ToS(_velocity));
+                _module.MoveCharactersStandingOn(_body, before, _position);
+            }
+        }
 
         private void LeaveAcrossEdge(Vector3 pos, Quaternion rot, Vector3 velocity, Vector3 angularVelocity)
         {
@@ -529,27 +859,44 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         private void Rebuild()
         {
             if (IsWeldedChild || IsCompoundRoot) { RecookLinkedShape(); return; }
-            if (!_body.IsValid) { Build(); return; }
-            ShapeId old = _shape;
-            _shape = _module.CookPrimShape(_backend, _pbs, _size, CookAsHull, out _axisCorrection, out _shapeKind);
-            _ownMass = null;
-            _backend.SetBodyShape(_body, _shape, recomputeMass: false);   // keeps the body at its current transform
-            // The new shape's mass (and inertia, keeping any rotation locks): volume x density, as at creation. Without
-            // this a resized physical prim kept the mass of its old size, and llGetMass with it.
-            if (_isPhysical)
-                _backend.SetBodyDensity(_body, _simDensity > 0f ? _simDensity * DensityScaleFactor : BodyDesc.Default.Density);
-            if (old.IsValid)
-                _backend.ReleaseShape(old);
+            lock (_shapeLock)
+            {
+                if (!_body.IsValid)
+                    Build();
+                else
+                {
+                    ShapeId old = _shape;
+                    _shape = CookOwnShape(out _axisCorrection, out _shapeKind);
+                    _ownMass = null;
+                    _backend.SetBodyShape(_body, _shape, recomputeMass: false);   // keeps the body at its current transform
+                    // The new shape's mass (and inertia, keeping any rotation locks): volume x density, as at creation. Without
+                    // this a resized physical prim kept the mass of its old size, and llGetMass with it.
+                    if (_isPhysical)
+                        SetLoneBodyMass();
+                    if (old.IsValid)
+                        _module.ReleaseShape(_backend, old);
+                }
+            }
+            RequestMeshAssetIfNeeded();
         }
 
         // Called by JoltScene.RemovePrim. RemoveBody drops the body's native shape ref; releasing
         // our handle-ref then frees the shape - no leak, no premature free.
         internal void Destroy()
         {
+            IsRemoved = true;
+            lock (_shapeLock)
+                DestroyLocked();
+        }
+
+        private void DestroyLocked()
+        {
             // Drop out of the scene's per-frame vehicle drive (no-op if never a vehicle).
-            if (_vehicle != null) { _module.UnregisterVehicle(this); _vehicle = null; _vehicleBody = null; }
+            if (_vehicle != null) { _module.UnregisterVehicle(this); DetachVehicleStepProvider(); _vehicle = null; _vehicleBody = null; _vehicleStepProvider = null; }
             _module.SetScriptForced(this, false);
+            _scriptForceProvider?.Detach();
             _module.SetTargeted(this, false);
+            _module.SetKinematicTracked(this, false);
             // If welded into a parent compound, detach first (parent rebuilds without us).
             _welded = false;
             if (_linkRoot != null) { JoltPrim r = _linkRoot; _linkRoot = null; r.UnlinkChild(this); }
@@ -564,7 +911,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             _body = BodyId.Invalid;
             if (_compoundShape.IsValid) { _backend.ReleaseShape(_compoundShape); _compoundShape = ShapeId.Invalid; }
             if (_shape.IsValid)
-                _backend.ReleaseShape(_shape);
+                _module.ReleaseShape(_backend, _shape);
             _shape = ShapeId.Invalid;
         }
 
@@ -587,7 +934,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (_position == value) return;   // the drain writes _position directly; only a real move recreates
                 Vector3 was = _position;
                 _position = value;
-                if (_body.IsValid) { RepositionBody(); WakeWhatRestsOn(was, _orientation); }
+                if (_body.IsValid)
+                {
+                    // Keyframed motion sets the pose about every 50 ms: the body is moved to the last one at the next step.
+                    if (_kinematicBody && !_module.IsRegionLoading) NoteKinematicPose(value, null);
+                    else if (WatchesMoves && NoteMoveSet(was, _orientation)) { }   // a series of plain sets began: the body is kinematic
+                    else { RepositionBody(); WakeWhatRestsOn(was, _orientation); }
+                }
             }
         }
 
@@ -601,7 +954,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (_orientation == value) return;
                 Quaternion was = _orientation;
                 _orientation = value;
-                if (_body.IsValid) { RepositionBody(); WakeWhatRestsOn(_position, was); }
+                if (_body.IsValid)
+                {
+                    if (_kinematicBody && !_module.IsRegionLoading) NoteKinematicPose(null, value);
+                    else if (WatchesMoves && NoteMoveSet(_position, was)) { }
+                    else { RepositionBody(); WakeWhatRestsOn(_position, was); }
+                }
             }
         }
 
@@ -670,6 +1028,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (_size == value) return;
                 _size = value;
                 Rebuild();
+                if (_isPhysical)
+                    CheckComplexity();
             }
         }
 
@@ -679,6 +1039,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             {
                 _pbs = value;
                 Rebuild();
+                if (_isPhysical)
+                    CheckComplexity();
             }
         }
 
@@ -700,6 +1062,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 // a physical MESH must become a convex hull (mesh Volume=0 -> mass 0), non-physical reverts
                 // to a triangle mesh. Transform + velocity carry over. No taint (Jolt is concurrent).
                 RecreateBody();
+                if (value)
+                    CheckComplexity();
             }
         }
 
@@ -723,14 +1087,18 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 _welded = false;
                 _module.MarkLinksetDirty(_linkRoot);
             }
-            ShapeId old = _shape;
-            _shape = _module.CookPrimShape(_backend, _pbs, _size, CookAsHull, out _axisCorrection, out _shapeKind);
-            _ownMass = null;
-            if (_body.IsValid)
-                _backend.RemoveBody(_body);
-            CreateBodyInternal();
-            if (old.IsValid)
-                _backend.ReleaseShape(old);
+            lock (_shapeLock)
+            {
+                ShapeId old = _shape;
+                _shape = CookOwnShape(out _axisCorrection, out _shapeKind);
+                _ownMass = null;
+                if (_body.IsValid)
+                    _backend.RemoveBody(_body);
+                CreateBodyInternal();
+                if (old.IsValid)
+                    _module.ReleaseShape(_backend, old);
+            }
+            RequestMeshAssetIfNeeded();
         }
 
         // This prim's own mass: core adds up every part's (SceneObjectGroup.GetMass) for llGetMass and llGetObjectMass, as
@@ -771,22 +1139,26 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             own = new OwnMassData { AxisCorrection = _axisCorrection };
             if (_isPhysical || _backend.GetShapeVolume(shape) > 0f)
             {
-                own.Volume = _backend.GetShapeVolume(shape);
+                own.Volume = OwnVolume;
                 own.CenterOfMass = _backend.GetShapeCenterOfMass(shape);
             }
             else
             {
-                ShapeId hull = _module.CookPrimShape(_backend, _pbs, _size, true, out SQuaternion correction, out _);
+                // The shape it would have if it were physical: for shape type PRIM that is its convex cells, so llGetMass reads
+                // the same before and after physics is switched on. Cooked on the caller's thread (a script's), once: the
+                // result is kept in _ownMass until the shape is cooked again.
+                ShapeId hull = _module.CookPrimShape(_backend, _pbs, _size, true, out SQuaternion correction, out _, out _, out double hullMassVolume,
+                                                     null, _shapeType == (byte)PhysShapeType.prim);
                 try
                 {
-                    own.Volume = _backend.GetShapeVolume(hull);
+                    own.Volume = hullMassVolume > 0.0 ? (float)hullMassVolume : _backend.GetShapeVolume(hull);
                     own.CenterOfMass = _backend.GetShapeCenterOfMass(hull);
                     own.AxisCorrection = correction;
                 }
                 finally
                 {
                     if (hull.IsValid)
-                        _backend.ReleaseShape(hull);
+                        _module.ReleaseShape(_backend, hull);
                 }
             }
             _ownMass = own;
@@ -819,12 +1191,44 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // The density the backend works in (kg/m^3): the SOP density x DensityScaleFactor.
         private float PhysicalDensity => _simDensity > 0f ? _simDensity * DensityScaleFactor : BodyDesc.Default.Density;
 
-        // A welded linkset's mass: each part's shape volume x its own density.
+        // The one place a prim's mass source is decided: the volume it weighs (m^3), times its density. For most shapes that is the
+        // volume of the cooked shape. A physical concave prim cooked as convex cells weighs the real volume of its shape, the
+        // volume of the mesher's closed mesh (_massVolume), as the SL wiki's mass test pages measure it; the cells give its
+        // collision shape, its centre of mass and how the mass is spread, and their inertia is scaled to the real mass
+        // (SetBodyMass). Where the mesh volume cannot be trusted _massVolume is 0 and the cells' volume is the weight, as a
+        // physical mesh with a hull list weighs its hulls. Read by OwnMass (llGetMass, the centre of mass of a prim that is not
+        // a lone body) and LinksetMass (a welded linkset's body); a lone body is given LoneMass by SetLoneBodyMass.
+        private float OwnVolume => _massVolume > 0.0 ? (float)_massVolume : _backend.GetShapeVolume(_shape);
+
+        private float LoneMass() => MathF.Max((float)_massVolume * PhysicalDensity, 1e-3f);
+
+        // A lone physical body's mass: its real volume x density when it has one, else its density, from which the backend
+        // takes the shape's own volume.
+        private void SetLoneBodyMass()
+        {
+            if (_massVolume > 0.0)
+                _backend.SetBodyMass(_body, LoneMass());
+            else
+                _backend.SetBodyDensity(_body, PhysicalDensity);
+        }
+
+        // How much of its cells' volume a prim weighs: the real volume over the cells' (1 for every other shape). A linkset gives
+        // each part's cells a density times this, so the part's centre of mass and inertia in the compound are weighted by
+        // what it weighs, not by the cells' volume, which is over the real one most for thin walls.
+        private float ShapeMassFactor() => _massFactor;
+
+        private float ShapeMassFactorOf(ShapeId shape, double massVolume)
+        {
+            float cells = _backend.GetShapeVolume(shape);
+            return cells > 0f ? (float)massVolume / cells : 1f;
+        }
+
+        // A welded linkset's mass: each part's volume x its own density.
         private float LinksetMass()
         {
-            float mass = _backend.GetShapeVolume(_shape) * PhysicalDensity;
+            float mass = OwnVolume * PhysicalDensity;
             foreach (JoltPrim c in _linkChildren)
-                mass += _backend.GetShapeVolume(c._shape) * c.PhysicalDensity;
+                mass += c.OwnVolume * c.PhysicalDensity;
             return MathF.Max(mass, 1e-3f);
         }
 
@@ -837,7 +1241,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             if (_compoundShape.IsValid && _linkChildren != null && _linkChildren.Count > 0)
                 _backend.SetBodyMass(_body, LinksetMass());
             else
-                _backend.SetBodyDensity(_body, PhysicalDensity);
+                SetLoneBodyMass();
             WakeBody();
         }
 
@@ -854,8 +1258,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         // llSetPhysicsMaterial FRICTION and RESTITUTION, and PRIM_MATERIAL (SetMaterial). Each prim of a linkset has its own
         // (SL wiki, Physics Material Settings test: "Can individual prims in a linked set have different Physics settings?
-        // Yes."); a contact uses the struck prim's. Two touching surfaces combine as ubODE combines them, friction
-        // sqrt(f1 x f2) and restitution r1 x r2 (JoltPhysicsBackend.CombineMaterials); the SL wiki gives no rule.
+        // Yes."); a contact uses the struck prim's. Two touching surfaces combine by [Jolt] FrictionCombine and
+        // RestitutionCombine (JoltPhysicsBackend.CombineMaterials); the SL wiki gives no rule.
         public override float Friction
         {
             get => _friction;
@@ -883,7 +1287,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             if (material < 0 || material >= MaterialTable.Length)
                 return;
-            SetContactMaterial(MaterialTable[material].Friction, MaterialTable[material].Restitution);
+            (float friction, float restitution) = MaterialTableFor(_module.BasicForcesBehaviour)[material];
+            SetContactMaterial(friction, restitution);
         }
 
         private void SetContactMaterial(float friction, float restitution)
@@ -892,13 +1297,19 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 return;
             _friction = friction;
             _restitution = restitution;
-            // A vehicle sets its own contact friction and restitution (ApplyVehicleBodyParams); these come back when it
-            // stops being one.
             JoltPrim root = _linkRoot ?? this;
-            if (!root._body.IsValid || (root._vehicle != null && root._vehicle.IsActive))
+            if (!root._body.IsValid)
                 return;
+            if (root._vehicle != null && root._vehicle.IsActive)
+            {
+                // A vehicle keeps its parts' materials (unless a friction override is set), so the new one reaches the body.
+                root.ApplyVehicleContactMaterial();
+                return;
+            }
             _backend.SetBodyPartMaterial(root._body, LocalID, friction, restitution);
             root.WakeBody();
+            // What rests on a non-physical prim now touches a different surface: wake it, as when the prim is moved.
+            WakeWhatRestsOn(_position, _orientation);
         }
 
         // llSetPhysicsMaterial GRAVITY_MULTIPLIER: the body's gravity is (1 - buoyancy) x the multiplier x the region's, as
@@ -1024,10 +1435,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             LinkOffsetOf(position ?? _position, rotation ?? _orientation, out SVector3 offset, out SQuaternion relative);
             bool moved = SVector3.Distance(offset, _linkOffset) > LinkMoveTolerance;
             bool turned = 2f * MathF.Acos(MathF.Min(1f, MathF.Abs(SQuaternion.Dot(relative, _linkRotation)))) > LinkTurnTolerance;
+            Vector3 wasAt = _position;
+            Quaternion wasTurned = _orientation;
             if (position.HasValue) _position = position.Value;
             if (rotation.HasValue) _orientation = rotation.Value;
             if (!moved && !turned)
                 return;
+            CarryRidersOfMove(wasAt, wasTurned);
             if (moved) _linkOffset = offset;
             if (turned) _linkRotation = relative;
             _module.MarkLinksetDirty(_linkRoot);
@@ -1066,6 +1480,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (!NonFiniteGuard.Ok(value)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "prim", LocalID, "RotationalVelocity", value.ToString()); return; }
                 if (_selected) return;
                 _rotationalVelocity = value;
+                Volatile.Write(ref _apidSpunByScript, 1);   // a rotation target takes this as the speed it starts from
                 if (_body.IsValid && _isPhysical) _backend.SetBodyAngularVelocity(_body, ToS(value));
             }
         }
@@ -1080,6 +1495,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         private float _buoyancy;       // the body feels (1 - buoyancy) of the region's gravity
         private byte _rotationLocks;   // SceneObjectGroup.axisSelect bits: 0x02 X, 0x04 Y, 0x08 Z locked
 
+        // A force or torque the script gave in the object's own axes (llSetForce, llSetTorque with local = TRUE): the vector
+        // in the prim's frame, turned with the body in every collision step (ScriptForceStepProvider). _force and _torque
+        // above stay the region-axes vectors as of the call. Under _scriptForceLock.
+        private bool _forceLocal, _torqueLocal;
+        private Vector3 _forceInBody, _torqueInBody;
+        private ScriptForceStepProvider _scriptForceProvider;
+
         public override Vector3 Torque
         {
             get { if (_linkRoot != null) return _linkRoot.Torque; lock (_scriptForceLock) return _torque; }
@@ -1088,9 +1510,46 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (!NonFiniteGuard.Ok(value)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "prim", LocalID, "Torque", value.ToString()); return; }
                 if (_linkRoot != null) { _linkRoot.Torque = value; return; }
                 bool on;
-                lock (_scriptForceLock) { _torque = value; on = _force != Vector3.Zero || _torque != Vector3.Zero; }
+                lock (_scriptForceLock) { _torque = value; _torqueLocal = false; on = _force != Vector3.Zero || _torque != Vector3.Zero; }
                 _module.SetScriptForced(this, on);
+                if (!on) _scriptForceProvider?.Detach();   // no per-Update call will come for a prim that is out of the set
             }
+        }
+
+        // llSetTorque and llSetForce as the script layer hands them over (PhysicsActor.SetScriptForce / SetScriptTorque): the
+        // region-axes vector as of the call. A local one is also kept in the root's own axes, so it turns with the body.
+        public override void SetScriptTorque(Vector3 torque, bool local)
+        {
+            if (!NonFiniteGuard.Ok(torque)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "prim", LocalID, "Torque", torque.ToString()); return; }
+            if (_linkRoot != null) { _linkRoot.SetScriptTorque(torque, local); return; }
+            Quaternion rotation = Orientation;
+            bool on;
+            lock (_scriptForceLock)
+            {
+                _torque = torque;
+                _torqueLocal = local;
+                _torqueInBody = local ? torque * Quaternion.Inverse(rotation) : Vector3.Zero;
+                on = _force != Vector3.Zero || _torque != Vector3.Zero;
+            }
+            _module.SetScriptForced(this, on);
+            if (!on) _scriptForceProvider?.Detach();   // no per-Update call will come for a prim that is out of the set
+        }
+
+        public override void SetScriptForce(Vector3 force, bool local)
+        {
+            if (!NonFiniteGuard.Ok(force)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "prim", LocalID, "Force", force.ToString()); return; }
+            if (_linkRoot != null) { _linkRoot.SetScriptForce(force, local); return; }
+            Quaternion rotation = Orientation;
+            bool on;
+            lock (_scriptForceLock)
+            {
+                _force = force;
+                _forceLocal = local;
+                _forceInBody = local ? force * Quaternion.Inverse(rotation) : Vector3.Zero;
+                on = _force != Vector3.Zero || _torque != Vector3.Zero;
+            }
+            _module.SetScriptForced(this, on);
+            if (!on) _scriptForceProvider?.Detach();   // no per-Update call will come for a prim that is out of the set
         }
 
         public override Vector3 Force
@@ -1101,8 +1560,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (!NonFiniteGuard.Ok(value)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "prim", LocalID, "Force", value.ToString()); return; }
                 if (_linkRoot != null) { _linkRoot.Force = value; return; }
                 bool on;
-                lock (_scriptForceLock) { _force = value; on = _force != Vector3.Zero || _torque != Vector3.Zero; }
+                lock (_scriptForceLock) { _force = value; _forceLocal = false; on = _force != Vector3.Zero || _torque != Vector3.Zero; }
                 _module.SetScriptForced(this, on);
+                if (!on) _scriptForceProvider?.Detach();   // no per-Update call will come for a prim that is out of the set
             }
         }
 
@@ -1111,16 +1571,59 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // AddTorque wake a sleeping body. Vehicles keep their own forces: ubODE does not add a vehicle's set force or
         // torque (ODEPrim.Move hands a vehicle to its controller before it adds them) and core does not hand them to a
         // vehicle when it sets its physics up (SceneObjectPart.ApplyPhysics).
+        //
+        // A force or torque in the world's axes is applied here, as an engine force: Jolt adds it in every collision step of
+        // the Update, so it holds at any step rate. One the script gave in the object's own axes turns with the body, so it
+        // is handed to the body's step provider (ScriptForceStepProvider), which turns it by the body's rotation at the start
+        // of each collision step and applies it as a change of velocity.
         internal void StepScriptForces(float timeStep)
         {
             if (!_isPhysical || !_body.IsValid || _selected || (_vehicle != null && _vehicle.IsActive))
+            {
+                _scriptForceProvider?.Disarm();
                 return;
-            Vector3 force, torque;
-            lock (_scriptForceLock) { force = _force; torque = _torque; }
-            if (force != Vector3.Zero)
+            }
+            Vector3 force, torque, forceInBody = Vector3.Zero, torqueInBody = Vector3.Zero;
+            bool forceLocal, torqueLocal;
+            lock (_scriptForceLock)
+            {
+                force = _force; torque = _torque;
+                forceLocal = _forceLocal; torqueLocal = _torqueLocal;
+                if (forceLocal) forceInBody = _forceInBody;
+                if (torqueLocal) torqueInBody = _torqueInBody;
+            }
+            if (force != Vector3.Zero && !forceLocal)
                 _backend.ApplyForce(_body, LimitForce(ToS(force), timeStep));
-            if (torque != Vector3.Zero)
+            if (torque != Vector3.Zero && !torqueLocal)
                 _backend.ApplyTorque(_body, LimitTorque(ToS(torque), timeStep));
+
+            if (forceInBody == Vector3.Zero && torqueInBody == Vector3.Zero)
+            {
+                _scriptForceProvider?.Detach();
+                return;
+            }
+            _scriptForceProvider ??= new ScriptForceStepProvider(this, _backend);
+            SVector3 inertia = _backend.GetBodyInertiaDiagonal(_body);
+            float smallest = float.MaxValue;
+            if (inertia.X > 0f) smallest = MathF.Min(smallest, inertia.X);
+            if (inertia.Y > 0f) smallest = MathF.Min(smallest, inertia.Y);
+            if (inertia.Z > 0f) smallest = MathF.Min(smallest, inertia.Z);
+            // The impulses over one collision step that bring the body from rest to the engine's speed cap, as LimitForce
+            // and LimitTorque do for a whole Update: an absurd force is cut to that, so the engine's arithmetic stays finite.
+            float maxImpulse = _module.BodyMaxLinearSpeed * _backend.GetBodyMass(_body);
+            float maxAngularImpulse = smallest == float.MaxValue ? 0f : _module.BodyMaxAngularSpeed * smallest;
+            if (_scriptForceProvider.Arm(_body, ToS(forceInBody), ToS(torqueInBody), maxImpulse, maxAngularImpulse))
+            {
+                // The engine calls a provider only for an awake body; AddForce wakes a sleeping one, and so does this.
+                _backend.ActivateBody(_body);
+                return;
+            }
+            // A backend that takes no step providers: the vector turned by the body's rotation now, once per Update.
+            Quaternion rotation = Orientation;
+            if (forceInBody != Vector3.Zero)
+                _backend.ApplyForce(_body, LimitForce(ToS(forceInBody * rotation), timeStep));
+            if (torqueInBody != Vector3.Zero)
+                _backend.ApplyTorque(_body, LimitTorque(ToS(torqueInBody * rotation), timeStep));
         }
 
         // An absurd but finite force or torque is cut to the one that brings the body from rest to the engine's speed cap
@@ -1164,6 +1667,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             {
                 if (!float.IsFinite(value)) { NonFiniteGuard.Rejected(ref _nonFiniteLogTicks, "prim", LocalID, "Buoyancy", value.ToString()); return; }
                 if (_linkRoot != null) { _linkRoot.Buoyancy = value; return; }
+                // InWorldz: a buoyancy from 0.977 up to 1 is taken as 1 (HalcyonBasicForces.LegacyBuoyancy).
+                if (_module.BasicForcesBehaviour == JoltConfig.BasicForces.InWorldz)
+                    value = HalcyonBasicForces.LegacyBuoyancy(value);
                 if (_buoyancy == value) return;
                 _buoyancy = value;
                 ApplyScriptGravity();
@@ -1197,7 +1703,34 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         public override bool IsColliding { get; set; }
         public override bool CollidingGround { get; set; }
         public override bool CollidingObj { get; set; }
-        public override bool Grabbed { set { } }
+        // A mouse drag of the object (core's SteerGrab tells the root's actor: before it switches its move target on, after it
+        // switches it off). The drag's target is the move target; what the actor learns from this is that the target is a
+        // drag's, for InWorldz's rules for a grab (PhysxPrim.pid.cs DoGrabTarget, VehicleDynamics.Simulate): a vehicle's own
+        // controller does not run, a hover does not act, and the spin is taken away. Under SecondLife nothing is done with it.
+        private volatile bool _grabbed;
+
+        public override bool Grabbed
+        {
+            set
+            {
+                if (_linkRoot != null) { _linkRoot.Grabbed = value; return; }
+                if (_grabbed == value) return;
+                _grabbed = value;
+                lock (_targetLock) _targetsChanged = true;
+                _module.SetTargeted(this, true);   // the Update-rate path takes up the change, also when the drag ends
+            }
+        }
+
+        /// <summary>A mouse drag of a vehicle is allowed under <c>[Jolt] VehicleBehaviour = InWorldz</c>, as Halcyon allows it.
+        /// Under SecondLife core refuses it (Second Life's pages do not say what a drag of a vehicle does).</summary>
+        public override bool AllowsVehicleGrab => _module.VehicleSettings.Behaviour == VehicleBehaviour.InWorldz;
+
+        /// <summary>Setting a vehicle type from a script ends the object's look-at and move-to target under
+        /// <c>VehicleBehaviour = InWorldz</c> (VehicleDynamics.VehicleTypeChanged: "StopRotLookAt(); SetMoveToTarget(0, 0)").</summary>
+        public override bool VehicleTypeStopsTargets => _module.VehicleSettings.Behaviour == VehicleBehaviour.InWorldz;
+
+        // The drag of a vehicle runs the drag's target in place of the vehicle controller.
+        private bool GrabOverridesVehicle => _grabbed && _module.VehicleSettings.Behaviour == VehicleBehaviour.InWorldz;
 
         // Selection in the build tool. Core hands the same value to the root's actor and every part's
         // (SceneObjectGroup.IsSelected). A selected physical object stops where it is and stays: no gravity, no drift, no
@@ -1205,22 +1738,108 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // rest. That is ubODE's (ODEPrim.DoSelectedStatus stops and disables the body; Move skips a selected prim). ubODE
         // also stops a selected object colliding; here it stays solid, as BulletSim's selected object (BSPrim.IsStatic).
         // The root holds the whole welded linkset; a welded child's flag is kept for when it is unlinked.
+        //
+        // An object held for riders that crossed with it (HoldStill) is kept still the same way, so _selected means "kept
+        // still" for either reason; _userSelected and _held say which, and the object is let go only when neither holds it.
         private volatile bool _selected;
+        private bool _userSelected;
+        private bool _held;
+        // Set under BasicForcesBehaviour = InWorldz while the object is outside Halcyon's size limits (CheckPhysicalSize).
+        private bool _sizeHeld;
+        internal bool IsHeldBySizeLimit => _sizeHeld;
+        private Vector3 _heldVelocity;
+        private Vector3 _heldRotationalVelocity;
 
         public override bool Selected
         {
             set
             {
-                if (_selected == value)
-                    return;
-                _selected = value;
-                if (_linkRoot != null || !_isPhysical || !_body.IsValid)
-                    return;
-                if (value)
-                    HoldSelected();
-                else
-                    ReleaseSelected();
+                _userSelected = value;
+                SetKeptStill(value || _held || _sizeHeld);
             }
+        }
+
+        private void SetKeptStill(bool still)
+        {
+            if (_selected == still)
+                return;
+            _selected = still;
+            if (_linkRoot != null || !_isPhysical || !_body.IsValid)
+                return;
+            if (still)
+                HoldSelected();
+            else
+                ReleaseSelected();
+        }
+
+        // Held for the riders that cross with the object (PhysicsActor.HoldStill): kept still like a selected one, with the
+        // velocity it arrived with remembered for ReleaseHold. The body stays solid, so an avatar standing on it is held up.
+        public override void HoldStill()
+        {
+            if (_held || !_isPhysical || _linkRoot != null)
+                return;
+
+            _heldVelocity = _velocity;
+            _heldRotationalVelocity = _rotationalVelocity;
+            _held = true;
+            SetKeptStill(true);
+        }
+
+        // The hold ends after `heldSeconds`. Under InWorldz basic forces the object first goes on by what it would have travelled
+        // in that time (Halcyon: PhysxPrim.DoResumeInterpolation): its velocity times the time, lifted onto the ground if that ends
+        // under it, and left where it was held if that ends inside another body. Core caps the time. Under SecondLife it only lets go.
+        public override void ReleaseHold(float heldSeconds)
+        {
+            if (_held && heldSeconds > 0f && float.IsFinite(heldSeconds) && !_userSelected && _isPhysical && _linkRoot == null
+                && _body.IsValid && InWorldzBasicForces)
+                MoveOnAfterHold(heldSeconds);
+            ReleaseHold();
+        }
+
+        private bool InWorldzBasicForces => _module.BasicForcesBehaviour == JoltConfig.BasicForces.InWorldz;
+
+        // How far into another body the object may end up and still count as not in it: a body resting on another is touching it.
+        private const float ResumePenetrationTolerance = 0.02f;
+
+        private void MoveOnAfterHold(float heldSeconds)
+        {
+            Vector3 held = _position;
+            Vector3 target = held + _heldVelocity * heldSeconds;
+            if (_module.TryUnburyPhysicalLoad(target, _size, out Vector3 lifted))
+                target = lifted;
+            if (target == held)
+                return;
+
+            _backend.SetBodyTransform(_body, ToS(target), BodyOrientationOf(_orientation), activate: false);
+            if (_backend.BodyPenetratesOthers(_body, ResumePenetrationTolerance))
+            {
+                _backend.SetBodyTransform(_body, ToS(held), BodyOrientationOf(_orientation), activate: false);
+                return;
+            }
+            _position = target;
+        }
+
+        // Whether an object that crossed in with riders is kept from crossing out again at once (Halcyon: SceneObjectGroup.cs,
+        // TestForAndBeginCrossing). The Second Life pages say nothing of it, so SecondLife keeps the old behaviour.
+        public override bool WaitsBeforeCrossingBack => InWorldzBasicForces;
+
+        // The hold ends: dynamic again with the velocity it was held with. An object that is selected stays still (it gets no
+        // velocity), and falls from rest when it is let go.
+        public override void ReleaseHold()
+        {
+            if (!_held)
+                return;
+
+            _held = false;
+            SetKeptStill(_userSelected || _sizeHeld);
+            if (_userSelected || _sizeHeld || !_body.IsValid || !_isPhysical)
+                return;
+
+            _velocity = _heldVelocity;
+            _rotationalVelocity = _heldRotationalVelocity;
+            _backend.SetBodyLinearVelocity(_body, ToS(_heldVelocity));
+            _backend.SetBodyAngularVelocity(_body, ToS(_heldRotationalVelocity));
+            _vehicle?.ResumeAfterHold();
         }
 
         // Held: the body is made kinematic (it keeps its place, nothing it touches moves it, gravity does not act) and
@@ -1266,7 +1885,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (_welded)
                 {
                     SyncFromLink();
-                    _velocity = root._velocity;
+                    // The part goes on at the velocity its point had: the root's, and the spin's share at the part's offset.
+                    _velocity = root._velocity + Vector3.Cross(root._rotationalVelocity, _position - root._position);
                     _rotationalVelocity = root._rotationalVelocity;
                 }
                 _welded = false;
@@ -1291,6 +1911,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 _linkChildren.Add(child);
             child._linkRoot = this;
             _module.MarkLinksetDirty(this);
+            CheckComplexity();
         }
 
         internal void UnlinkChild(JoltPrim child)
@@ -1329,6 +1950,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     foreach (JoltPrim c in _linkChildren)
                         if (c._body.IsValid) { _backend.RemoveBody(c._body); c._body = BodyId.Invalid; }
 
+                    // A shape shared with other prims must not be given this part's density (SetShapeDensity below).
+                    lock (_shapeLock) MakeShapePrivate();
+                    foreach (JoltPrim c in _linkChildren)
+                        lock (c._shapeLock) c.MakeShapePrivate();
+
                     SQuaternion rootBody = BodyOrientationOf(_orientation);
                     SQuaternion invRoot = SQuaternion.Conjugate(rootBody);
                     var kids = new CompoundChild[1 + _linkChildren.Count];
@@ -1339,7 +1965,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     // (ODEPrim.MakeBody). The densities are relative to the root's, which keeps Jolt's default: the body's
                     // mass is set to the parts' sum just after (CreateBodyInternal), and a linkset of one density is built
                     // exactly as before.
-                    _backend.SetShapeDensity(_shape, JoltShapeDensity);
+                    _backend.SetShapeDensity(_shape, JoltShapeDensity * ShapeMassFactor());
                     for (int i = 0; i < _linkChildren.Count; i++)
                     {
                         JoltPrim c = _linkChildren[i];
@@ -1357,7 +1983,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                         if (!c._welded)
                             c.LinkOffsetOf(c._position, c._orientation, out c._linkOffset, out c._linkRotation);
                         c._welded = true;
-                        _backend.SetShapeDensity(c._shape, JoltShapeDensity * c.PhysicalDensity / PhysicalDensity);
+                        _backend.SetShapeDensity(c._shape, JoltShapeDensity * c.PhysicalDensity / PhysicalDensity * c.ShapeMassFactor());
                     }
                     _compoundShape = _backend.CreateCompoundShape(kids);
                 }
@@ -1406,6 +2032,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 else if (ay >= az) lockY = true;
                 else lockZ = true;
             }
+            _bodyLockX = lockX; _bodyLockY = lockY; _bodyLockZ = lockZ;
             _backend.SetBodyRotationLocks(_body, lockX, lockY, lockZ);
         }
 
@@ -1478,10 +2105,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             set
             {
                 if (_shapeType == value) return;
-                bool wasHull = CookAsHull;
+                bool wasHull = CookAsHull, wasList = UseHullList;
                 _shapeType = value;
-                if (CookAsHull != wasHull && _shape.IsValid)
+                if ((CookAsHull != wasHull || UseHullList != wasList) && _shape.IsValid)
                     Rebuild();
+                if (_isPhysical)
+                    CheckComplexity();
             }
         }
 
@@ -1495,6 +2124,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             _backend.SetBodySensor(_body, _isVolumeDetect);
             if (_isPhysical)
                 _module.RegisterPendingActivation(this);
+            SyncKinematicBody();   // a phantom or volume-detect prim is not moved as a kinematic one, and is again when that ends
         }
 
         // For the contact dispatch: true when this part, or the linkset root its body belongs to, is a volume detector.
@@ -1546,7 +2176,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     // AFTER this set) - so re-assert it on the step-thread steps of the next
                     // ReassertVehicleSeconds, where it sticks.
                     _reassertVehicleTime = ReassertVehicleSeconds;
-                    _reassertZeroesVelocity = true;
+                    // Held only while the region loads. With the region running, a type call gives the type's presets and
+                    // nothing else: Second Life's page for llSetVehicleType describes no change to the velocity, and
+                    // Halcyon's type change copies the actor's velocity into the vehicle's state without zeroing it.
+                    _reassertZeroesVelocity = _module.IsRegionLoading;
                 }
                 else
                 {
@@ -1554,6 +2187,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     RestoreVehicleBodyParams();
                     _vehicle = null;
                     _vehicleBody = null;
+                    _vehicleStepProvider = null;
                 }
             }
         }
@@ -1595,6 +2229,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // preset, the record's flags in place of the preset's, each setting held to the region's limits as the same value
         // from a script is, and the reference frame. Its motors keep their saved directions and do not run until a script
         // sets them, as on ubODE.
+        //
+        // With the InWorldz presets (VehiclePresetSet.Legacy) the record is not what the script's vehicle held: the
+        // record starts from the simulator's preset for the type (SOPVehicle.ProcessTypeChange: one value for each motor
+        // timescale and decay, a type's own flags; no preset at all for the two InWorldz types) and holds what the script
+        // changed, where the vehicle starts from the InWorldz preset (per-axis timescales, the type's flags). So a value
+        // that still equals the simulator's preset is not the script's and keeps the InWorldz preset's; one that differs
+        // is the script's and is applied as the same script call is (a float timescale on all three axes). A flag is
+        // taken from the record only where the record differs from the simulator's preset flags. A script that sets a
+        // value to exactly the simulator's preset value cannot be told from one that set nothing; the InWorldz value
+        // stays. With the documented presets the record is applied whole.
         public override void SetVehicle(object pvdata)
         {
             if (pvdata is not VehicleData vd)
@@ -1603,37 +2247,136 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             if (_vehicle == null)
                 return;
             _reassertZeroesVelocity = _module.IsRegionLoading;
-            _vehicle.RestoreFlags((int)vd.m_flags);
 
-            _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_FRICTION_TIMESCALE, vd.m_linearFrictionTimescale);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_MOTOR_DECAY_TIMESCALE, vd.m_linearMotorDecayTimescale);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_MOTOR_TIMESCALE, vd.m_linearMotorTimescale);
-            _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_MOTOR_OFFSET, vd.m_linearMotorOffset);
+            // Also for the two InWorldz-only types (sailboat 10001, motorcycle 10002): the simulator has no preset for
+            // them, so their record is the unset type's bare values, while a script's llSetVehicleType gives them the
+            // InWorldz preset under every behaviour and presets setting. Every type the simulator has a preset for
+            // keeps the documented path (the record applied whole).
+            bool overPreset = _vehicle.Settings.Presets == VehiclePresetSet.Legacy
+                || (int)vd.m_type == (int)VehicleCode.TYPE_SAILBOAT || (int)vd.m_type == (int)VehicleCode.TYPE_MOTORCYCLE;
+            VehicleData simulatorPreset = default;
+            if (overPreset)
+            {
+                var preset = new OpenSim.Region.Framework.Scenes.SOPVehicle();
+                preset.ProcessTypeChange(vd.m_type);
+                simulatorPreset = preset.vd;
+                _vehicle.RestoreFlagsOverPreset((int)vd.m_flags, (int)simulatorPreset.m_flags);
+            }
+            else
+                _vehicle.RestoreFlags((int)vd.m_flags);
 
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_MOTOR_TIMESCALE, vd.m_angularMotorTimescale);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_MOTOR_DECAY_TIMESCALE, vd.m_angularMotorDecayTimescale);
-            _vehicle.ProcessVectorVehicleParam(VehicleCode.ANGULAR_FRICTION_TIMESCALE, vd.m_angularFrictionTimescale);
+            // Whether the record's value is the script's: always with the documented presets, otherwise when it differs.
+            bool Script(float record, float preset) => !overPreset || record != preset;
+            bool ScriptVector(Vector3 record, Vector3 preset) => !overPreset || record != preset;
 
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_DEFLECTION_EFFICIENCY, vd.m_angularDeflectionEfficiency);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_DEFLECTION_TIMESCALE, vd.m_angularDeflectionTimescale);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_DEFLECTION_EFFICIENCY, vd.m_linearDeflectionEfficiency);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_DEFLECTION_TIMESCALE, vd.m_linearDeflectionTimescale);
+            if (ScriptVector(vd.m_linearFrictionTimescale, simulatorPreset.m_linearFrictionTimescale))
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_FRICTION_TIMESCALE, vd.m_linearFrictionTimescale);
+            if (Script(vd.m_linearMotorDecayTimescale, simulatorPreset.m_linearMotorDecayTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_MOTOR_DECAY_TIMESCALE, vd.m_linearMotorDecayTimescale);
+            if (Script(vd.m_linearMotorTimescale, simulatorPreset.m_linearMotorTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_MOTOR_TIMESCALE, vd.m_linearMotorTimescale);
+            if (ScriptVector(vd.m_linearMotorOffset, simulatorPreset.m_linearMotorOffset))
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_MOTOR_OFFSET, vd.m_linearMotorOffset);
 
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.BANKING_EFFICIENCY, vd.m_bankingEfficiency);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.BANKING_MIX, vd.m_bankingMix);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.BANKING_TIMESCALE, vd.m_bankingTimescale);
+            if (Script(vd.m_angularMotorTimescale, simulatorPreset.m_angularMotorTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_MOTOR_TIMESCALE, vd.m_angularMotorTimescale);
+            if (Script(vd.m_angularMotorDecayTimescale, simulatorPreset.m_angularMotorDecayTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_MOTOR_DECAY_TIMESCALE, vd.m_angularMotorDecayTimescale);
+            if (ScriptVector(vd.m_angularFrictionTimescale, simulatorPreset.m_angularFrictionTimescale))
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.ANGULAR_FRICTION_TIMESCALE, vd.m_angularFrictionTimescale);
 
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.HOVER_HEIGHT, vd.m_VhoverHeight);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.HOVER_EFFICIENCY, vd.m_VhoverEfficiency);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.HOVER_TIMESCALE, vd.m_VhoverTimescale);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.BUOYANCY, vd.m_VehicleBuoyancy);
+            if (Script(vd.m_angularDeflectionEfficiency, simulatorPreset.m_angularDeflectionEfficiency))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_DEFLECTION_EFFICIENCY, vd.m_angularDeflectionEfficiency);
+            if (Script(vd.m_angularDeflectionTimescale, simulatorPreset.m_angularDeflectionTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.ANGULAR_DEFLECTION_TIMESCALE, vd.m_angularDeflectionTimescale);
+            if (Script(vd.m_linearDeflectionEfficiency, simulatorPreset.m_linearDeflectionEfficiency))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_DEFLECTION_EFFICIENCY, vd.m_linearDeflectionEfficiency);
+            if (Script(vd.m_linearDeflectionTimescale, simulatorPreset.m_linearDeflectionTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.LINEAR_DEFLECTION_TIMESCALE, vd.m_linearDeflectionTimescale);
 
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.VERTICAL_ATTRACTION_EFFICIENCY, vd.m_verticalAttractionEfficiency);
-            _vehicle.ProcessFloatVehicleParam(VehicleCode.VERTICAL_ATTRACTION_TIMESCALE, vd.m_verticalAttractionTimescale);
+            if (Script(vd.m_bankingEfficiency, simulatorPreset.m_bankingEfficiency))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.BANKING_EFFICIENCY, vd.m_bankingEfficiency);
+            if (Script(vd.m_bankingMix, simulatorPreset.m_bankingMix))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.BANKING_MIX, vd.m_bankingMix);
+            if (Script(vd.m_bankingTimescale, simulatorPreset.m_bankingTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.BANKING_TIMESCALE, vd.m_bankingTimescale);
 
+            if (Script(vd.m_VhoverHeight, simulatorPreset.m_VhoverHeight))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.HOVER_HEIGHT, vd.m_VhoverHeight);
+            if (Script(vd.m_VhoverEfficiency, simulatorPreset.m_VhoverEfficiency))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.HOVER_EFFICIENCY, vd.m_VhoverEfficiency);
+            if (Script(vd.m_VhoverTimescale, simulatorPreset.m_VhoverTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.HOVER_TIMESCALE, vd.m_VhoverTimescale);
+            if (Script(vd.m_VehicleBuoyancy, simulatorPreset.m_VehicleBuoyancy))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.BUOYANCY, vd.m_VehicleBuoyancy);
+
+            if (Script(vd.m_verticalAttractionEfficiency, simulatorPreset.m_verticalAttractionEfficiency))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.VERTICAL_ATTRACTION_EFFICIENCY, vd.m_verticalAttractionEfficiency);
+            if (Script(vd.m_verticalAttractionTimescale, simulatorPreset.m_verticalAttractionTimescale))
+                _vehicle.ProcessFloatVehicleParam(VehicleCode.VERTICAL_ATTRACTION_TIMESCALE, vd.m_verticalAttractionTimescale);
+
+            RestoreMotorAxes(vd);
+            RestoreWindEfficiency(vd);
             _vehicle.RestoreMotorDirections(vd.m_linearMotorDirection, vd.m_angularMotorDirection);
             _vehicle.ProcessRotationVehicleParam(VehicleCode.REFERENCE_FRAME, vd.m_referenceFrame);
+            // A record saved by a region crossing carries the motors' running state: they go on from where they were.
+            _vehicle.RestoreRunningMotors(
+                vd.m_linearMotorRunAge.HasValue && vd.m_linearMotorRunDirection.HasValue && vd.m_linearMotorRunTarget.HasValue
+                    ? new MotorRunningState(vd.m_linearMotorRunAge.Value, vd.m_linearMotorRunDirection.Value, vd.m_linearMotorRunTarget.Value)
+                    : (MotorRunningState?)null,
+                vd.m_angularMotorRunAge.HasValue && vd.m_angularMotorRunDirection.HasValue && vd.m_angularMotorRunTarget.HasValue
+                    ? new MotorRunningState(vd.m_angularMotorRunAge.Value, vd.m_angularMotorRunDirection.Value, vd.m_angularMotorRunTarget.Value)
+                    : (MotorRunningState?)null);
             WakeVehicle();
+        }
+
+        // A physical object's move-to target, hover and look-at go on in the next region (core carries them in the saved object)
+        // under InWorldz basic forces: Halcyon keeps them across a crossing (PhysxPrim.cs:3131-3185, SuspendPhysicsSync). The Second
+        // Life pages for llMoveToTarget, llSetHoverHeight and llRotLookAt say nothing of a crossing, so SecondLife keeps the old
+        // behaviour: they end at the border.
+        public override bool CarriesTargetsAcrossCrossing => _module.BasicForcesBehaviour == JoltConfig.BasicForces.InWorldz;
+
+        // Core calls this as it starts to cross a vehicle into another region: the motors' running state goes into the record
+        // that is sent, so that the vehicle goes on driving on the other side (SetVehicle takes it up). A motor that is off
+        // writes nothing.
+        public override void CaptureVehicleRunningState(ref VehicleData vd)
+        {
+            if (_vehicle == null)
+                return;
+            _vehicle.GetRunningMotors(out MotorRunningState? linear, out MotorRunningState? angular);
+            vd.m_linearMotorRunAge = linear?.Age;
+            vd.m_linearMotorRunDirection = linear?.Direction;
+            vd.m_linearMotorRunTarget = linear?.Target;
+            vd.m_angularMotorRunAge = angular?.Age;
+            vd.m_angularMotorRunDirection = angular?.Direction;
+            vd.m_angularMotorRunTarget = angular?.Target;
+        }
+
+        // A value for each axis of the four motor timescales, where the record holds one (a script's vector call writes it;
+        // the record keeps the single values beside it, which the calls above have just applied to all three axes). It goes on
+        // top of them. The controller takes a vector for these four only under VehicleBehaviour = InWorldz and holds a decay to
+        // the region's limit, so under SecondLife this changes nothing, as the same vector from a script changes nothing.
+        private void RestoreMotorAxes(VehicleData vd)
+        {
+            if (vd.m_linearMotorTimescaleAxes is Vector3 lt)
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_MOTOR_TIMESCALE, lt);
+            if (vd.m_linearMotorDecayTimescaleAxes is Vector3 ld)
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_MOTOR_DECAY_TIMESCALE, ld);
+            if (vd.m_angularMotorTimescaleAxes is Vector3 at)
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.ANGULAR_MOTOR_TIMESCALE, at);
+            if (vd.m_angularMotorDecayTimescaleAxes is Vector3 ad)
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.ANGULAR_MOTOR_DECAY_TIMESCALE, ad);
+        }
+
+        // The two wind efficiency vectors, where the record holds them (a script's vector call wrote them). Where it holds none the
+        // type's own, set with the type above, stand. The controller takes these two codes only under VehicleBehaviour = InWorldz,
+        // so under SecondLife this changes nothing, as the same vector from a script changes nothing.
+        private void RestoreWindEfficiency(VehicleData vd)
+        {
+            if (vd.m_linearWindEfficiency is Vector3 lw)
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.LINEAR_WIND_EFFICIENCY, lw);
+            if (vd.m_angularWindEfficiency is Vector3 aw)
+                _vehicle.ProcessVectorVehicleParam(VehicleCode.ANGULAR_WIND_EFFICIENCY, aw);
         }
 
         private void EnsureVehicle()
@@ -1648,20 +2391,59 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (clock != null)
                     _vehicle.Clock = clock;
                 _vehicle.DriverCamera = DriverCameraAxis;
+                // A script's motor set, a type change and the stop and resume calls wait for the next Update, so none changes the
+                // motors' running state while the engine steps; the controller's steps run in the engine's collision steps.
+                _vehicle.DeferStateChanges = true;
+                _vehicleStepProvider = new VehicleStepProvider(_module, this, _vehicle);
             }
         }
 
-        // The driver's camera for the mouselook vehicle flags: where it looks (world), as the simulator hands it to the
-        // vehicle's root actor (ScenePresence answers OnPhysicsRequestingCameraData once a script takes the seated
-        // driver's controls); null when no driver's camera is hooked up.
-        private Vector3? DriverCameraAxis() => TryGetCameraData() is CameraData c ? c.CameraAtAxis : null;
+        // The driver's camera for the mouselook vehicle flags: where it looks (world) and whether the driver is in
+        // mouselook, as the simulator hands it to the vehicle's root actor (ScenePresence answers
+        // OnPhysicsRequestingCameraData once a script takes the seated driver's controls, with MouseLook from the
+        // driver's control flags); null when no driver's camera is hooked up.
+        private DriverView? DriverCameraAxis() => TryGetCameraData() is CameraData c ? new DriverView(c.CameraAtAxis, c.MouseLook) : null;
+
+        // The vehicle's bounding box in its own (prim) frame, for the motor-height rule's down rays: the box of the root
+        // prim's size, grown over each welded part's own size box at the part's place. A box, not the hull, as the rule
+        // only needs where the vehicle's lower edges are.
+        internal bool TryGetVehicleBounds(out Vector3 center, out Vector3 halfSize)
+        {
+            SVector3 min = ToS(_size * -0.5f), max = ToS(_size * 0.5f);
+            if (_linkChildren != null)
+            {
+                foreach (JoltPrim c in _linkChildren)
+                {
+                    if (!c._welded)
+                        continue;
+                    SVector3 half = ToS(c._size * 0.5f);
+                    for (int i = 0; i < 8; i++)
+                    {
+                        var corner = new SVector3((i & 1) == 0 ? -half.X : half.X, (i & 2) == 0 ? -half.Y : half.Y, (i & 4) == 0 ? -half.Z : half.Z);
+                        SVector3 p = c._linkOffset + SVector3.Transform(corner, c._linkRotation);
+                        min = SVector3.Min(min, p);
+                        max = SVector3.Max(max, p);
+                    }
+                }
+            }
+            SVector3 mid = (min + max) * 0.5f, h = (max - min) * 0.5f;
+            center = new Vector3(mid.X, mid.Y, mid.Z);
+            halfSize = new Vector3(h.X, h.Y, h.Z);
+            return halfSize.X > 0f && halfSize.Y > 0f && halfSize.Z > 0f;
+        }
 
         // Per-frame drive, called by JoltScene.Simulate BEFORE the physics step (the Jolt
         // equivalent of BulletSim's BeforeStep event): snapshot the live body, run the controller,
         // which pushes velocity changes/forces/torques back through the backend for this step.
         internal void StepVehicle(float timeStep)
         {
+            _vehicleStepProvider?.Disarm();   // armed for one Update at a time, and only by the branch below that steps the vehicle
             if (_vehicle == null || !_vehicle.IsActive || !_isPhysical || !_body.IsValid || _selected)
+                return;
+            // InWorldz: a drag overrides the vehicle, "otherwise severe squirming and tossing will happen" (VehicleDynamics.Simulate,
+            // GrabTargetTau != 0 returns before anything else). The controller's clock does not run, so a drag of more than a second
+            // ends with the motors reset, as a vehicle that has not been stepped for that long always is (CheckResetMotors).
+            if (GrabOverridesVehicle)
                 return;
             // Assert buoyancy on restart: re-assert the vehicle body params on the step-thread steps
             // of the first ReassertVehicleSeconds after (re)activation, so the gravity-cancellation that the load-path restore
@@ -1734,7 +2516,72 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             else
             {
                 _vehicleHeldTime = 0f;
+                StepVehicleInEngine(timeStep);
+            }
+        }
+
+        // The vehicle's step: its Update-rate part now, and the rest in the engine's collision steps (VehicleStepProvider).
+        // A backend that takes no step force providers gets the whole step now, as the controller always ran.
+        private void StepVehicleInEngine(float timeStep)
+        {
+            if (!EnsureVehicleStepProvider())
+            {
                 _vehicle.Step(timeStep);
+                return;
+            }
+            // The engine calls a provider only for an awake body, and a vehicle that is not idle is awake: the Update-rate
+            // path wakes it as it always has (a velocity written to a sleeping body woke it).
+            if (!_vehicleBody.IsAwake)
+                _backend.ActivateBody(_body);
+            _vehicle.BeginUpdate(timeStep);
+            Vector3 inertia = _vehicleBody.InertiaDiagonal;
+            _vehicleStepProvider.Arm(_vehicle.BodyMass, inertia, IsColliding);
+        }
+
+        // The vehicle's step force provider and its attachment to the body it was made for. A body that is recreated
+        // (reposition, reshape, weld) takes its providers with it, so the attachment is made again for the new one.
+        private VehicleStepProvider _vehicleStepProvider;
+        private IDisposable _vehicleStepAttachment;
+        private BodyId _vehicleStepBody;
+        private bool _vehicleStepUnavailable;
+        private readonly object _vehicleStepGate = new object();
+
+        // True when the provider is attached to the current body.
+        private bool EnsureVehicleStepProvider()
+        {
+            if (_vehicleStepProvider == null || _vehicleStepUnavailable || !_body.IsValid)
+                return false;
+            lock (_vehicleStepGate)
+            {
+                if (_vehicleStepAttachment != null && _vehicleStepBody.Equals(_body))
+                    return true;
+                _vehicleStepAttachment?.Dispose();
+                _vehicleStepAttachment = null;
+                try
+                {
+                    _vehicleStepAttachment = _backend.AttachStepForceProvider(_body, _vehicleStepProvider);
+                    _vehicleStepBody = _body;
+                    return true;
+                }
+                catch (Exception e) when (e is NotSupportedException || e is NotImplementedException)
+                {
+                    _vehicleStepUnavailable = true;
+                    return false;
+                }
+                catch (Exception e) when (e is ArgumentException || e is ObjectDisposedException)
+                {
+                    return false;   // the body is gone from the backend (removed meanwhile): nothing to step this Update
+                }
+            }
+        }
+
+        private void DetachVehicleStepProvider()
+        {
+            lock (_vehicleStepGate)
+            {
+                _vehicleStepProvider?.Disarm();
+                _vehicleStepAttachment?.Dispose();
+                _vehicleStepAttachment = null;
             }
         }
 
@@ -1756,10 +2603,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 _backend.ActivateBody(_body);
         }
 
-        // The BulletSim vehicle body setup (BSDynamics.SetPhysicalParameters), translated:
-        // the vehicle controls its own friction/damping (BSParam.VehicleFriction/Restitution/
-        // AngularDamping all default 0; Jolt's default 0.05 damping would fight the motor math),
-        // decides the vehicle's gravity itself (engine gravity off until its first step sets the vehicle's share).
+        // The BulletSim vehicle body setup (BSDynamics.SetPhysicalParameters), translated: the vehicle decides its own
+        // gravity itself (engine gravity off until its first step sets the vehicle's share).
         // It starts unable to sleep (BulletSim's DISABLE_DEACTIVATION); StepVehicle lets it sleep while nothing in the
         // vehicle would move it.
         // It has continuous collision detection: a car at 18 m/s moves 1.6 m in an 11 Hz step, more than its own height,
@@ -1771,22 +2616,49 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             if (_vehicle == null || !_vehicle.IsActive || !_isPhysical || !_body.IsValid)
                 return;
-            _backend.SetBodyFriction(_body, _vehicle.Settings.ContactFriction);
-            _backend.SetBodyRestitution(_body, 0f);
-            _backend.SetBodyDamping(_body, 0f, 0f);
+            ApplyVehicleContactMaterial();
+            _backend.SetBodyDamping(_body, PrimLinearDamping, PrimAngularDamping);
             _backend.SetBodyGravityFactor(_body, 0f);
             _backend.SetBodyAllowSleeping(_body, false);
             _backend.SetBodyContinuousCollision(_body, ContinuousCollision.On);
             _vehicleMaySleep = false;
             _backend.ActivateBody(_body);
+            EnsureVehicleStepProvider();
+        }
+
+        // Contact friction and restitution of an active vehicle's body: each part keeps its own material's (Havok 4 and later,
+        // and Halcyon for every vehicle type but the sled, VehicleDynamics.cs SetVehicleDefaultActions), so while the vehicle
+        // slides in contact its friction is the material's plus the controller's friction timescales, and airborne only the
+        // timescales act. [Jolt] VehicleContactFriction replaces every part's friction when set; a sled's parts all take
+        // [Jolt] SledContactFriction (0 by default). Halcyon's sled zeroes the root's material and gives each child the
+        // stone preset (Material.Duplicate), so only a single-prim sled was frictionless there; here every part is, and
+        // each keeps its own restitution. Called again whenever the type or a part's material changes, so a vehicle
+        // changed from a sled to another type gets its material friction back.
+        private void ApplyVehicleContactMaterial()
+        {
+            _backend.SetBodyFriction(_body, _friction);
+            _backend.SetBodyRestitution(_body, _restitution);
+            if (_compoundShape.IsValid && _linkChildren != null)
+                foreach (JoltPrim c in _linkChildren)
+                    _backend.SetBodyPartMaterial(_body, c.LocalID, c._friction, c._restitution);
+            bool sled = _vehicle!.Type == Vehicles.Vehicle.TYPE_SLED;
+            float? friction = sled ? _vehicle.Settings.SledContactFriction : _vehicle.Settings.ContactFriction;
+            if (friction.HasValue)
+                _backend.SetBodyFriction(_body, friction.Value);   // every part's friction; restitutions stay
+            // InWorldz: a sled takes the smaller friction of the two surfaces, so a part at 0 stays at 0 on a prim or the
+            // land. Halcyon sets the sled's friction to 0 without choosing a combine rule; Jolt's average would turn it into
+            // half of what it slides on, which holds a sled still on a 15 degree ramp.
+            _backend.SetBodyFrictionMin(_body, sled && _vehicle.Settings.Behaviour == Vehicles.VehicleBehaviour.InWorldz);
         }
 
         private void RestoreVehicleBodyParams()
         {
+            DetachVehicleStepProvider();
             if (!_body.IsValid)
                 return;
             // Back to the prims' own physics material, and a prim's damping.
             _backend.SetBodyFriction(_body, _friction);
+            _backend.SetBodyFrictionMin(_body, false);
             _backend.SetBodyRestitution(_body, _restitution);
             if (_compoundShape.IsValid && _linkChildren != null)
                 foreach (JoltPrim c in _linkChildren)
@@ -1797,11 +2669,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             _backend.SetBodyContinuousCollision(_body, PhysicalPrimCcd);
         }
 
-        // Move to target and hover are in JoltPrim.Targets.cs. The angular PID is not used: core turns a physical
+        // Move to target and hover are in JoltPrim.Targets.cs, the rotation target (APIDTarget, APIDStrength, APIDDamping,
+        // APIDActive) in JoltPrim.AngularTarget.cs. Core does not hand the rotation target to the actor: it turns a physical
         // object toward llLookAt / llRotLookAt itself (SceneObjectPart.RotLookAt), as it does on ubODE.
-        public override Quaternion APIDTarget { set { } }
-        public override bool APIDActive { set { } }
-        public override float APIDStrength { set { } }
-        public override float APIDDamping { set { } }
     }
 }

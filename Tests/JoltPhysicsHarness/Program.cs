@@ -24,6 +24,8 @@ public static class Program
   --slope DEG[,DEG..]        ramp angles for the scenarios that use one (default: each scenario's own list)
   --duration S               seconds to simulate (default: the scenario's)
   --hold S                   seconds the drive key is held (default: the scenario's)
+  --camera-noise DEG         mouselook scenarios: the camera shakes, each update adding a random yaw and pitch of this
+                             standard deviation (degrees); --camera-rate HZ updates a second (30); --camera-seed N
   --keyrepeat S              how often a held key re-sends the motor (default: 0.1)
   --feed heartbeat|region    how a held key reaches a car: 'heartbeat' (default) lands each key event half a
                              heartbeat before a step, the car resting on the ground at the start; 'region' feeds
@@ -32,6 +34,8 @@ public static class Program
   --keydelay S               region feed: seconds from physics on to the first key event (default: 0)
   --startspeed V             heartbeat feed: a car's forward speed (m/s) just before its key goes down,
                              which then goes down one heartbeat later
+  --terrain FILE             scenarios that take one (sled-drop): the ground from a raw float32 file, 256 x 256, x fastest
+  --trace-dir DIR            scenarios that trace their collision steps (sled-drop): write the trace there
   --jolt KEY=VALUE           a [Jolt] config key, as in the region's ini (repeatable)
   --vparam NAME=V|X,Y,Z      a vehicle param applied after the scenario's own, by its LSL name,
                              e.g. LINEAR_FRICTION_TIMESCALE=1,1,1000 (repeatable)
@@ -45,9 +49,16 @@ public static class Program
   --shot-speed V[,V..]       shot scenarios: the speed the ball is shot at (m/s, default 25). Lists sweep, as above.
   --start-offset DX,DY       move the scenario's own body (car, box or prim) DX and DY metres from its start;
                              nothing else moves (default: 0,0)
-  --sim-defaults             build every prim and avatar with the values the simulator hands the engine for a new
-                             one (a prim's wood material: friction 0.6, restitution 0.5; the default avatar box,
-                             2.1 m tall) instead of the harness's own (friction 0.6, restitution 0; 1.9 m)
+  Every run is built as the simulator builds it. Each of these four switches gives back the earlier harness's way:
+  --no-sim-defaults          prims and avatars get the harness's own values (friction 0.6, restitution 0; box 1.9 m)
+                             in place of what the simulator hands the engine (a prim's wood material: friction 0.6,
+                             restitution 0.5; the default avatar box, 2.1 m tall, subscribed to collisions)
+  --no-sim-prims, --no-sim-avatars   the two halves of --no-sim-defaults
+  --no-region-mesher         the scene has no mesher, in place of a Meshmerizer of a load context of its own
+  --no-warm-up-step          the setup runs before the first step (the region-load window), in place of after one
+  --no-shipped-config        no [Jolt] keys but the run's own, in place of RegionServerDefaults.ini's [Jolt] section
+  --legacy-defaults          all four of the above
+  --sim-defaults             accepted, and does nothing more than the default
   --vehicle-restore ROUTE    vehicle scenarios: when the setup is done, hand the vehicle back from its saved record
                              as the simulator does by ROUTE: rez, region-start, copy, crossing, detach or
                              physics-off-on (see VehicleRestore.cs)
@@ -85,9 +96,9 @@ The summary table always goes to standard output. Nothing is written anywhere el
         try
         {
             if (args.Length > 0 && args[0] == "--stress")
-                return Stress.Main(args[1..], Console.Out);
+                return Stress.Run(args[1..], Console.Out);
             if (args.Length > 0 && args[0] is "--check-baseline" or "--record-baseline")
-                return BaselineCheck.Main(args, Console.Out);
+                return BaselineCheck.Run(args, Console.Out);
             return Run(args, Console.Out);
         }
         catch (ArgumentException e)
@@ -160,6 +171,9 @@ The summary table always goes to standard output. Nothing is written anywhere el
                     break;
                 case "--duration": o.Duration = (float)PositiveDouble(Next(), a); break;
                 case "--hold": o.Hold = (float)NonNegativeDouble(Next(), a); break;
+                case "--camera-noise": o.CameraNoiseDegrees = (float)NonNegativeDouble(Next(), a); break;
+                case "--camera-rate": o.CameraRateHz = PositiveDouble(Next(), a); break;
+                case "--camera-seed": o.CameraSeed = (int)NonNegativeDouble(Next(), a); break;
                 case "--keyrepeat": o.KeyRepeat = (float)PositiveDouble(Next(), a); break;
                 case "--keydelay": o.KeyDelay = (float)NonNegativeDouble(Next(), a); break;
                 case "--startspeed": o.StartSpeed = (float)NonNegativeDouble(Next(), a); break;
@@ -172,6 +186,8 @@ The summary table always goes to standard output. Nothing is written anywhere el
                         _ => throw new ArgumentException($"--feed '{feed}': expected heartbeat or region"),
                     };
                     break;
+                case "--terrain": o.TerrainFile = Next(); break;
+                case "--trace-dir": o.TraceDir = Next(); break;
                 case "--jolt":
                     string kv = Next();
                     int eq = kv.IndexOf('=');
@@ -191,6 +207,13 @@ The summary table always goes to standard output. Nothing is written anywhere el
                     (o.StartOffsetX, o.StartOffsetY) = (d[0], d[1]);
                     break;
                 case "--sim-defaults": o.SimulatorDefaults = true; break;
+                case "--no-sim-defaults": o.SimulatorDefaults = false; break;
+                case "--no-sim-prims": o.SimulatorPrims = false; break;
+                case "--no-sim-avatars": o.SimulatorAvatars = false; break;
+                case "--no-region-mesher": o.RegionMesher = false; break;
+                case "--no-warm-up-step": o.WarmUpStep = false; break;
+                case "--no-shipped-config": o.ShippedConfig = false; break;
+                case "--legacy-defaults": o.SimulatorDefaults = o.RegionMesher = o.WarmUpStep = o.ShippedConfig = false; break;
                 case "--vehicle-script-again": o.VehicleScriptAgain = true; break;
                 case "--vehicle-restore":
                     string route = Next();
@@ -286,7 +309,7 @@ The summary table always goes to standard output. Nothing is written anywhere el
 
     private static HarnessOptions Copy(HarnessOptions o, double rate, float slope)
     {
-        var c = new HarnessOptions { RateHz = rate, SlopeDeg = slope, Duration = o.Duration, Hold = o.Hold, KeyRepeat = o.KeyRepeat, Feed = o.Feed, KeyDelay = o.KeyDelay, StartSpeed = o.StartSpeed, StartOffsetX = o.StartOffsetX, StartOffsetY = o.StartOffsetY, SimulatorDefaults = o.SimulatorDefaults, VehicleRoute = o.VehicleRoute, VehicleScriptAgain = o.VehicleScriptAgain };
+        var c = new HarnessOptions { RateHz = rate, SlopeDeg = slope, Duration = o.Duration, Hold = o.Hold, KeyRepeat = o.KeyRepeat, Feed = o.Feed, KeyDelay = o.KeyDelay, StartSpeed = o.StartSpeed, StartOffsetX = o.StartOffsetX, StartOffsetY = o.StartOffsetY, SimulatorPrims = o.SimulatorPrims, SimulatorAvatars = o.SimulatorAvatars, RegionMesher = o.RegionMesher, WarmUpStep = o.WarmUpStep, ShippedConfig = o.ShippedConfig, VehicleRoute = o.VehicleRoute, VehicleScriptAgain = o.VehicleScriptAgain, TerrainFile = o.TerrainFile, TraceDir = o.TraceDir };
         foreach (KeyValuePair<string, string> kv in o.Jolt) c.Jolt[kv.Key] = kv.Value;
         c.VehicleParams.AddRange(o.VehicleParams);
         c.VehicleFlags.AddRange(o.VehicleFlags);

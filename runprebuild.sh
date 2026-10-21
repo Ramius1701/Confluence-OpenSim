@@ -27,6 +27,7 @@ case "$1" in
       OpenSim/Region/PhysicsModules/Jolt.Backend/OpenSim.Region.PhysicsModules.Jolt.Backend.csproj \
       OpenSim/Region/PhysicsModules/Jolt.Vehicles/OpenSim.Region.PhysicsModules.Jolt.Vehicles.csproj \
       OpenSim/Region/PhysicsModules/Jolt/OpenSim.Region.PhysicsModules.Jolt.csproj \
+      OpenSim/Region/PhysicsModules/Jolt.Diagnostics/OpenSim.Region.PhysicsModules.Jolt.Diagnostics.csproj \
       OpenSim/Region/ScriptEngine/InWorldz.Phlox/InWorldz.Phlox.csproj \
       OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/Phlox.ScriptEngine.csproj
     echo "dotnet build -c Release OpenSim.sln" > compile.sh

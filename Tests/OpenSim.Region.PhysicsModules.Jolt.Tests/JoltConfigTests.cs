@@ -37,6 +37,8 @@ public class JoltConfigTests
         s.MaxBodies = (int)(65536L * Math.Max((long)sx * sy, 256L * 256L) / (256L * 256L));
         s.CollisionSteps = 6;
         s.VelocityIterations = 20;
+        s.SpeculativeContactDistance = 0.02f;   // Jolt's own value, set explicitly
+        s.SleepVelocityThreshold = 0.03f;       // likewise
         return s;
     }
 
@@ -102,6 +104,15 @@ public class JoltConfigTests
         Assert.True(s.DeterministicMode);
     }
 
+    [Fact]
+    public void The_sleep_velocity_threshold_is_the_engines_own_unless_set()
+    {
+        var warnings = new List<string>();
+        Assert.Equal(0.03f, JoltConfig.FromConfig(new IniConfigSource(), warnings).ToBackendSettings(256, 256).SleepVelocityThreshold);
+        Assert.Equal(0.1f, JoltConfig.FromConfig(Source(("SleepVelocityThreshold", "0.1")), warnings).ToBackendSettings(256, 256).SleepVelocityThreshold);
+        Assert.Empty(warnings);
+    }
+
     [Theory]
     [InlineData("Gravity", "NaN")]
     [InlineData("Gravity", "Infinity")]
@@ -120,6 +131,8 @@ public class JoltConfigTests
     [InlineData("BodyUpdateBufferMax", "0")]
     [InlineData("CharacterUpdateBufferMax", "-5")]
     [InlineData("ContactBufferMax", "-1")]
+    [InlineData("SleepVelocityThreshold", "0")]
+    [InlineData("SleepVelocityThreshold", "fast")]
     [InlineData("AvatarJumpSpeed", "NaN")]
     [InlineData("AvatarJumpSpeed", "-1")]
     [InlineData("CapacityLogIntervalSeconds", "0")]
@@ -204,7 +217,11 @@ public class JoltConfigTests
     {
         JoltConfig d = JoltConfig.FromConfig(new IniConfigSource(), null);
         Assert.Equal(Vehicles.VehiclePresetSet.Documented, d.VehiclePresets);
-        Assert.Equal(Vehicles.VehiclePresetSet.Documented, d.ToVehicleSettings().Presets);
+        // Where the key is not set the presets follow the behaviour, and the behaviour defaults to InWorldz: its legacy values.
+        Assert.Equal(Vehicles.VehicleBehaviour.InWorldz, d.VehicleBehaviour);
+        Assert.Equal(Vehicles.VehiclePresetSet.Legacy, d.ToVehicleSettings().Presets);
+        Assert.Equal(Vehicles.VehiclePresetSet.Documented,
+            JoltConfig.FromConfig(Source(("VehicleBehaviour", "SecondLife")), null).ToVehicleSettings().Presets);
 
         var warnings = new List<string>();
         foreach ((string text, Vehicles.VehiclePresetSet set) in new[] { ("legacy", Vehicles.VehiclePresetSet.Legacy), ("Legacy", Vehicles.VehiclePresetSet.Legacy), ("documented", Vehicles.VehiclePresetSet.Documented) })

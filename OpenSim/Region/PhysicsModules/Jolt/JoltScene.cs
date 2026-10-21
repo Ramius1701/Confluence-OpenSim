@@ -60,8 +60,20 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         private bool m_Enabled = false;
         private IConfigSource m_Config;
 
-        // [Jolt] TestCommands: register the console test commands (JoltTestCommands.cs). Off by default.
+        // [Jolt] TestCommands: load the diagnostics assembly with the console test commands (the
+        // OpenSim.Region.PhysicsModules.Jolt.Diagnostics project). Off by default.
         private bool m_testCommands;
+
+        // The diagnostics assembly's object for this region; null unless TestCommands is true and the assembly loaded.
+        private IJoltDiagnostics _diagnostics;
+        internal IJoltDiagnostics Diagnostics => _diagnostics;
+
+        // Where the diagnostics assembly is looked for: the folder of this assembly. A seam for tests.
+        internal static Func<string> DiagnosticsFolder = JoltDiagnosticsLoader.ModuleFolder;
+
+        /// <summary>True when [Jolt] TestCommands is set; false (the default) leaves the test commands out.</summary>
+        internal static bool TestCommandsEnabled(IConfigSource source)
+            => source?.Configs["Jolt"]?.GetBoolean("TestCommands", false) ?? false;
 
         // The [Jolt] section, parsed once in Initialise. The defaults reproduce the earlier hardcoded constants.
         private JoltConfig _joltConfig = new JoltConfig();
@@ -73,8 +85,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         internal float VehicleGroundGravityFactor => _joltConfig.VehicleGroundGravityFactor;
         internal float BodyMaxLinearSpeed => _joltConfig.BodyMaxLinearSpeed;
         internal float BodyMaxAngularSpeed => _joltConfig.BodyMaxAngularSpeed;
+        internal JoltConfig.BasicForces BasicForcesBehaviour => _joltConfig.BasicForcesBehaviour;
         internal float PrimLinearDamping => _joltConfig.PrimLinearDamping;
         internal float PrimAngularDamping => _joltConfig.PrimAngularDamping;
+        internal bool HonourConvexMesh => _joltConfig.HonourConvexMesh;
+        internal int MaxPhysicalComplexity => _joltConfig.MaxPhysicalComplexity;
+        internal bool KeyframedMotionCarriesRiders => _joltConfig.KeyframedMotionCarriesRiders;
+        internal bool MovedPrimsCarryRiders => _joltConfig.MovedPrimsCarryRiders;
 
         // The vehicle settings every vehicle controller in this region shares, built from [Jolt] in Initialise.
         internal VehicleSettings VehicleSettings { get; private set; } = VehicleSettings.Default;
@@ -89,6 +106,37 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // The region's IMesher, driving the cook path for cut/hollow/sculpt/mesh prims.
         private IMesher m_mesher;
 
+        // The region's wind module, which vehicles with REACT_TO_WIND or REACT_TO_CURRENTS ask for the wind at their position
+        // under VehicleBehaviour = InWorldz. Null when the region has none.
+        private IWindModule m_wind;
+
+        /// <summary>Gives the scene a wind module without a region (the tests and the harness; a region's is found when it loads).</summary>
+        internal void UseWindModule(IWindModule module) => m_wind = module;
+
+        /// <summary>
+        /// The wind at a region position (the water's current below the water, the surface wind above it, the wind aloft over
+        /// that), from the region's wind module. False when the region has no wind module.
+        /// </summary>
+        internal bool TryGetWind(Vector3 pos, out Vector3 wind) => SampleWind(m_wind, pos, out wind);
+
+        /// <summary>The region's wind module (null when it has none), for a step provider to capture before the Update.</summary>
+        internal IWindModule WindModule => m_wind;
+
+        /// <summary>
+        /// The wind at a region position from <paramref name="module"/>, which must answer without taking a lock (it is read
+        /// inside the engine's collision steps). Allocation free. False when there is no module or the position is not finite.
+        /// </summary>
+        internal static bool SampleWind(IWindModule module, Vector3 pos, out Vector3 wind)
+        {
+            wind = Vector3.Zero;
+            if (module == null || !float.IsFinite(pos.X) || !float.IsFinite(pos.Y) || !float.IsFinite(pos.Z))
+                return false;
+            const float Limit = 1e6f;
+            wind = module.WindSpeed((int)MathF.Floor(Math.Clamp(pos.X, -Limit, Limit)), (int)MathF.Floor(Math.Clamp(pos.Y, -Limit, Limit)),
+                (int)MathF.Floor(Math.Clamp(pos.Z, -Limit, Limit)));
+            return true;
+        }
+
         public string RegionName { get; private set; }
 
         // Terrain: the current cooked heightfield ShapeId (released + replaced on each SetTerrain),
@@ -99,6 +147,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         internal int RegionSizeX => _regionSizeX;
         internal int RegionSizeY => _regionSizeY;
         private Scene _scene;
+        /// <summary>The region's scene (the diagnostics assembly's test commands rez and delete through it).</summary>
+        internal Scene RegionScene => _scene;
 
         // Vehicle-controller world inputs: the region water plane, the last cooked terrain
         // sample field (for height-at-XY without a per-frame raycast), the world gravity handed to
@@ -108,6 +158,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         internal int CollisionSteps { get; private set; } = 1;
         internal SVector3 DefaultGravity { get; private set; } = new SVector3(0f, 0f, -9.80665f);
         internal float LastTimeStep = 0.0909f;
+        // Simulated seconds: the sum of every heartbeat's time step. The collision repeat rate is measured on it.
+        internal double SimTime;
+        // The heartbeat timer's clock, in Stopwatch ticks. Null reads Stopwatch.GetTimestamp(); the tests set their own.
+        internal Func<long> HeartbeatClock;
         // The clock new vehicle controllers read (motor reset and spike checks). Null in a region, where
         // they read the wall clock; the test harness sets a simulated one so it can step faster than real time.
         internal Func<DateTime> VehicleClock;
@@ -159,6 +213,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // Step-drain target for physical actors. Guarded because Add/RemovePrim can arrive off
         // the heartbeat thread (the backend permits concurrent Create/Remove with Step).
         private readonly Dictionary<uint, JoltPrim> _prims = new Dictionary<uint, JoltPrim>();
+        /// <summary>The region's prims by local id; hold the dictionary's own lock to read it.</summary>
+        internal Dictionary<uint, JoltPrim> Prims => _prims;
 
         // True only before the first Simulate (the region-reload window). Used by JoltPrim to drop a restored
         // physical prim's horizontal velocity on load (so a reloaded body doesn't inherit a stale coast).
@@ -175,6 +231,47 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (!_pendingActivation.Contains(p)) _pendingActivation.Add(p);
         }
 
+        // The prims whose body is kinematic because keyframed motion is moving them. Core sets their position about every
+        // 50 ms, on its own timer; the prim keeps only the last pose it was given, and once per heartbeat, before the step,
+        // each of them is moved to it over the time that step covers (JoltPrim.StepKinematic), so the body carries the
+        // velocity of the motion and what stands on it is carried.
+        private readonly HashSet<JoltPrim> _kinematicPrims = new HashSet<JoltPrim>();
+        private JoltPrim[] _kinematicSnapshot = Array.Empty<JoltPrim>();
+
+        // Simulated seconds the region has stepped (written on the step thread, read by whatever thread sets a prim's pose)
+        // and the time the last heartbeat covered. A set of a pose is stamped with this clock, so a series of sets is judged
+        // in simulated time, in whole heartbeats (see JoltPrim.NoteMoveSet).
+        private double _kinematicClock;
+        private volatile float _kinematicHeartbeat = 1f / 11f;
+        internal double KinematicClock => Volatile.Read(ref _kinematicClock);
+        internal float KinematicHeartbeat => _kinematicHeartbeat;
+
+        internal void SetKinematicTracked(JoltPrim p, bool tracked)
+        {
+            lock (_kinematicPrims)
+            {
+                if (tracked ? _kinematicPrims.Add(p) : _kinematicPrims.Remove(p))
+                    _kinematicSnapshot = _kinematicPrims.Count == 0 ? Array.Empty<JoltPrim>() : new List<JoltPrim>(_kinematicPrims).ToArray();
+            }
+        }
+
+        // Moves every kinematic prim to the pose it was last given, over `seconds` of simulation: the time the coming
+        // step (or burst of steps) covers. Runs on the step thread, first thing in the heartbeat.
+        private void StepKinematics(float seconds)
+        {
+            if (seconds > 0f)
+            {
+                Volatile.Write(ref _kinematicClock, _kinematicClock + seconds);
+                _kinematicHeartbeat = seconds;
+            }
+            JoltPrim[] prims = _kinematicSnapshot;
+            for (int i = 0; i < prims.Length; i++)
+            {
+                try { prims[i].StepKinematic(seconds); }
+                catch (Exception e) { m_log.LogError($"{LogHeader} kinematic move EXCEPTION for prim {prims[i].LocalID}: {e}"); }
+            }
+        }
+
         // The logged-in avatars, keyed by their CharacterId handle (the value the character drain
         // echoes back). Keyed by handle rather than LocalID so the drain mapping is independent of when
         // ScenePresence assigns LocalID after AddAvatar returns.
@@ -183,37 +280,20 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // Collision-mesh LOD (matches BulletSim's BSParam.MeshLOD default), and the
         // characterization of the last RAW mesher output cooked (verts/tris/degenerate/duplicate/AABB).
         private const float MeshLod = 32f;
-        private struct MeshStats
+        internal struct MeshStats
         {
             public int Verts, Tris, DegenerateTris, DuplicateVerts, OutOfRangeIndices;
             public SVector3 Min, Max;
             public float Volume;   // enclosed volume of the (closed) mesh; == convex-hull volume for a convex prim
         }
         private MeshStats _lastMeshStats;
+        internal MeshStats LastMeshStats => _lastMeshStats;
+        internal long StepCount => _stepCount;
+        internal int LastActiveBodyCount => _lastActiveBodyCount;
 
-        // Dynamics: per-frame step counter + latest active-body count (drop asserts read these), and
-        // the tracked physical drops for the `jolt droptest`/`dropmesh`/`dropstatus` test commands
-        // (JoltTestCommands.cs). _lastBoxRestZ/_lastMeshRestZ
-        // persist across drops so a re-run can report determinism (same rest height).
+        // Dynamics: per-frame step counter + latest active-body count (the console test commands read these).
         private long _stepCount;
         private int _lastActiveBodyCount;
-        private float _lastBoxRestZ = float.NaN, _lastMeshRestZ = float.NaN;
-        private sealed class DropTrack
-        {
-            public uint LocalId;
-            public string Kind;                 // "box" or "mesh"
-            public float StartZ;
-            public long StartStep;
-            public float MinZ = float.MaxValue;
-            public float LastZ, LastSpeed;
-            public int JustDeactivatedCount;
-            public float RestZ = float.NaN;
-            public long RestStep = -1;
-            public float ExpectedMass;          // box: volume*density; mesh: hull(=mesh)volume*density
-            public float ExpectedRestZ;         // terrain Z + half-height
-        }
-        private readonly List<DropTrack> _drops = new List<DropTrack>();
-        private long _logStepsUntil = -1;   // window: log per-frame dt/ActiveBodyCount/liveZ after a drop
         private long _charFrameUntil = -1;  // window: log per-frame avatar Z/support/vZ ([charframe] toggle)
 
         // Caller-owned step buffers (backend contract: nothing allocates per frame). Simulate drains all
@@ -280,6 +360,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     }
 
                     m_testCommands = TestCommandsEnabled(source);
+                    if (m_testCommands)
+                    {
+                        // The test commands live in their own assembly, which is not shipped with the region server.
+                        _diagnostics = JoltDiagnosticsLoader.Load(DiagnosticsFolder(), m_log);
+                        _diagnostics?.Attach(this);
+                    }
 
                     var warnings = new List<string>();
                     JoltConfig joltConfig = JoltConfig.FromConfig(source, warnings);
@@ -317,6 +403,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     m_Config = source;
                     _joltConfig = joltConfig;
                     VehicleSettings = joltConfig.ToVehicleSettings();
+                    if (VehicleSettings.Behaviour != VehicleBehaviour.SecondLife)
+                        m_log.LogInformation($"{LogHeader} vehicle behaviour: {VehicleSettings.Behaviour} (preset values: {VehicleSettings.Presets}).");
                     m_log.LogInformation($"{LogHeader} enabled (physics = {Name}).");
                 }
             }
@@ -356,6 +444,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         // AddRegion's work once the scene is known. The heightmap and water height are read where AddRegion
         // always read them, after the backend exists.
+        /// <summary>TEST-ONLY: run on the new backend before it is initialised, so a test can make Initialize fail.</summary>
+        internal Action<JoltPhysicsBackend> BackendCreatedForTest;
+
         private void InitialiseRegion(uint sizeX, uint sizeY, RequestAssetDelegate requestAsset, Func<float[]> heightMap, Func<float> waterHeight, float heartbeatSeconds)
         {
             // Stored BEFORE base.Initialise, because that calls SetTerrain(heightMap) - which needs the
@@ -388,8 +479,18 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             // Instrumentation: per-region RSS delta across backend init (8MB TempAllocator +
             // MaxBodies preallocation + JobSystemThreadPool), reported by `jolt metrics`.
             long rssBefore = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
-            _backend = new JoltPhysicsBackend();
-            _backend.Initialize(settings);
+            var created = new JoltPhysicsBackend();
+            BackendCreatedForTest?.Invoke(created);
+            try { created.Initialize(settings); }
+            catch
+            {
+                // A backend whose Initialize failed part-way still holds what it had taken (its reference on the shared
+                // job pools and Jolt, and the physics system if that was made); the region will not use it, so give
+                // those back before the failure goes on.
+                created.Dispose();
+                throw;
+            }
+            _backend = created;
             PhysicsCapacityStats initStats = _backend.GetCapacityStats();
             _contactBufMax = _joltConfig.ContactBufferMax > 0 ? _joltConfig.ContactBufferMax : initStats.ContactRingCapacity;
             LogJobPool(initStats);
@@ -412,6 +513,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             if (_substeps != null)
                 m_log.LogInformation($"{LogHeader} region '{RegionName}': physics steps at {_substeps.RateHz:0.##} Hz " +
                                      $"({settings.CollisionSteps} collision steps each, at most {SubstepAccumulator.MaxStepsPerFrame} per heartbeat).");
+            m_log.LogInformation($"{LogHeader} region '{RegionName}': settings: {_joltConfig.StartupSummary(stepRate)}.");
         }
 
         // The shared job pools are sized once, by the first region's request; every region reads the same
@@ -450,6 +552,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             if (!m_Enabled)
                 return;
+
+            // The console keeps every handler it was given (ICommands has no way to take one back), so end this
+            // region's route to the scene: its `jolt` commands then do nothing and the console holds no reference to
+            // the scene. The other regions' handlers are theirs and stay.
+            _consoleRoute?.Detach();
+            _diagnostics?.RegionRemoved(scene);
+
+            // The region is going away: tear its physics down now rather than leave it to whoever closes the scene.
+            // Dispose can run again from the scene's own close; it does nothing the second time.
+            Dispose();
         }
 
         public void RegionLoaded(Scene scene)
@@ -459,35 +571,25 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             if (!m_Enabled)
                 return;
 
-            // `jolt parity` drives only the standard Scene/SceneObjectGroup/PhysicsActor surface, so its output can be
-            // compared with another engine's (parity-<engine>.txt). It is a test command, registered only when
-            // [Jolt] TestCommands is true, and only in a region on Jolt.
-            RegisterParityConsole(scene);
+            // `jolt parity`, a test command of the diagnostics assembly: registered only when [Jolt] TestCommands is
+            // true and that assembly is loaded, and only in a region on Jolt.
+            _diagnostics?.RegisterParity(scene);
 
             // The IMesher the cook path needs; without one, prims fall back to bounding boxes.
+            m_wind = scene.RequestModuleInterface<IWindModule>();
+
             m_mesher = scene.RequestModuleInterface<IMesher>();
             if (m_mesher == null)
                 m_log.LogWarning($"{LogHeader} no IMesher available - shape cooking will need it.");
 
             scene.PhysicsEnabled = true;
 
-            // Test scaffolding (gated by [Startup] JoltAutoDropTest, and only when [Jolt] TestCommands is true;
-            // see AutoDropTestEnabled in JoltTestCommands.cs): auto-drop a few physical boxes so
-            // fall + settle-on-real-terrain is verifiable from the log ([dropframe] liveZ, or `jolt dropstatus`)
-            // with no viewer, and every region carries bodies for a concurrent-step load test. Uses the same
-            // DropOne code path as `jolt droptest`. NEVER runs unless the flags are set, so it cannot affect
-            // real regions.
-            if (AutoDropTestEnabled(m_Config))
-            {
-                ClearTestPrims();
-                DropOne("box", new Vector3(2f, 2f, 2f), 118f, 128f);
-                DropOne("box", new Vector3(2f, 2f, 2f), 124f, 128f);
-                DropOne("box", new Vector3(2f, 2f, 2f), 130f, 128f);
-                m_log.LogInformation($"{LogHeader} JoltAutoDropTest: dropped 3 physical boxes in '{RegionName}' (watch [dropframe] / `jolt dropstatus`).");
-            }
+            // Test scaffolding of the diagnostics assembly (gated by [Startup] JoltAutoDropTest, and only when
+            // [Jolt] TestCommands is true and that assembly is loaded): a few physical boxes dropped at region load.
+            _diagnostics?.AutoDrop(m_Config);
 
             // The `jolt` console commands (read-only diagnostics such as a straight-down raycast onto the
-            // cooked terrain, plus the test commands when [Jolt] TestCommands is true).
+            // cooked terrain, plus the test commands when the diagnostics assembly is loaded).
             //
             // REGISTERED PER REGION, not once behind a static gate. With a single registration the
             // FIRST region to boot would own the delegate and capture ITS `this` forever, so on a
@@ -497,13 +599,31 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             // Registering per region + the WrongConsoleScene() check in each handler makes
             // `change region <name>` actually select the target.
             if (MainConsole.Instance != null)
-            {
-                RegisterConsoleCommands(MainConsole.Instance.Commands, m_testCommands, HandleJoltConsole, HandleJoltTestConsole);
-            }
+                AttachConsole(MainConsole.Instance.Commands);
+        }
+
+        /// <summary>Registers this region's `jolt` console commands on <paramref name="commands"/>.</summary>
+        internal void AttachConsole(ICommands commands)
+        {
+            _consoleRoute ??= new ConsoleRoute(this);
+            RegisterConsoleCommands(commands, _consoleRoute.Read);
+            _diagnostics?.RegisterCommands(commands);
+        }
+
+        // What the console is given to call. The console cannot drop a handler, so what it holds is this small object,
+        // and RemoveRegion cuts the scene out of it.
+        private ConsoleRoute _consoleRoute;
+
+        private sealed class ConsoleRoute
+        {
+            private volatile JoltScene _scene;
+            public ConsoleRoute(JoltScene scene) { _scene = scene; }
+            public void Detach() => _scene = null;
+            public void Read(string module, string[] cmd) => _scene?.HandleJoltConsole(module, cmd);
         }
 
         // The `jolt` subcommands that only read and report. They never change the region, so they are always
-        // registered. The test subcommands are listed in JoltTestCommands.cs.
+        // registered. The test subcommands are in the diagnostics assembly.
         internal static readonly string[] ReadOnlyCommands =
         {
             "capacity", "metrics", "terraintest", "probe", "heights", "avatarstatus", "charframe",
@@ -514,18 +634,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             "jolt capacity | metrics | terraintest | probe <x> <y> | heights <x> <y> | avatarstatus | charframe [secs] | sitstatus | sensortest | raytest | reloadcheck | vehiclestatus";
 
         /// <summary>
-        /// Register `jolt` with its read-only subcommands, and the test subcommands only when
-        /// <paramref name="testCommands"/> is true. A test subcommand that is not registered falls through to
-        /// <paramref name="readOnly"/>, which answers with the usage line.
+        /// Register `jolt` with its read-only subcommands. A test subcommand, which the diagnostics assembly registers
+        /// as its own command, falls through to <paramref name="readOnly"/> when that assembly is not loaded, and the
+        /// handler answers with the usage line.
         /// </summary>
-        internal static void RegisterConsoleCommands(ICommands commands, bool testCommands, CommandDelegate readOnly, CommandDelegate test)
+        internal static void RegisterConsoleCommands(ICommands commands, CommandDelegate readOnly)
         {
             commands.AddCommand("Physics", false, "jolt", ReadOnlyUsage,
                 "Jolt physics diagnostics for the current region: capacity and step metrics, terrain and ray probes, "
                 + "avatar, sit, vehicle and reload status. None of them changes the region.",
                 readOnly);
-            if (testCommands)
-                RegisterTestCommands(commands, test);
         }
 
         /// <summary>
@@ -537,7 +655,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         /// command a whole-sim sweep. See the note in HandleJoltConsole about which commands you actually
         /// want to run that way.
         /// </summary>
-        private bool WrongConsoleScene()
+        internal bool WrongConsoleScene()
             => !(MainConsole.Instance.ConsoleScene is null || MainConsole.Instance.ConsoleScene == _scene);
 
         // Raycast straight down at XY (from well above the region) and report the hit Z - proves the
@@ -561,9 +679,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             //
             // NOTE: a root-scoped `jolt ...` is a SIM-WIDE sweep. Every subcommand handled here is read-only
             // (heights / reloadcheck / vehiclestatus ...), so that is safe. The world-mutating test commands
-            // (rezprims / droptest / clearprims / linktest / sittest ...) live in JoltTestCommands.cs, are
-            // registered only when [Jolt] TestCommands is true, and use the same region scoping - so at the
-            // root prompt they too act in EVERY region. Use `change region <name>` before those.
+            // (rezprims / droptest / clearprims / linktest / sittest ...) live in the diagnostics assembly, are
+            // registered only when [Jolt] TestCommands is true and that assembly is loaded, and use the same region
+            // scoping - so at the root prompt they too act in EVERY region. Use `change region <name>` before those.
             if (MainConsole.Instance.ConsoleScene is null)
                 MainConsole.Instance.Output($"{LogHeader} --- region '{RegionName}' ---");
 
@@ -677,37 +795,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 MainConsole.Instance.Output($"  (a) Jolt heightfield raycast : {(hit ? $"HIT z={rh.Point.Z:0.000} (n.z={rh.Normal.Z:0.00})" : "MISS - NO terrain collision here")}");
                 MainConsole.Instance.Output($"  (b) OpenSim scene heightmap  : {sceneH:0.000}");
                 MainConsole.Instance.Output($"  (d) region water height      : {water:0.000}");
-                foreach (DropTrack t in _drops)
-                {
-                    lock (_prims)
-                        if (_prims.TryGetValue(t.LocalId, out JoltPrim jp) && backend.TryGetBodyState(jp.BodyHandle, out BodyState st))
-                            MainConsole.Instance.Output($"  (c) drop {t.Kind} id={t.LocalId} : liveZ={st.Position.Z:0.000} joltActive={(((st.Flags & BodyStateFlags.Active) != 0) ? "Y" : "N")} startZ={t.StartZ:0.00}");
-                }
+                _diagnostics?.DescribeDrops(backend, line => MainConsole.Instance.Output(line));
                 MainConsole.Instance.Output($"  read: (a)==(b) => cook matches OpenSim; box rest (c) should ~= (a)+halfHeight. (c)~water while (a)!=water => box not on terrain.");
                 return;
             }
 
             MainConsole.Instance.Output("Usage: " + ReadOnlyUsage);
-        }
-
-        // Update a tracked drop from a drained BodyState (called in the Simulate drain).
-        private void UpdateDropTelemetry(in BodyState bs)
-        {
-            foreach (DropTrack t in _drops)
-            {
-                if (t.LocalId != bs.UserData) continue;
-                float z = bs.Position.Z;
-                t.LastZ = z;
-                if (z < t.MinZ) t.MinZ = z;
-                t.LastSpeed = bs.LinearVelocity.Length();
-                if ((bs.Flags & BodyStateFlags.JustDeactivated) != 0)
-                {
-                    t.JustDeactivatedCount++;    // must be EXACTLY 1 at rest (the settle update)
-                    t.RestZ = z;
-                    t.RestStep = _stepCount;
-                }
-                break;
-            }
         }
 
         // Report each logged-in avatar's CharacterVirtual state - position, IsSupported, ground normal/body,
@@ -811,10 +904,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // ground-detection, no movement integration), and "re-engage" == the walking model rebuilt.
         // A moving seat is ridden via OpenSim scene-graph parenting (the seated avatar's world position
         // tracks the prim), independent of physics. `jolt sitstatus` OBSERVES that transition; the
-        // sittest / unsit test commands (JoltTestCommands.cs) DRIVE it.
+        // sittest / unsit test commands (the diagnostics assembly) DRIVE it.
         // ---------------------------------------------------------------------
 
-        private ScenePresence FirstRootAvatar()
+        internal ScenePresence FirstRootAvatar()
         {
             if (_scene == null) return null;
             foreach (ScenePresence sp in _scene.GetScenePresences())
@@ -824,7 +917,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         // Report each root avatar's SIT state (parented to a prim) vs its PHYSICS presence (a live
         // JoltCharacter). Invariant: seated => NO character (suspended); walking => character present.
-        private void SitStatus()
+        internal void SitStatus()
         {
             if (_scene == null) { MainConsole.Instance.Output($"{LogHeader} no scene."); return; }
 
@@ -959,7 +1052,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         public override PhysicsActor AddAvatar(uint localID, string avName, Vector3 position, Vector3 size, float feetOffset, bool isFlying)
             => CreateAvatar(localID, avName, position, Vector3.Zero, size, feetOffset, isFlying);
 
-        private PhysicsActor CreateAvatar(uint localID, string avName, Vector3 position, Vector3 velocity, Vector3 size, float feetOffset, bool isFlying)
+        // The avatar of an object that carried it in, outside the region, is made with the flag set: the region steps on
+        // its own thread, and a step between the character's creation and a flag set by the caller would pull it inside.
+        public override PhysicsActor AddAvatar(uint localID, string avName, Vector3 position, Vector3 size, float feetOffset, bool isFlying, bool allowOutsideRegion)
+            => CreateAvatar(localID, avName, position, Vector3.Zero, size, feetOffset, isFlying, allowOutsideRegion);
+
+        // Test seam: called on the creating thread once the new character is registered, before the caller has it back.
+        // A test steps the scene from here, which is what another thread stepping the region could do at that moment.
+        internal Action<JoltCharacter> AvatarCreatedHook;
+
+        private PhysicsActor CreateAvatar(uint localID, string avName, Vector3 position, Vector3 velocity, Vector3 size, float feetOffset, bool isFlying, bool allowOutsideRegion = false)
         {
             IPhysicsBackend backend = _backend;   // read once: a teardown on another thread nulls it
             if (backend == null)
@@ -987,12 +1089,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             float centreZ = ArrivalCentreZ(position.Z, terrainZ, standHalf, feetOffset);
             var spawn = new Vector3(position.X, position.Y, centreZ);
 
-            var jc = new JoltCharacter(this, backend, localID, avName, spawn, size, feetOffset, isFlying);
+            var jc = new JoltCharacter(this, backend, localID, avName, spawn, size, feetOffset, isFlying, allowOutsideRegion);
             if (velocity != Vector3.Zero)
                 jc.SetMomentum(velocity);
 
             lock (_avatars)
                 _avatars[jc.CharacterHandle.Value] = jc;
+
+            AvatarCreatedHook?.Invoke(jc);
 
             string lifted = centreZ != position.Z ? " (lifted onto the terrain)" : "";
             m_log.LogInformation($"{LogHeader} avatar '{avName}' id={localID} placed at ({position.X:0},{position.Y:0}) askedZ={position.Z:0.000} centreZ={spawn.Z:0.000}{lifted} terrainZ={terrainZ:0.00} standHalf={standHalf:0.000} feetOffset={feetOffset:0.000} flying={isFlying}.");
@@ -1072,6 +1176,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             }
             lock (_prims)
                 _prims[localid] = prim;
+            prim.RequestMeshAssetIfNeeded();   // after registration: the answer may arrive before this returns
             return prim;
         }
 
@@ -1084,9 +1189,34 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // when there is no mesher or the geometry is unusable. `axisCorrection` (System.Numerics) is
         // folded into the body
         // orientation by JoltPrim; `kind` is for the diagnostic read-out.
-        internal ShapeId CookPrimShape(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, out SQuaternion axisCorrection, out string kind)
+        //
+        // `isPhysical` says how a mesher shape is cooked (true: one convex hull, so the body has volume and mass). The prim's
+        // own physical flag is `bodyIsPhysical`; it differs from `isPhysical` only for a non-physical prim cooked as a hull,
+        // and the small-mesh rule below goes by it.
+        //
+        // `useHullList` is set for a physical prim whose shape type is PRIM: a mesh asset's own hull list is then cooked, one
+        // convex hull per entry. `share` lets a mesh prim take the cooked shape another prim with the same asset, size and
+        // kind already holds (a shape taken this way is given back with ReleaseShape of this class, not the backend's).
+        internal ShapeId CookPrimShape(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, out SQuaternion axisCorrection, out string kind,
+                                       bool? bodyIsPhysical = null, bool useHullList = false, bool share = false)
+            => CookPrimShape(backend, pbs, size, isPhysical, out axisCorrection, out kind, out _, bodyIsPhysical, useHullList, share);
+
+        // As below, without the real volume.
+        internal ShapeId CookPrimShape(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, out SQuaternion axisCorrection, out string kind,
+                                       out int hullCount, bool? bodyIsPhysical = null, bool useHullList = false, bool share = false)
+            => CookPrimShape(backend, pbs, size, isPhysical, out axisCorrection, out kind, out hullCount, out _, bodyIsPhysical, useHullList, share);
+
+        // As above, and `hullCount` is how many convex hulls the shape is made of: the cells of a concave prim or the hulls of
+        // a mesh asset's list, else 1 (a box, a sphere, a cylinder, a mesh, one hull, the bounding box). A complexity limit
+        // reads it (JoltPrim.HullCount). `massVolume` is the real volume (m^3, at `size`) a concave prim cooked as cells weighs,
+        // from the mesher's closed mesh; 0 when the shape's own volume is the one to use (everything else, and a concave prim
+        // whose mesh cannot be trusted).
+        internal ShapeId CookPrimShape(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, out SQuaternion axisCorrection, out string kind,
+                                       out int hullCount, out double massVolume, bool? bodyIsPhysical = null, bool useHullList = false, bool share = false)
         {
             axisCorrection = SQuaternion.Identity;
+            hullCount = 1;
+            massVolume = 0.0;
             float hx = size.X * 0.5f, hy = size.Y * 0.5f, hz = size.Z * 0.5f;
 
             if (pbs != null && PrimHasNoCuts(pbs))
@@ -1127,12 +1257,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             // BulletSim's BSShapeCollection.CreateGeomMeshOrHull (physical && ShouldUseHulls -> hull;
             // else mesh). Contract: a triangle MeshShape has Volume 0, so a PHYSICAL prim
             // MUST use the convex hull or it would rez with mass 0 - hence physical -> hull here.
-            ShapeId cooked = CookMeshShape(backend, pbs, size, isPhysical, out kind);
+            ShapeId cooked = CookMeshShape(backend, pbs, size, isPhysical, bodyIsPhysical ?? isPhysical, useHullList, share, out kind, out hullCount, out massVolume);
             if (cooked.IsValid)
                 return cooked;
 
             // Mesher unavailable / returned nothing usable / cook threw: conservative solid bounding box.
-            kind = "bbox(fallback)";
+            kind = BoxFallbackKind;
+            hullCount = 1;
+            massVolume = 0.0;
             return backend.CreateBoxShape(new SVector3(hx, hy, hz));
         }
 
@@ -1140,9 +1272,287 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // getIndexListAsInt -> CreateMeshShape (non-physical triangle mesh) or CreateConvexHullShape
         // (physical hull). Returns ShapeId.Invalid on any failure so the caller can fall back. Also
         // stashes a characterization of the RAW mesher output (_lastMeshStats) for the diagnostic read-out.
-        private ShapeId CookMeshShape(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, out string kind)
+        private ShapeId CookMeshShape(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, bool bodyIsPhysical,
+                                      bool useHullList, bool share, out string kind, out int hullCount, out double massVolume)
         {
-            kind = "bbox(fallback)";
+            massVolume = 0.0;
+            // A mesh prim's shape is a function of its asset, size and how it is cooked, so prims that agree on all three can
+            // hold one cooked shape. Only a real cook is kept: a box for want of the asset, or for size, is not.
+            bool isMesh = IsMeshPrim(pbs);
+            bool listWanted = isMesh && isPhysical && useHullList;
+            // A prim made from its own profile and path (not a mesh, not a sculpt) is cooked as convex cells when it is
+            // physical and of shape type PRIM (useHullList). Prims of one set of shape parameters share one compound, cooked at
+            // unit size and scaled to each prim's size (CookPrimCellsShared); a prim that may not share cooks its own.
+            bool cellsWanted = !isMesh && isPhysical && useHullList && !IsSculptPrim(pbs);
+            if (cellsWanted && share && CellShapeCacheEnabled && ScaleReusable(size, true) && m_mesher is IMesherShapeData)
+            {
+                ShapeId shared = CookPrimCellsShared(backend, pbs, size, isPhysical, bodyIsPhysical, out kind, out hullCount, out massVolume);
+                if (shared.IsValid)
+                    return shared;
+            }
+            if (!share || !isMesh || pbs.SculptTexture.IsZero())
+            {
+                // A prim that may not share (a part of a linkset that needs a density of its own) still skips the search for its
+                // cells when prims of its parameters have been cooked: its own compound is made from their points.
+                if (cellsWanted && !share && CellShapeCacheEnabled && ScaleReusable(size, true))
+                {
+                    ShapeId copy = CookPrimCellsCopy(backend, pbs, size, out kind, out hullCount, out massVolume);
+                    if (copy.IsValid)
+                        return copy;
+                }
+                return CookMeshShapeCore(backend, pbs, size, isPhysical, bodyIsPhysical, listWanted, cellsWanted, out kind, out hullCount, out massVolume, out _);
+            }
+
+            SharedShapeKind kindWanted = listWanted ? SharedShapeKind.HullList : isPhysical ? SharedShapeKind.Hull : SharedShapeKind.Mesh;
+            var key = new SharedShapeKey(pbs.SculptTexture, size, kindWanted);
+            var baseKey = new BaseKey(pbs.SculptTexture, kindWanted);
+            // The lock is held across the cook so that prims asking for the same shape at once get one cook, not two. The
+            // threads that come here are the scene's own (adding a prim, changing its size or physical state) and the asset
+            // service's callback thread (a mesh arriving); the cook is milliseconds and the native calls take the backend's
+            // own lock, which never calls back into this class, so the lock order is this lock, then the backend's.
+            lock (_sharedShapeLock)
+            {
+                if (_sharedShapes.TryGetValue(key, out SharedShape held))
+                {
+                    held.Users++;
+                    kind = held.Kind;
+                    hullCount = held.HullCount;
+                    return held.Shape;
+                }
+
+                // Another size of a mesh already cooked: the shape of that cook, at this prim's scale. No fetch, no decode, no
+                // cook. A size the size rules treat differently (a non-physical mesh under SmallMeshSide on every side is a
+                // box; the mesher makes no side under MesherMinSide) is cooked as it was.
+                bool scalable = ScaleReusable(size, bodyIsPhysical);
+                if (scalable && _bases.TryGetValue(baseKey, out BaseShape basis))
+                {
+                    ShapeId scaled = ScaledFromBase(backend, basis, size);
+                    if (scaled.IsValid)
+                    {
+                        var wrapped = new SharedShape { Key = key, Shape = scaled, Kind = basis.Kind, HullCount = basis.HullCount, Users = 1, Basis = basis };
+                        basis.Entries++;
+                        _sharedShapes[key] = wrapped;
+                        _sharedByShape[scaled.Value] = wrapped;
+                        kind = basis.Kind;
+                        hullCount = basis.HullCount;
+                        return scaled;
+                    }
+                }
+
+                ShapeId shape = CookMeshShapeCore(backend, pbs, size, isPhysical, bodyIsPhysical, listWanted, false, out kind, out hullCount, out _, out _);
+                if (shape.IsValid && kind != BoxFallbackKind && !kind.StartsWith("box", StringComparison.Ordinal))
+                {
+                    var entry = new SharedShape { Key = key, Shape = shape, Kind = kind, HullCount = hullCount, Users = 1 };
+                    if (scalable && !_bases.ContainsKey(baseKey))
+                    {
+                        // This cook becomes the shape the asset's other sizes are made from. The table keeps a reference of its
+                        // own, so it outlives this size's prims while other sizes use it.
+                        backend.AddShapeRef(shape);
+                        var basis2 = new BaseShape { Key = baseKey, Shape = shape, Size = size, Kind = kind, HullCount = hullCount, Entries = 1 };
+                        _bases[baseKey] = basis2;
+                        entry.Basis = basis2;
+                    }
+                    _sharedShapes[key] = entry;
+                    _sharedByShape[shape.Value] = entry;
+                }
+                return shape;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Shared compounds of cells. A concave prim's cells are a function of its shape parameters alone: they are cooked once
+        // at unit size and a prim of any size holds a scaled shape over that compound (a hull compound scales exactly on each
+        // axis, IsScaleValid), so prims with the same parameters share one cooked compound, and a change to any parameter
+        // is a different key. The real volume of the prim's mesh is kept with it (unit size, times the size's three sides).
+        // The compound and its sizes are released as a mesh asset's are (ReleaseShape).
+        // ---------------------------------------------------------------------
+
+        // The shape parameters the mesher reads for a prim made from its own profile and path (Meshmerizer.ExtrudePrimShape),
+        // and the level of detail it is asked for: two prims with the same string have the same unit mesh.
+        internal static string PrimShapeParameters(PrimitiveBaseShape pbs)
+            => string.Join("|", MeshLod.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                pbs.PathCurve, pbs.ProfileCurve, pbs.HollowShape, pbs.ProfileBegin, pbs.ProfileEnd, pbs.ProfileHollow,
+                pbs.PathBegin, pbs.PathEnd, pbs.PathScaleX, pbs.PathScaleY, pbs.PathShearX, pbs.PathShearY,
+                pbs.PathTwist, pbs.PathTwistBegin, pbs.PathRadiusOffset, pbs.PathTaperX, pbs.PathTaperY,
+                pbs.PathRevolutions, pbs.PathSkew);
+
+        /// <summary>Whether prims of one set of shape parameters share one cooked compound of cells. On: a test turns it off to
+        /// measure what the cache saves.</summary>
+        internal bool CellShapeCacheEnabled = true;
+
+        // Parameters of prims that came out as no cells (convex already, or a split that cannot be cooked): asked again, they go
+        // straight to the cook of their own. Small, and emptied if it ever grows past the limit.
+        private readonly HashSet<string> _notCells = new HashSet<string>();
+        private const int NotCellsLimit = 4096;
+
+        private ShapeId CookPrimCellsShared(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, bool bodyIsPhysical,
+                                            out string kind, out int hullCount, out double massVolume)
+        {
+            kind = BoxFallbackKind;
+            hullCount = 1;
+            massVolume = 0.0;
+            string parameters = PrimShapeParameters(pbs);
+            var key = new SharedShapeKey(UUID.Zero, size, SharedShapeKind.PrimCells, parameters);
+            var baseKey = new BaseKey(UUID.Zero, SharedShapeKind.PrimCells, parameters);
+            double sides = (double)size.X * size.Y * size.Z;
+            lock (_sharedShapeLock)
+            {
+                if (_sharedShapes.TryGetValue(key, out SharedShape held))
+                {
+                    held.Users++;
+                    kind = held.Kind;
+                    hullCount = held.HullCount;
+                    massVolume = held.MassVolume;
+                    return held.Shape;
+                }
+                if (_notCells.Contains(parameters))
+                    return ShapeId.Invalid;
+
+                if (!_bases.TryGetValue(baseKey, out BaseShape basis))
+                {
+                    ShapeId unit = CookMeshShapeCore(backend, pbs, Vector3.One, isPhysical, bodyIsPhysical, false, true, out string unitKind, out int unitCount, out double unitVolume, out SVector3[][] unitCells);
+                    if (!unit.IsValid || !unitKind.StartsWith(PrimCellsKind, StringComparison.Ordinal))
+                    {
+                        if (unit.IsValid)
+                            backend.ReleaseShape(unit);
+                        if (_notCells.Count >= NotCellsLimit)
+                            _notCells.Clear();
+                        _notCells.Add(parameters);
+                        return ShapeId.Invalid;
+                    }
+                    // The table's own reference is the one the cook returned; it is dropped with the last size.
+                    basis = new BaseShape { Key = baseKey, Shape = unit, Size = Vector3.One, Kind = unitKind, HullCount = unitCount, UnitMassVolume = unitVolume, UnitCells = unitCells, Entries = 0 };
+                    _bases[baseKey] = basis;
+                }
+
+                ShapeId scaled = ScaledFromBase(backend, basis, size);
+                if (!scaled.IsValid)
+                {
+                    if (basis.Entries <= 0)
+                    {
+                        _bases.Remove(baseKey);
+                        backend.ReleaseShape(basis.Shape);
+                    }
+                    return ShapeId.Invalid;
+                }
+                var entry = new SharedShape { Key = key, Shape = scaled, Kind = basis.Kind, HullCount = basis.HullCount, MassVolume = basis.UnitMassVolume * sides, Users = 1, Basis = basis };
+                basis.Entries++;
+                _sharedShapes[key] = entry;
+                _sharedByShape[scaled.Value] = entry;
+                kind = entry.Kind;
+                hullCount = entry.HullCount;
+                massVolume = entry.MassVolume;
+                return scaled;
+            }
+        }
+
+        /// <summary>How many compounds of cells have been made for a prim of its own from the points of the cells of prims with the same parameters.</summary>
+        internal int PrimCellCopiesMade => Volatile.Read(ref _primCellCopiesMade);
+        private int _primCellCopiesMade;
+
+        // A compound of cells of a prim's own, for a prim that may not share one (CookPrimCellsShared): made from the points of
+        // the cells the scene holds for its parameters, scaled to its size, so no mesh is read and no split is searched for. An
+        // invalid shape (and the caller cooks in full) when none is held or a cell does not cook.
+        private ShapeId CookPrimCellsCopy(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, out string kind, out int hullCount, out double massVolume)
+        {
+            kind = BoxFallbackKind;
+            hullCount = 1;
+            massVolume = 0.0;
+            var baseKey = new BaseKey(UUID.Zero, SharedShapeKind.PrimCells, PrimShapeParameters(pbs));
+            BaseShape basis;
+            lock (_sharedShapeLock)
+            {
+                if (!_bases.TryGetValue(baseKey, out basis) || basis.UnitCells == null)
+                    return ShapeId.Invalid;
+            }
+            var scaled = new SVector3[basis.UnitCells.Length][];
+            for (int c = 0; c < scaled.Length; c++)
+            {
+                SVector3[] unit = basis.UnitCells[c];
+                scaled[c] = new SVector3[unit.Length];
+                for (int i = 0; i < unit.Length; i++)
+                    scaled[c][i] = new SVector3(unit[i].X * size.X, unit[i].Y * size.Y, unit[i].Z * size.Z);
+            }
+            ShapeId compound = PrimHullCells.CookCompound(backend, scaled, out int failed);
+            if (failed > 0 || !compound.IsValid)
+            {
+                if (compound.IsValid)
+                    backend.ReleaseShape(compound);
+                return ShapeId.Invalid;
+            }
+            Interlocked.Increment(ref _primCellCopiesMade);
+            kind = basis.Kind;
+            hullCount = basis.HullCount;
+            massVolume = basis.UnitMassVolume * size.X * size.Y * size.Z;
+            return compound;
+        }
+
+        /// <summary>How many compounds of cells the scene holds as bases that prims of one set of shape parameters are scaled from.</summary>
+        internal int PrimCellBaseCount { get { lock (_sharedShapeLock) { int n = 0; foreach (BaseKey k in _bases.Keys) if (k.IsPrimCells) n++; return n; } } }
+
+        // Whether a size can be made by scaling the shape cooked at another size. A mesh prim under 0.05 m on every side that is
+        // not physical is a box, and the mesher raises a side under 0.01 m to 0.01 m, so those sizes are not a scale of
+        // another: they are cooked on their own.
+        private static bool ScaleReusable(Vector3 size, bool bodyIsPhysical)
+        {
+            if (!(size.X >= MesherMinSide && size.Y >= MesherMinSide && size.Z >= MesherMinSide))
+                return false;
+            return bodyIsPhysical || size.X >= SmallMeshSide || size.Y >= SmallMeshSide || size.Z >= SmallMeshSide;
+        }
+
+        // The base shape at another size: the shape itself at the same size, otherwise a scaled shape over it. Invalid when
+        // Jolt would not scale it by exactly that (then the caller cooks it).
+        private ShapeId ScaledFromBase(IPhysicsBackend backend, BaseShape basis, Vector3 size)
+        {
+            if (size == basis.Size)
+            {
+                backend.AddShapeRef(basis.Shape);
+                return basis.Shape;
+            }
+            var scale = new SVector3(size.X / basis.Size.X, size.Y / basis.Size.Y, size.Z / basis.Size.Z);
+            if (!backend.IsScaleValid(basis.Shape, scale))
+                return ShapeId.Invalid;
+            try
+            {
+                ShapeId scaled = backend.CreateScaledShape(basis.Shape, scale);
+                Interlocked.Increment(ref _scaledShapesMade);
+                return scaled;
+            }
+            catch (Exception e)
+            {
+                m_log.LogWarning($"{LogHeader} scaling the shape of a mesh asset threw ({e.GetType().Name}: {e.Message}); cooked at its own size.");
+                return ShapeId.Invalid;
+            }
+        }
+
+        // The size at which each mesh asset was last decoded by the mesher, which keeps that mesh for the life of the process.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<UUID, Vector3> _decodedAt = new System.Collections.Concurrent.ConcurrentDictionary<UUID, Vector3>();
+
+        /// <summary>The smallest side (m) the mesher makes a mesh with; it raises a smaller one to this (Meshmerizer.MakeMesh).</summary>
+        internal const float MesherMinSide = 0.01f;
+
+        /// <summary>How many scaled shapes have been made over a cooked mesh shape (a resize or another size of the same asset).</summary>
+        internal int ScaledShapesMade => Volatile.Read(ref _scaledShapesMade);
+        private int _scaledShapesMade;
+
+        private ShapeId CookMeshShapeCore(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, bool isPhysical, bool bodyIsPhysical,
+                                          bool listWanted, bool cellsWanted, out string kind, out int hullCount, out double massVolume,
+                                          out SVector3[][] cellPoints)
+        {
+            kind = BoxFallbackKind;
+            hullCount = 1;
+            massVolume = 0.0;
+            cellPoints = null;
+            bool isMesh = IsMeshPrim(pbs);
+
+            // A non-physical mesh smaller than SmallMeshSide on every side is a box, which needs no asset. Halcyon's rule
+            // (ShapeDeterminer.CanUseLowDetailShape: a static prim under 0.05 m on every side takes its low-detail shape);
+            // the Second Life wiki says nothing about a size limit. A physical mesh is never boxed for its size.
+            if (isMesh && !bodyIsPhysical && size.X < SmallMeshSide && size.Y < SmallMeshSide && size.Z < SmallMeshSide)
+            {
+                kind = "box(small mesh)";
+                return backend.CreateBoxShape(new SVector3(size.X * 0.5f, size.Y * 0.5f, size.Z * 0.5f));
+            }
             if (m_mesher == null)
             {
                 m_log.LogWarning($"{LogHeader} no IMesher - cannot cook mesh; bounding-box fallback.");
@@ -1151,7 +1561,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
             // ---- Extract geometry. CRITICAL: the Meshmerizer CACHES and SHARES the Mesh object,
             // keyed on GetMeshKey(size, lod), and returns the SAME instance for every identical prim
-            // (key ignores isPhysical/convex). getIndexListAsInt()/getVertexListAsFloat() throw
+            // (the key has no isPhysical/convex part; the one answer that depends on isPhysical, the 8-corner box
+            // given to a small non-physical mesh, is kept in a cache of its own, so a physical request for the
+            // same mesh is never handed that box). getIndexListAsInt()/getVertexListAsFloat() throw
             // NotSupportedException once m_triangles/m_vertices are null, and releaseSourceMeshData()
             // nulls exactly those - so calling it POISONS the cache and makes the NEXT identical prim's
             // extraction throw. Both accessors already return FRESH COPIES, so we own the arrays and must
@@ -1160,11 +1572,30 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             // never a propagating exception that could abort a prim rez or a whole region load.
             SVector3[] points;
             int[] indices;
+            IMesh mesh;
+            double meshVolume = 0.0;   // of the mesher's own mesh: what the cells are measured against (cellsWanted only)
+            PrimHullCells.MeshAssessment assessment = null;   // what the same mesh says about the prim's real volume (cellsWanted only)
             try
             {
-                // isPhysical:false to the mesher = "do not substitute a bounding box for tiny prims" -
-                // we always want the real triangle soup (BulletSim passes false here for the same reason).
-                IMesh mesh = m_mesher.CreateMesh("jolt-prim", pbs, size, MeshLod, false, false, false);
+                // The mesher's isPhysical argument is true to mean "keep the real triangles": with false it replaces a
+                // mesh whose three sides are all under 0.2 m by its 8-corner box (Meshmerizer.CreateMesh). A mesh prim
+                // passes true, because the size rule is applied above, at Halcyon's 0.05 m. Another prim keeps passing
+                // false, so its behaviour is as it was.
+                // A mesh asset already decoded at another size is read at that size (the mesher keeps it) and its points scaled
+                // to this one: a mesh's points are linear in the size, and the asset's bytes are gone once decoded, so asking
+                // the mesher for a new size would mean fetching the asset again.
+                Vector3 meshSize = size;
+                if (isMesh && !pbs.SculptTexture.IsZero() && size.X >= MesherMinSide && size.Y >= MesherMinSide && size.Z >= MesherMinSide
+                    && _decodedAt.TryGetValue(pbs.SculptTexture, out Vector3 decoded) && decoded != size)
+                    meshSize = decoded;
+                mesh = m_mesher.CreateMesh("jolt-prim", pbs, meshSize, MeshLod, isMesh, false, false);
+                if (mesh == null && meshSize != size)
+                {
+                    meshSize = size;
+                    mesh = m_mesher.CreateMesh("jolt-prim", pbs, size, MeshLod, isMesh, false, false);
+                }
+                if (mesh != null && isMesh && !pbs.SculptTexture.IsZero())
+                    _decodedAt.TryAdd(pbs.SculptTexture, meshSize);
                 if (mesh == null)
                 {
                     // A sculpt whose asset (texture) has not been fetched meshes to null - it needs the
@@ -1182,9 +1613,36 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     return ShapeId.Invalid;
                 }
 
+                if (cellsWanted)
+                {
+                    // What the cells are measured against is the prim's real mesh. For a prim under 0.2 m on every side the
+                    // mesh above is its bounding box (the mesher is asked for a non-physical one), so ask for the real
+                    // triangles; the mesher keeps both, and the one hull below is still made from the points above.
+                    IMesh whole = m_mesher.CreateMesh("jolt-prim", pbs, size, MeshLod, true, false, false);
+                    if (whole != null)
+                    {
+                        float[] wholeVertices = whole.getVertexListAsFloat();
+                        int[] wholeIndices = whole.getIndexListAsInt();
+                        meshVolume = PrimHullCells.MeshVolume(wholeVertices, wholeIndices);
+                        // The assessment reads the mesh at the size it was made at; a prim is its unit shape scaled on each axis, so
+                        // the checks hold at every size and the volume is the unit one times the size's three sides.
+                        assessment = PrimHullCells.AssessMesh(wholeVertices, wholeIndices);
+                    }
+                }
+
                 points = new SVector3[verts.Length / 3];
+                var toSize = new SVector3(size.X / meshSize.X, size.Y / meshSize.Y, size.Z / meshSize.Z);
                 for (int i = 0; i < points.Length; i++)
-                    points[i] = new SVector3(verts[3 * i], verts[3 * i + 1], verts[3 * i + 2]);
+                    points[i] = meshSize == size
+                        ? new SVector3(verts[3 * i], verts[3 * i + 1], verts[3 * i + 2])
+                        : new SVector3(verts[3 * i] * toSize.X, verts[3 * i + 1] * toSize.Y, verts[3 * i + 2] * toSize.Z);
+
+                // The mesher builds an inverted sculpt inside out, as the viewer draws it. The physics engine meets a
+                // triangle from its front only, so an inside-out sculpt would let a ray or a body from outside pass
+                // through it: put the triangles back the way round the unflagged shape has them.
+                if (IsSculptPrim(pbs) && (pbs.SculptType & SculptInvertFlag) != 0)
+                    for (int i = 0; i + 2 < indices.Length; i += 3)
+                        (indices[i + 1], indices[i + 2]) = (indices[i + 2], indices[i + 1]);
             }
             catch (Exception e)
             {
@@ -1202,6 +1660,37 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 return ShapeId.Invalid;
             }
 
+            // A physical mesh whose asset carries a hull list collides as those hulls (Second Life's behaviour for a physical
+            // mesh of shape type PRIM). An asset without one, or whose list cannot be used, falls through to one hull of the
+            // mesh's points below.
+            if (listWanted)
+            {
+                ShapeId list = CookHullList(backend, mesh, pbs.SculptTexture, size, out string listKind, out int listCount);
+                if (list.IsValid)
+                {
+                    kind = listKind;
+                    hullCount = listCount;
+                    return list;
+                }
+            }
+
+            // A physical prim of shape type PRIM that is not convex (hollow, cut, twisted, a torus, tube, ring...) collides as
+            // a compound of convex cells. A prim that is one cell, and any failure, falls through to the one hull below, as
+            // every physical prim always was.
+            if (cellsWanted)
+            {
+                ShapeId cells = CookPrimCells(backend, pbs, size, meshVolume, assessment, out int cellCount, out double realVolume, out SVector3[][] cellSet);
+                if (cells.IsValid)
+                {
+                    kind = $"{PrimCellsKind} x{cellCount})";
+                    hullCount = cellCount;
+                    massVolume = realVolume;
+                    cellPoints = cellSet;
+                    Interlocked.Increment(ref _primCellShapesCooked);
+                    return cells;
+                }
+            }
+
             // Cook the Jolt shape. No shape/body exists until one of these RETURNS a handle, so a throw
             // here creates nothing to leak - caller falls back to a full bbox.
             try
@@ -1210,6 +1699,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     ? backend.CreateConvexHullShape(points)   // physical: hull (mesh Volume=0 -> mass 0)
                     : backend.CreateMeshShape(points, indices); // non-physical: real triangle mesh
                 kind = isPhysical ? "hull(mesher)" : "mesh(mesher)";
+                if (isMesh)
+                    Interlocked.Increment(ref _meshShapesCooked);
                 return shape;
             }
             catch (Exception e)
@@ -1217,6 +1708,471 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 m_log.LogWarning($"{LogHeader} backend cook of mesher output threw ({e.GetType().Name}: {e.Message}); bounding-box fallback.");
                 return ShapeId.Invalid;   // kind stays "bbox(fallback)"
             }
+        }
+
+        // ---------------------------------------------------------------------
+        // Mesh assets. A mesh prim's shape comes from its asset, which nothing in core loads for the physics engine: a prim
+        // whose bytes are not in its shape and whose mesh the mesher has not cached cooks as its bounding box, asks the
+        // scene's request-asset delegate for the asset (as ubODE does, ODEMeshWorker.cs, and BulletSim, BSShapes.cs), and is
+        // cooked again when the asset arrives. Prims waiting for one asset share one request. The bytes are put on a copy
+        // of the prim's shape for the cook only, and dropped with it.
+        // ---------------------------------------------------------------------
+
+        /// <summary>How many shapes have been cooked natively for mesh prims (a mesh, a hull or a hull list: one count each,
+        /// whatever the number of hulls in it). A shape shared by several prims is cooked, and counted, once.</summary>
+        internal int MeshShapesCooked => Volatile.Read(ref _meshShapesCooked);
+        private int _meshShapesCooked;
+
+        /// <summary>How many cooked mesh shapes the scene holds for sharing between prims.</summary>
+        internal int SharedShapeCount { get { lock (_sharedShapeLock) return _sharedShapes.Count; } }
+
+        // ---------------------------------------------------------------------
+        // Shared shapes. Prims of one mesh asset, one size and one way of cooking (triangle mesh, one hull, hull list) take one
+        // cooked shape between them. The scene counts the prims using each (Users); the shape is released to the backend when
+        // the last gives it up. Every release of a shape a prim holds goes through ReleaseShape below. A shape holds no state
+        // of one prim except the density a linkset gives its parts (SetShapeDensity), so a prim that joins a linkset first
+        // takes a shape of its own (JoltPrim.MakeShapePrivate).
+        // ---------------------------------------------------------------------
+
+        internal enum SharedShapeKind { Mesh, Hull, HullList, PrimCells }
+
+        private readonly struct SharedShapeKey : IEquatable<SharedShapeKey>
+        {
+            private readonly UUID _asset;
+            private readonly string _parameters;   // a prim made from its own profile and path: its shape parameters; else null
+            private readonly int _x, _y, _z;      // the size's bits: only an identical size shares
+            private readonly SharedShapeKind _kind;
+
+            public SharedShapeKey(UUID asset, Vector3 size, SharedShapeKind kind, string parameters = null)
+            {
+                _asset = asset;
+                _parameters = parameters;
+                _x = BitConverter.SingleToInt32Bits(size.X);
+                _y = BitConverter.SingleToInt32Bits(size.Y);
+                _z = BitConverter.SingleToInt32Bits(size.Z);
+                _kind = kind;
+            }
+
+            public bool Equals(SharedShapeKey o) => _asset == o._asset && _x == o._x && _y == o._y && _z == o._z && _kind == o._kind
+                                                    && string.Equals(_parameters, o._parameters, StringComparison.Ordinal);
+            public override bool Equals(object obj) => obj is SharedShapeKey k && Equals(k);
+            public override int GetHashCode() => HashCode.Combine(_asset, _x, _y, _z, _kind, _parameters);
+        }
+
+        private sealed class SharedShape
+        {
+            public SharedShapeKey Key;
+            public ShapeId Shape;
+            public string Kind;
+            public int HullCount;
+            public double MassVolume;   // the real volume of a shape of cells at this size (see CookPrimCells); 0 when its own volume is used
+            public int Users;
+            public BaseShape Basis;   // the cooked shape this one is, or is scaled from; null when it is neither
+        }
+
+        // The shape cooked for a mesh asset (at the size of the first prim that needed one), which every other size of the same
+        // asset and kind is a scaled shape over. Kept while any size of it is in use.
+        private readonly struct BaseKey : IEquatable<BaseKey>
+        {
+            private readonly UUID _asset;
+            private readonly SharedShapeKind _kind;
+            private readonly string _parameters;
+            public BaseKey(UUID asset, SharedShapeKind kind, string parameters = null) { _asset = asset; _kind = kind; _parameters = parameters; }
+            public bool IsPrimCells => _kind == SharedShapeKind.PrimCells;
+            public bool Equals(BaseKey o) => _asset == o._asset && _kind == o._kind && string.Equals(_parameters, o._parameters, StringComparison.Ordinal);
+            public override bool Equals(object obj) => obj is BaseKey k && Equals(k);
+            public override int GetHashCode() => HashCode.Combine(_asset, _kind, _parameters);
+        }
+
+        private sealed class BaseShape
+        {
+            public BaseKey Key;
+            public ShapeId Shape;
+            public Vector3 Size;
+            public string Kind;
+            public int HullCount;
+            public double UnitMassVolume;   // for a shape of cells: the real volume at unit size (see CookPrimCells)
+            public SVector3[][] UnitCells;  // and the points of its cells at unit size, from which a prim's own compound is made
+            public int Entries;   // sizes (SharedShape entries) in use
+        }
+
+        private readonly Dictionary<BaseKey, BaseShape> _bases = new Dictionary<BaseKey, BaseShape>();
+
+        private readonly object _sharedShapeLock = new object();
+        private readonly Dictionary<SharedShapeKey, SharedShape> _sharedShapes = new Dictionary<SharedShapeKey, SharedShape>();
+        private readonly Dictionary<uint, SharedShape> _sharedByShape = new Dictionary<uint, SharedShape>();
+
+        /// <summary>Gives back a shape a prim holds: a shared one is released to the backend when its last prim gives it up,
+        /// any other at once.</summary>
+        internal void ReleaseShape(IPhysicsBackend backend, ShapeId shape)
+        {
+            if (!shape.IsValid)
+                return;
+            lock (_sharedShapeLock)
+            {
+                if (_sharedByShape.TryGetValue(shape.Value, out SharedShape held))
+                {
+                    if (--held.Users > 0)
+                        return;
+                    _sharedByShape.Remove(shape.Value);
+                    _sharedShapes.Remove(held.Key);
+                    if (held.Basis != null && --held.Basis.Entries <= 0)
+                    {
+                        _bases.Remove(held.Basis.Key);
+                        backend.ReleaseShape(held.Basis.Shape);   // the table's own reference
+                    }
+                }
+            }
+            backend.ReleaseShape(shape);
+        }
+
+        /// <summary>True when the shape is one the scene shares between prims.</summary>
+        internal bool IsSharedShape(ShapeId shape)
+        {
+            lock (_sharedShapeLock)
+                return shape.IsValid && _sharedByShape.ContainsKey(shape.Value);
+        }
+
+        // One notice per asset and reason about a hull list that cannot be used as it is. Logged, and kept for the tests.
+        private void HullNotice(UUID asset, string reason, string text)
+        {
+            string line = $"{LogHeader} mesh asset {asset}: {text}";
+            lock (_hullNotices)
+            {
+                if (!_hullNoticeKeys.Add(asset + "|" + reason))
+                    return;
+                if (_hullNotices.Count < 1000)
+                    _hullNotices.Add(line);
+            }
+            m_log.LogWarning(line);
+        }
+
+        /// <summary>The kind of a shape cooked from a concave prim's convex cells, up to the number of cells: "hulls(prim x12)".</summary>
+        internal const string PrimCellsKind = "hulls(prim";
+
+        /// <summary>How many shapes have been cooked as convex cells for prims made from their own profile and path.</summary>
+        internal int PrimCellShapesCooked => Volatile.Read(ref _primCellShapesCooked);
+        private int _primCellShapesCooked;
+
+        // A prim made from its own profile and path as a compound of convex cells (PrimHullCells): one hull for each convex
+        // piece of its profile over each span of its path, cut from the rings the mesher extrudes it from. Returns
+        // ShapeId.Invalid, and the caller cooks one hull of the mesh's points, when the prim has no rings, is one cell (it is
+        // convex already), or no split can be cooked. A cell the hull builder refuses is never left out: a missing cell would
+        // leave a hole in a wall, so the whole prim keeps the one hull.
+        //
+        // This runs where every shape is cooked (the thread that adds the prim or changes its shape, never the step: see
+        // JoltPrim.CookOwnShape). The cell points come from the mesher and the native hull builds take no lock the step holds,
+        // so a step in progress never waits for it; the one call here that takes the step's lock is GetShapeVolume, which
+        // is a read of a number and which waits for the step, not the other way round.
+        //
+        // `realVolume` is what the prim weighs per unit of density: the volume of the mesher's closed mesh when
+        // PrimHullCells.AssessMesh trusts it and it is not above the cells' (the cells hold the whole solid, so a mesh volume
+        // above theirs is a mesh that lies); otherwise 0, and the cells' own volume is the weight. A prim that keeps the
+        // cells' volume is named once for each reason.
+        private ShapeId CookPrimCells(IPhysicsBackend backend, PrimitiveBaseShape pbs, Vector3 size, double meshVolume,
+                                      PrimHullCells.MeshAssessment assessment, out int cellCount, out double realVolume, out SVector3[][] cellPoints)
+        {
+            cellCount = 1;
+            realVolume = 0.0;
+            cellPoints = null;
+            // The mesher is asked for its shape data through the interface, not its class: the region server loads the mesher in a
+            // context of its own, where the class this module was built against is another type (see IMesherShapeData).
+            if (!(m_mesher is IMesherShapeData meshmerizer))
+            {
+                PrimCellsNotice("mesher", $"the mesher ({m_mesher?.GetType().FullName ?? "none"}) gives no shape data; physical prims that are not convex keep one hull.");
+                return ShapeId.Invalid;
+            }
+            try
+            {
+                if (!meshmerizer.TryGetPrimProfileRings("jolt-prim", pbs, size, MeshLod, out PrimProfileRings rings))
+                    return ShapeId.Invalid;
+                PrimHullCellSet set = PrimHullCells.Build(backend, rings, meshVolume);
+                if (!set.Success)
+                {
+                    PrimCellsNotice("build", $"a physical prim could not be split into convex cells ({set.Failure}); one hull of its points.");
+                    return ShapeId.Invalid;
+                }
+                if (set.CellCount < 2)
+                    return ShapeId.Invalid;     // convex already: the one hull is exactly it
+
+                ShapeId compound = PrimHullCells.CookCompound(backend, set.Cells, out int failed);
+                if (failed > 0 || !compound.IsValid)
+                {
+                    PrimCellsNotice("cook", $"{failed} of {set.CellCount} convex cells of a physical prim could not be built; one hull of its points.");
+                    if (compound.IsValid)
+                        backend.ReleaseShape(compound);
+                    return ShapeId.Invalid;
+                }
+                cellCount = set.CellCount;
+                realVolume = RealVolumeOf(assessment, set.CellsVolume);
+                cellPoints = set.Cells;
+                return compound;
+            }
+            catch (Exception e)
+            {
+                PrimCellsNotice("threw", $"splitting a physical prim into convex cells threw ({e.GetType().Name}: {e.Message}); one hull of its points.");
+                return ShapeId.Invalid;
+            }
+        }
+
+        /// <summary>A mesh volume above the cells' volume by more than this fraction is not believed: the cells hold the whole solid.</summary>
+        internal const double MeshOverCellsTolerance = 0.005;
+
+        // The weight volume of a prim cooked as cells, from the mesher's mesh, or 0 when the cells' volume is to be used.
+        internal double RealVolumeOf(PrimHullCells.MeshAssessment assessment, double cellsVolume)
+        {
+            if (assessment == null)
+                return 0.0;
+            if (!assessment.Trusted)
+            {
+                PrimCellsNotice("mass-" + assessment.Reason, $"a physical prim's mesh volume cannot be trusted ({MeshReasonText(assessment.Reason)}); it weighs the volume of its convex cells.");
+                return 0.0;
+            }
+            if (assessment.SignedVolume > cellsVolume * (1.0 + MeshOverCellsTolerance))
+            {
+                PrimCellsNotice("mass-over-cells", "a physical prim's mesh volume is above that of its convex cells, which hold the whole solid; it weighs the volume of its cells.");
+                return 0.0;
+            }
+            return assessment.SignedVolume;
+        }
+
+        private static string MeshReasonText(string reason)
+            => reason == "self-crossing" ? "its surface crosses itself" : reason == "open" ? "its surface has a hole" : "its surface encloses no volume or winds inside out";
+
+        // One notice per reason about a prim that kept its one hull for want of cells. Logged, and kept for the tests.
+        private void PrimCellsNotice(string reason, string text)
+        {
+            string line = $"{LogHeader} {text}";
+            lock (_hullNotices)
+            {
+                if (!_hullNoticeKeys.Add("prim|" + reason))
+                    return;
+                if (_hullNotices.Count < 1000)
+                    _hullNotices.Add(line);
+            }
+            m_log.LogWarning(line);
+        }
+
+        // The asset's hull list as one shape: a compound of its hulls (one hull is the hull itself), each at the prim's scale.
+        // Returns ShapeId.Invalid, and the caller cooks one hull of the mesh's points, when the asset has no list, a list
+        // over the viewer's limits, or no hull in it that can be built. A hull of fewer than four points, or one Jolt cannot
+        // build, is left out. Nothing reaches the native code unless it has passed these checks.
+        private ShapeId CookHullList(IPhysicsBackend backend, IMesh mesh, UUID asset, Vector3 size, out string kind, out int hullCount)
+        {
+            kind = BoxFallbackKind;
+            hullCount = 1;
+            List<List<Vector3>> hulls;
+            try { hulls = (m_mesher as IMesherShapeData)?.GetConvexHulls(mesh, size); }
+            catch (Exception e)
+            {
+                m_log.LogWarning($"{LogHeader} reading the hull list of mesh asset {asset} threw ({e.GetType().Name}: {e.Message}); one hull of the points.");
+                return ShapeId.Invalid;
+            }
+            if (hulls == null || hulls.Count == 0)
+                return ShapeId.Invalid;   // an asset with no hull list: the points hull, as for any physical mesh
+
+            if (!HullListWithinLimits(hulls))
+            {
+                int most = 0;
+                foreach (List<Vector3> h in hulls) most = Math.Max(most, h.Count);
+                HullNotice(asset, "limit", $"hull list of {hulls.Count} hulls, the largest of {most} points, is over the {MaxAssetHulls}-hull, {MaxPointsPerAssetHull}-point limit of the viewer's upload; one hull of the points.");
+                return ShapeId.Invalid;
+            }
+
+            var ids = new List<ShapeId>(hulls.Count);
+            int skipped = 0;
+            foreach (List<Vector3> hull in hulls)
+            {
+                if (hull.Count < 4) { skipped++; continue; }
+                var points = new SVector3[hull.Count];
+                for (int i = 0; i < points.Length; i++)
+                    points[i] = new SVector3(hull[i].X, hull[i].Y, hull[i].Z);
+                try { ids.Add(backend.CreateConvexHullShape(points)); }
+                catch (Exception) { skipped++; }   // not finite, coplanar, collinear...: Jolt's own check, before any native hull exists
+            }
+
+            if (ids.Count == 0)
+            {
+                HullNotice(asset, "none", $"none of the {hulls.Count} hulls in its hull list can be used (fewer than 4 points, or Jolt cannot build them); one hull of the points.");
+                return ShapeId.Invalid;
+            }
+            if (skipped > 0)
+                HullNotice(asset, "skipped", $"{skipped} of {hulls.Count} hulls in its hull list skipped (fewer than 4 points, or Jolt cannot build them); the other {ids.Count} are used.");
+
+            kind = $"{HullListKind} x{ids.Count})";
+            hullCount = ids.Count;
+            if (ids.Count == 1)
+            {
+                Interlocked.Increment(ref _meshShapesCooked);
+                return ids[0];
+            }
+            try
+            {
+                ShapeId compound = backend.CreateHullCompoundShape(ids.ToArray());
+                Interlocked.Increment(ref _meshShapesCooked);
+                return compound;
+            }
+            catch (Exception e)
+            {
+                HullNotice(asset, "compound", $"its {ids.Count} hulls could not be joined into one shape ({e.GetType().Name}: {e.Message}); one hull of the points.");
+                kind = BoxFallbackKind;
+                hullCount = 1;
+                return ShapeId.Invalid;
+            }
+            finally
+            {
+                // The compound holds its own reference to each hull. Nothing is left to release when it was one hull.
+                if (ids.Count > 1)
+                    foreach (ShapeId id in ids)
+                        backend.ReleaseShape(id);
+            }
+        }
+
+        /// <summary>The kind of a shape cooked from an asset's hull list, up to the number of hulls: "hulls(asset x3)".</summary>
+        internal const string HullListKind = "hulls(asset";
+
+        // Each notice about an asset's hull list that was logged (one per asset and reason), for the tests.
+        private readonly List<string> _hullNotices = new List<string>();
+        private readonly HashSet<string> _hullNoticeKeys = new HashSet<string>();
+        internal string[] HullNotices { get { lock (_hullNotices) return _hullNotices.ToArray(); } }
+
+        // The limits the Second Life viewer's upload puts on a convex decomposition: at most 256 hulls, of at most 256
+        // points each (indra/llphysicsextensionsos/llconvexdecompositionvhacd.cpp MAX_HULLS and MAX_VERTICES_PER_HULL; the
+        // uploader warns above 256 points in a hull, indra/newview/llmodelpreview.cpp). An asset over either is not trusted.
+        internal const int MaxAssetHulls = 256;
+        internal const int MaxPointsPerAssetHull = 256;
+
+        internal static bool HullListWithinLimits(List<List<OpenMetaverse.Vector3>> hulls)
+        {
+            if (hulls.Count > MaxAssetHulls)
+                return false;
+            foreach (List<OpenMetaverse.Vector3> hull in hulls)
+                if (hull.Count > MaxPointsPerAssetHull)
+                    return false;
+            return true;
+        }
+
+        /// <summary>The shape kind of a prim cooked as its bounding box.</summary>
+        internal const string BoxFallbackKind = "bbox(fallback)";
+
+        // A non-physical mesh smaller than this (m) on every side is cooked as a box.
+        internal const float SmallMeshSide = 0.05f;
+
+        // How long a failed asset is left alone before the next prim that needs it asks again (a grid's asset service can
+        // be down for a while; the prims are still boxes meanwhile).
+        internal const long MeshAssetRetryMs = 10 * 60 * 1000;
+
+        /// <summary>The clock the retry wait reads, in milliseconds. A test sets it.</summary>
+        internal Func<long> MeshAssetClockMs = () => Environment.TickCount64;
+
+        /// <summary>How many assets have been logged as missing or unreadable (one line per asset).</summary>
+        internal int MeshAssetFailuresLogged => Volatile.Read(ref _meshAssetFailuresLogged);
+        private int _meshAssetFailuresLogged;
+
+        private readonly object _meshAssetLock = new object();
+        private readonly Dictionary<UUID, List<JoltPrim>> _meshAssetWaiting = new Dictionary<UUID, List<JoltPrim>>();
+        private readonly Dictionary<UUID, long> _meshAssetFailedAt = new Dictionary<UUID, long>();
+        private readonly HashSet<UUID> _meshAssetFailureLogged = new HashSet<UUID>();
+
+        internal static bool IsMeshPrim(PrimitiveBaseShape pbs) =>
+            pbs != null && pbs.SculptEntry && pbs.SculptType == (byte)SculptType.Mesh;
+
+        /// <summary>The bit of a sculpt's type byte that draws it inside out (the mirror bit is 128).</summary>
+        internal const byte SculptInvertFlag = 64;
+
+        // A sculpted prim (a sculpt map, a JPEG 2000 texture) is read by the same mesher from the same field as a mesh, so it
+        // is fetched the same way.
+        internal static bool IsSculptPrim(PrimitiveBaseShape pbs) =>
+            pbs != null && pbs.SculptEntry && pbs.SculptType != (byte)SculptType.Mesh;
+
+        /// <summary>True when a mesh or sculpted prim's shape cannot be cooked until its asset is fetched and the scene can fetch it.</summary>
+        internal bool WantsMeshAsset(PrimitiveBaseShape pbs) =>
+            m_mesher != null && RequestAssetMethod != null && (IsMeshPrim(pbs) || IsSculptPrim(pbs)) && !pbs.SculptTexture.IsZero()
+            && (pbs.SculptData == null || pbs.SculptData.Length == 0);
+
+        /// <summary>Ask for a mesh asset for a prim, unless it is on its way for another prim (the prim joins them) or was
+        /// found missing or unreadable a short while ago (the prim stays a box).</summary>
+        internal void RequestMeshAsset(JoltPrim prim, UUID assetId)
+        {
+            RequestAssetDelegate request = RequestAssetMethod;
+            if (request == null || assetId.IsZero())
+                return;
+            lock (_meshAssetLock)
+            {
+                if (_meshAssetFailedAt.TryGetValue(assetId, out long failedAt))
+                {
+                    if (MeshAssetClockMs() - failedAt < MeshAssetRetryMs)
+                        return;
+                    _meshAssetFailedAt.Remove(assetId);
+                }
+                if (_meshAssetWaiting.TryGetValue(assetId, out List<JoltPrim> waiting))
+                {
+                    if (!waiting.Contains(prim))
+                        waiting.Add(prim);
+                    return;
+                }
+                _meshAssetWaiting[assetId] = new List<JoltPrim> { prim };
+            }
+            try
+            {
+                request(assetId, asset => MeshAssetReceived(assetId, asset));
+            }
+            catch (Exception e)
+            {
+                MeshAssetFailed(assetId, $"the request threw ({e.GetType().Name}: {e.Message})");
+            }
+        }
+
+        // The answer to a request, on whatever thread the asset service uses. Each prim still waiting, and still holding
+        // this mesh, is cooked from the bytes; a prim removed meanwhile is left alone.
+        private void MeshAssetReceived(UUID assetId, AssetBase asset)
+        {
+            List<JoltPrim> waiting;
+            lock (_meshAssetLock)
+                _meshAssetWaiting.Remove(assetId, out waiting);
+            if (waiting == null || _backend == null)
+                return;
+
+            byte[] data = asset?.Data;
+            if (data == null || data.Length == 0)
+            {
+                MeshAssetFailed(assetId, asset == null ? "the asset service has no such asset" : "the asset has no data");
+                return;
+            }
+
+            bool anyCooked = false, anyBox = false;
+            foreach (JoltPrim prim in waiting)
+            {
+                try
+                {
+                    switch (prim.MeshAssetArrived(assetId, data))
+                    {
+                        case JoltPrim.MeshArrival.Cooked: anyCooked = true; break;
+                        case JoltPrim.MeshArrival.Unreadable: anyBox = true; break;
+                    }
+                }
+                catch (Exception e)
+                {
+                    m_log.LogWarning($"{LogHeader} cooking mesh asset {assetId} for prim {prim.LocalID} threw ({e.GetType().Name}: {e.Message}); it stays a bounding box.");
+                }
+            }
+            if (anyBox && !anyCooked)
+                MeshAssetFailed(assetId, "its mesh could not be read");
+        }
+
+        private void MeshAssetFailed(UUID assetId, string why)
+        {
+            bool first;
+            lock (_meshAssetLock)
+            {
+                _meshAssetWaiting.Remove(assetId);
+                _meshAssetFailedAt[assetId] = MeshAssetClockMs();
+                first = _meshAssetFailureLogged.Add(assetId);
+            }
+            if (!first)
+                return;
+            Interlocked.Increment(ref _meshAssetFailuresLogged);
+            m_log.LogWarning($"{LogHeader} mesh asset {assetId}: {why}; prims that use it stay bounding boxes.");
         }
 
         // Characterize RAW mesher output (counts, bounds, enclosed volume). Duplicate-vertex count uses mm-quantized coords (O(n)); degenerate = topological
@@ -1318,6 +2274,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // so every such cast goes to the simulator's budget. When the caller can mark a script cast (a flag set by
         // LSL_Api.llCastRay), this is the one place to send it to RayCastBudget.Script instead.
         internal static RayCastBudget BudgetFor(RayFilterFlags filter) => RayCastBudget.Simulator;
+
+        /// <summary>Tells core that a physical prim's actor turns its body toward the rotation target it is given
+        /// (JoltPrim.AngularTarget.cs), so core hands llRotLookAt, llLookAt and the rotate-drag to the actor instead of
+        /// steering the body's angular velocity itself.</summary>
+        public override bool SupportsRotationTarget() => true;
 
         /// <summary>
         /// The clock the ray cast budgets are measured with (PhysicsBackendSettings.RayCastClock); null is the wall
@@ -1463,7 +2424,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         internal void RegisterVehicle(JoltPrim prim)
         {
-            lock (_vehicles) _vehicles.Add(prim);
+            lock (_vehicles)
+            {
+                if (!prim.IsRemoved) _vehicles.Add(prim);   // checked under the lock Destroy's removal takes, after IsRemoved is set
+            }
         }
 
         internal void UnregisterVehicle(JoltPrim prim)
@@ -1480,6 +2444,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 vehicles = new JoltPrim[_vehicles.Count];
                 _vehicles.CopyTo(vehicles);
             }
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             foreach (JoltPrim v in vehicles)
             {
                 try { v.StepVehicle(timeStep); }
@@ -1489,7 +2454,37 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     m_log.LogError($"{LogHeader} vehicle step EXCEPTION for prim {v.LocalID}: {e}");
                 }
             }
+            Interlocked.Add(ref _vehicleStepTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
+            Interlocked.Add(ref _vehicleStepCalls, vehicles.Length);
         }
+
+        // The time the per-Update vehicle drive has taken (Stopwatch ticks) and the vehicle steps it made, for the cost
+        // figures of the tests.
+        private long _vehicleStepTicks, _vehicleStepCalls;
+        internal long VehicleStepTicks => Interlocked.Read(ref _vehicleStepTicks);
+        internal long VehicleStepCalls => Interlocked.Read(ref _vehicleStepCalls);
+        // The time the vehicles' step force providers have taken inside the collision steps (Stopwatch ticks).
+        private long _vehicleOnStepTicks, _vehicleOnStepCalls;
+        internal void AddVehicleStepTicks(long ticks)
+        {
+            Interlocked.Add(ref _vehicleOnStepTicks, ticks);
+            Interlocked.Increment(ref _vehicleOnStepCalls);
+        }
+        // The time the target controllers' step provider (move to target, hover, look-at) has taken inside the collision steps
+        // (Stopwatch ticks), and the calls.
+        private long _basicForcesOnStepTicks, _basicForcesOnStepCalls;
+        internal void AddBasicForcesStepTicks(long ticks)
+        {
+            Interlocked.Add(ref _basicForcesOnStepTicks, ticks);
+            Interlocked.Increment(ref _basicForcesOnStepCalls);
+        }
+        internal long BasicForcesOnStepTicks => Interlocked.Read(ref _basicForcesOnStepTicks);
+        internal long BasicForcesOnStepCalls => Interlocked.Read(ref _basicForcesOnStepCalls);
+        internal long VehicleOnStepTicks => Interlocked.Read(ref _vehicleOnStepTicks);
+        internal long VehicleOnStepCalls => Interlocked.Read(ref _vehicleOnStepCalls);
+
+        // Everything the vehicle drive costs: the Update-rate part and the collision steps' part.
+        internal long VehicleDriveTicks => VehicleStepTicks + VehicleOnStepTicks;
 
         // Prims with a script force or torque set (llSetForce, llSetTorque): each is applied before every backend step,
         // next to the vehicle drive, until the script sets it back to zero.
@@ -1499,7 +2494,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             lock (_scriptForced)
             {
-                if (on) _scriptForced.Add(prim);
+                if (on) { if (!prim.IsRemoved) _scriptForced.Add(prim); }
                 else _scriptForced.Remove(prim);
             }
         }
@@ -1531,7 +2526,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         {
             lock (_targeted)
             {
-                if (on) _targeted.Add(prim);
+                if (on) { if (!prim.IsRemoved) _targeted.Add(prim); }
                 else _targeted.Remove(prim);
             }
         }
@@ -1545,6 +2540,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 prims = new JoltPrim[_targeted.Count];
                 _targeted.CopyTo(prims);
             }
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
             foreach (JoltPrim p in prims)
             {
                 bool keep = true;
@@ -1556,7 +2552,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 if (!keep)
                     lock (_targeted) _targeted.Remove(p);
             }
+            Interlocked.Add(ref _basicForcesUpdateTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
+            Interlocked.Add(ref _basicForcesUpdateCalls, prims.Length);
         }
+
+        // The time the Update-rate part of the target controllers has taken (Stopwatch ticks) and the prims it made a step for.
+        private long _basicForcesUpdateTicks, _basicForcesUpdateCalls;
+        internal long BasicForcesUpdateTicks => Interlocked.Read(ref _basicForcesUpdateTicks);
+        internal long BasicForcesUpdateCalls => Interlocked.Read(ref _basicForcesUpdateCalls);
 
         internal void MarkLinksetDirty(JoltPrim root)
         {
@@ -1608,7 +2611,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             IPhysicsBackend backend = _backend;
             if (backend == null)
                 return 1f;
-            NoteHeartbeatGap();
+            NoteHeartbeatGap(timeStep);
+            SimTime += timeStep;
             backend.BeginRayCastBudget();   // [Jolt] RayCastBudgetMs and RayCastSimulatorBudgetMs are per heartbeat, at every PhysicsStepRate
             if (_substeps != null)
                 return SimulateSubsteps(timeStep);
@@ -1626,6 +2630,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             // just below, before StepOnce), so it can NEVER free-fall during load or the reload stall. Mirrors
             // BulletSim draining ALL taints before PE.PhysicsStep().
             DrainPendingActivation();
+
+            // Keyframed prims take the pose their object was last given, over the time this step covers.
+            StepKinematics(timeStep);
 
             // Run each active vehicle's controller BEFORE the physics step, so its
             // velocity changes/forces/torques are consumed by THIS step (BulletSim's BeforeStep model).
@@ -1709,12 +2716,87 @@ namespace OpenSim.Region.PhysicsModules.Jolt
         // no physics step leaves its gap pending; the next heartbeat that reports keeps the longer one.
         private long _lastSimulateTimestamp;
         private long _pendingGapTicks;
-        private void NoteHeartbeatGap()
+        private void NoteHeartbeatGap(float timeStep)
         {
-            long now = System.Diagnostics.Stopwatch.GetTimestamp();
-            if (_lastSimulateTimestamp != 0 && now - _lastSimulateTimestamp > _pendingGapTicks)
-                _pendingGapTicks = now - _lastSimulateTimestamp;
+            long now = HeartbeatClock != null ? HeartbeatClock() : System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastSimulateTimestamp != 0)
+            {
+                long gap = now - _lastSimulateTimestamp;
+                if (gap > _pendingGapTicks)
+                    _pendingGapTicks = gap;
+                NoteDilationSample(timeStep, gap);
+            }
             _lastSimulateTimestamp = now;
+        }
+
+        // Time dilation (PhysicsScene.TimeDilation; llGetRegionTimeDilation): the simulated seconds of the last
+        // DilationWindowHeartbeats heartbeats over the real seconds between them, at most 1. A heartbeat is asked to
+        // simulate a fixed time; one that arrives late loses the difference, so the ratio falls below 1 while the region
+        // runs behind and returns to 1 when it catches up. Averaging over about a second keeps the timer's jitter from
+        // showing as dilation. The Second Life wiki page for llGetRegionTimeDilation: 0.0 is full dilation and 1.0 none.
+        private const int DilationWindowHeartbeats = 11;
+        private readonly double[] _dilationStepSeconds = new double[DilationWindowHeartbeats];
+        private readonly double[] _dilationGapSeconds = new double[DilationWindowHeartbeats];
+        private int _dilationCount;
+        private int _dilationNext;
+        private volatile float _timeDilation = 1f;
+
+        public override float TimeDilation => _timeDilation;
+
+        private void NoteDilationSample(float timeStep, long gapTicks)
+        {
+            _dilationStepSeconds[_dilationNext] = timeStep;
+            _dilationGapSeconds[_dilationNext] = gapTicks / (double)System.Diagnostics.Stopwatch.Frequency;
+            _dilationNext = (_dilationNext + 1) % DilationWindowHeartbeats;
+            if (_dilationCount < DilationWindowHeartbeats)
+                _dilationCount++;
+            double steps = 0, gaps = 0;
+            for (int i = 0; i < _dilationCount; i++)
+            {
+                steps += _dilationStepSeconds[i];
+                gaps += _dilationGapSeconds[i];
+            }
+            _timeDilation = gaps <= steps ? 1f : (float)(steps / gaps);
+        }
+
+        // Bodies kept inside the region's border (JoltPrim.KeepInsideBorder) that this step carried across it. The body is put
+        // back and the avatars standing on it are moved with it once the character drain has run, so that the avatars' cached
+        // state is the one they are moved from.
+        private readonly List<(JoltPrim Prim, Vector3 Before)> _borderPins = new List<(JoltPrim, Vector3)>();
+
+        internal void QueueBorderPin(JoltPrim prim, Vector3 before)
+        {
+            lock (_borderPins) _borderPins.Add((prim, before));
+        }
+
+        private void FlushBorderPins()
+        {
+            (JoltPrim Prim, Vector3 Before)[] pins;
+            lock (_borderPins)
+            {
+                if (_borderPins.Count == 0) return;
+                pins = _borderPins.ToArray();
+                _borderPins.Clear();
+            }
+            foreach ((JoltPrim prim, Vector3 before) in pins)
+            {
+                try { prim.FinishBorderPin(before); }
+                catch (Exception e) { m_log.LogError($"{LogHeader} keeping prim {prim.LocalID} inside the border EXCEPTION: {e}"); }
+            }
+        }
+
+        // Puts the avatars that stand on this body back on it after it was set back from `before` to `now`.
+        internal void MoveCharactersStandingOn(BodyId body, Vector3 before, Vector3 now)
+        {
+            List<JoltCharacter> avs;
+            lock (_avatars)
+                avs = new List<JoltCharacter>(_avatars.Values);
+            foreach (JoltCharacter a in avs)
+            {
+                BodyId ground = a.GroundBody;
+                if (ground.IsValid && ground.Value == body.Value)
+                    a.PlaceBackOnGround(before, now);
+            }
         }
 
         // Everything after the backend step: metrics, capacity, the body / character drains and the collision
@@ -1729,19 +2811,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             JoltMetrics.RecordStep(RegionName, physicsMs, r.ActiveBodyCount, in timing, gapMs, timeStep * 1000.0,   // step-time instrumentation (`jolt metrics`)
                 backend.RayCastsRefused(RayCastBudget.Script), backend.RayCastsRefused(RayCastBudget.Simulator));
 
-            // Windowed per-frame diagnostic (set by a drop): is Step advancing with a REAL dt, is the
-            // just-dropped body in our active set, and is its Z actually changing? It tells apart why a
-            // drop might hang - dt=0 => idle-step stall; active=1 but
-            // liveZ frozen => body active-but-not-integrated (deeper); active=0 => activation lost.
-            if (_stepCount <= _logStepsUntil && _drops.Count > 0)
-            {
-                DropTrack td = _drops[_drops.Count - 1];
-                float lz = float.NaN, vz = float.NaN; bool ja = false;
-                lock (_prims)
-                    if (_prims.TryGetValue(td.LocalId, out JoltPrim jd) && backend.TryGetBodyState(jd.BodyHandle, out BodyState sd))
-                    { lz = sd.Position.Z; vz = sd.LinearVelocity.Z; ja = (sd.Flags & BodyStateFlags.Active) != 0; }
-                m_log.LogDebug($"{LogHeader} [dropframe] step={_stepCount} dt={timeStep:0.0000} active={r.ActiveBodyCount} updates={r.BodyUpdateCount} box(id={td.LocalId}) liveZ={lz:0.000} vZ={vz:0.000} joltActive={ja}");
-            }
+            _diagnostics?.StepReported(backend, _stepCount, timeStep, in r);   // the test commands' per-frame drop log
 
             if (r.BodyBufferOverflowed) _bodyOverflowFrames++;
             if (r.CharacterUpdateCount >= _charBuf.Length) _charFullFrames++;
@@ -1756,8 +2826,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 lock (_prims)
                     _prims.TryGetValue(bs.UserData, out p);
                 p?.ApplyStepState(in bs);
-                if (_drops.Count > 0)
-                    UpdateDropTelemetry(in bs);
+                _diagnostics?.BodyUpdated(in bs);   // the test commands' drop tracker
             }
 
             // Character drain: the avatar equivalent of the body drain above. The backend stepped
@@ -1773,6 +2842,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                     _avatars.TryGetValue(cs.Character.Value, out a);
                 a?.ApplyCharacterState(in cs);
             }
+
+            FlushBorderPins();
 
             DispatchContacts(_contactBuf, contactCount, contactsOverflowed, mergeSubsteps);
 
@@ -1816,6 +2887,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             PushForceScale = timeStep / dt;
             if (n == 0)
                 return 1f;   // nothing stepped: no reports, and no collision_end for contacts that were not re-checked
+            StepKinematics(n * dt);   // the time the steps of this heartbeat cover; a heartbeat that steps nothing leaves the pose for the next
 
             // Held for the whole heartbeat: a teardown that lands between two steps disposes the backend (whose steps
             // then return nothing) but cannot null it out from under this loop. A teardown that landed after Simulate
@@ -1992,6 +3064,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             }
 
             _collisions.BeginFrame();
+            _collisions.Now = SimTime;
             if (mergeSubsteps)
                 _framePairs.Clear();
             for (int i = 0; i < contactCount; i++)
@@ -2082,11 +3155,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             // Deliver this frame's sets (outside the lock).
             foreach (KeyValuePair<uint, CollisionEventUpdate> kv in _collisions.Current)
             {
-                if (!_collisions.ShouldDeliver(kv.Key, kv.Value))
-                    continue;
                 if (_framePrims.TryGetValue(kv.Key, out JoltPrim p))
-                    p.SendCollisionUpdate(kv.Value);
-                else if (_frameAvatars.TryGetValue(kv.Key, out JoltCharacter a))
+                {
+                    // A part's repeats keep the collision event's documented rate; an avatar's updates (the collision
+                    // plane under the feet, impact damage) go every heartbeat.
+                    if (_collisions.ShouldDeliverToPart(kv.Key, kv.Value))
+                        p.SendCollisionUpdate(kv.Value);
+                }
+                else if (_collisions.ShouldDeliver(kv.Key, kv.Value) && _frameAvatars.TryGetValue(kv.Key, out JoltCharacter a))
                     a.SendCollisionUpdate(kv.Value);
             }
 
@@ -2137,8 +3213,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt
             IPhysicsBackend backend = _backend;   // read once: a teardown on another thread nulls it
             if (backend == null)
                 return;
+            // The query stops at the length of the span it is given, so a full span may mean more bodies overlap: ask again
+            // with a span twice as long until one comes back with room to spare.
             Span<BodyId> found = stackalloc BodyId[64];
-            int n = backend.OverlapBox(center, half + new SVector3(SupportWakeMargin), orientation, QueryFilter.Dynamic, found);
+            SVector3 reach = half + new SVector3(SupportWakeMargin);
+            int n = backend.OverlapBox(center, reach, orientation, QueryFilter.Dynamic, found);
+            while (n == found.Length)
+            {
+                found = new BodyId[found.Length * 2];
+                n = backend.OverlapBox(center, reach, orientation, QueryFilter.Dynamic, found);
+            }
             for (int i = 0; i < n; i++)
             {
                 if (!backend.TryGetBodyUserData(found[i], out uint id) || id == except)
@@ -2147,6 +3231,70 @@ namespace OpenSim.Region.PhysicsModules.Jolt
                 lock (_prims)
                     _prims.TryGetValue(id, out prim);
                 prim?.WakeAfterSupportMoved();
+            }
+        }
+
+        // Whether a physical prim or an avatar stands on or against the box (within SupportWakeMargin of it), other than the prim
+        // `except`: something that a move of the box would leave behind or throw. Used when a fixed prim is set to a new place
+        // and [Jolt] MovedPrimsCarryRiders is on: see JoltPrim.NoteMoveSet.
+        internal bool AnythingRestsOn(SVector3 center, SVector3 half, SQuaternion orientation, uint except)
+        {
+            IPhysicsBackend backend = _backend;   // read once: a teardown on another thread nulls it
+            if (backend == null)
+                return false;
+            Span<BodyId> found = stackalloc BodyId[16];
+            int n = backend.OverlapBox(center, half + new SVector3(SupportWakeMargin), orientation, QueryFilter.Dynamic | QueryFilter.Avatar, found);
+            if (n == found.Length)
+                return true;   // a crowd: some of it is not the prim itself
+            for (int i = 0; i < n; i++)
+                if (!backend.TryGetBodyUserData(found[i], out uint id) || id != except)
+                    return true;
+            return false;
+        }
+
+        // A child prim of a fixed linkset has been set from (fromPos, fromRot) to (toPos, toRot), a box of `size`: what stands on it
+        // or rests on it (a physical prim, an avatar; not the prim `except`, the linkset's root, whose body is the compound) is
+        // moved with it, by the same move and turn. The compound is rebuilt with the child in its new place at the next heartbeat; a
+        // body of its own for the child would be needed to give its riders the child's velocity, so they take the child's steps
+        // instead, one with each set. Used under [Jolt] MovedPrimsCarryRiders: see JoltPrim.MoveWithinLinkset.
+        internal void CarryRidersOfChild(SVector3 fromPos, SQuaternion fromRot, SVector3 toPos, SQuaternion toRot, SVector3 size, uint except)
+        {
+            IPhysicsBackend backend = _backend;   // read once: a teardown on another thread nulls it
+            if (backend == null)
+                return;
+            SQuaternion turn = SQuaternion.Normalize(toRot * SQuaternion.Inverse(fromRot));
+            SVector3 half = size * 0.5f;
+            Span<BodyId> found = stackalloc BodyId[32];
+            int n = backend.OverlapBox(fromPos, half + new SVector3(SupportWakeMargin), fromRot, QueryFilter.Dynamic, found);
+            for (int i = 0; i < n; i++)
+            {
+                if (!backend.TryGetBodyUserData(found[i], out uint id) || id == except)
+                    continue;
+                JoltPrim prim;
+                lock (_prims)
+                    _prims.TryGetValue(id, out prim);
+                if (prim == null || !backend.TryGetBodyState(prim.BodyHandle, out BodyState st))
+                    continue;
+                SVector3 at = toPos + SVector3.Transform(st.Position - fromPos, turn);
+                backend.SetBodyPoseAndVelocity(prim.BodyHandle, at, SQuaternion.Normalize(turn * st.Orientation), st.LinearVelocity, st.AngularVelocity);
+                prim.WakeAfterSupportMoved();
+            }
+
+            // An avatar stands on the child when its feet are within SupportWakeMargin plus a step of the child's top and its middle is over
+            // the child (the backend's avatar bodies do not tell which avatar they are, so the avatars are tested by where they are).
+            JoltCharacter[] avatars;
+            lock (_avatars)
+                avatars = new List<JoltCharacter>(_avatars.Values).ToArray();
+            SQuaternion unturn = SQuaternion.Inverse(fromRot);
+            foreach (JoltCharacter avatar in avatars)
+            {
+                Vector3 now = avatar.Position;
+                SVector3 rel = SVector3.Transform(new SVector3(now.X, now.Y, now.Z) - fromPos, unturn);
+                float feet = rel.Z - avatar.Size.Z * 0.5f;
+                if (MathF.Abs(rel.X) > half.X || MathF.Abs(rel.Y) > half.Y || feet < half.Z - 0.3f || feet > half.Z + 0.3f)
+                    continue;
+                SVector3 at = toPos + SVector3.Transform(rel, turn);
+                avatar.Position = new Vector3(at.X, at.Y, at.Z);
             }
         }
 
@@ -2342,6 +3490,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt
 
         public override void Dispose()
         {
+            // The backend's teardown frees every shape it still holds, the shared ones with the rest.
+            lock (_sharedShapeLock)
+            {
+                _sharedShapes.Clear();
+                _sharedByShape.Clear();
+                _bases.Clear();
+            }
             _backend?.Dispose();   // backend teardown -> Foundation.Shutdown
             _backend = null;
         }

@@ -40,9 +40,21 @@ public sealed class HarnessOptions
     public double PhysicsRateHz = DefaultPhysicsRate();
     public float? SlopeDeg;
     public float? Duration;
+    /// <summary>A raw float32 terrain file (256 x 256, x fastest) for the scenarios that take one (<see cref="Scenario.AllowsTerrainFile"/>).</summary>
+    public string TerrainFile;
+    /// <summary>A folder for the per-collision-step trace of the scenarios that write one (sled-drop).</summary>
+    public string TraceDir;
     public float? Hold;
     /// <summary>How often a held key re-sends the motor, as a script's control event does while a key is down.</summary>
     public float KeyRepeat = 0.1f;
+    /// <summary>The mouselook scenarios' driver is in mouselook (the simulator's CameraData.MouseLook); false gives the
+    /// same camera with the driver out of mouselook.</summary>
+    public bool DriverInMouselook = true;
+    /// <summary>The mouselook scenarios' camera shakes as a hand on a mouse does: each camera update (<see cref="CameraRateHz"/>
+    /// a second) adds a random yaw and pitch of this standard deviation (degrees) to where the camera looks. 0 = a held camera.</summary>
+    public float CameraNoiseDegrees;
+    public double CameraRateHz = 30.0;
+    public int CameraSeed = 1;
     /// <summary>Feed a driven vehicle the way a region does (see <see cref="InputFeed"/>).</summary>
     public InputFeed Feed = InputFeed.Heartbeat;
     /// <summary>Region feed: seconds from physics turning on to the first control event.</summary>
@@ -78,13 +90,38 @@ public sealed class HarnessOptions
     public float ShotBall = TunnelScenarios.DefaultBall;
     public float ShotSpeed = TunnelScenarios.DefaultSpeed;
     /// <summary>Build every prim and avatar with the values the simulator hands the engine for a new one, instead of
-    /// the harness's own (off by default, so the recorded baselines keep their meaning). A prim gets what
+    /// the harness's own (on by default; <c>--no-sim-defaults</c> gives the earlier harness's values). A prim gets what
     /// SceneObjectPart.AddToPhysics sets on every new actor: the material (wood: friction 0.6, restitution 0.5), density
     /// 1000, gravity multiplier 1, buoyancy 0, and for a root no rotation locks, before it is linked or made a vehicle.
     /// An avatar gets the default appearance's box as ScenePresence.AddToPhysicalScene hands it to AddAvatar (0.2 m taller
     /// than the appearance's size, AvatarAppearance.SetSize), then its rotation, a 100 ms collision subscription and
     /// always-run off. Without it a prim keeps the backend's friction 0.6 and restitution 0, and an avatar is 1.9 m.</summary>
-    public bool SimulatorDefaults;
+    public bool SimulatorDefaults
+    {
+        get => SimulatorPrims && SimulatorAvatars;
+        set => SimulatorPrims = SimulatorAvatars = value;
+    }
+    /// <summary>The prim half of <see cref="SimulatorDefaults"/> (the material, density and other values a new actor gets).</summary>
+    public bool SimulatorPrims = true;
+    /// <summary>The avatar half of <see cref="SimulatorDefaults"/> (the appearance's box, the collision subscription).</summary>
+    public bool SimulatorAvatars = true;
+    /// <summary>The avatar box's height (m) in place of the one <see cref="SimulatorAvatars"/> picks, for runs that compare
+    /// avatar heights; null keeps the picked box.</summary>
+    public float? AvatarHeight;
+    /// <summary>Give the scene the region's mesher, a Meshmerizer of a load context of its own (<see cref="RegionMesher"/>),
+    /// as a running region does. Without it the scene has no mesher and a prim that is not a box, sphere or cylinder takes
+    /// its bounding box. On by default.</summary>
+    public bool RegionMesher = true;
+    /// <summary>Step the scene once, empty, before the scenario's setup, so the setup's prims and avatars are added to a
+    /// region that has already run a heartbeat, as a rezzed prim or an arriving avatar is. The simulator's region-load
+    /// window (<c>JoltScene.IsRegionLoading</c>) is the time before the first step; a prim loaded from storage is added in
+    /// it, anything else after it. Not done for the region-start vehicle restore, which is the load. On by default.</summary>
+    public bool WarmUpStep = true;
+    /// <summary>Start from the [Jolt] section of RegionServerDefaults.ini, which every simulator reads before its own ini,
+    /// instead of from no keys. On by default.</summary>
+    public bool ShippedConfig = true;
+    /// <summary>Run with the module's own material defaults even where <see cref="MaterialPins"/> holds the earlier ones.</summary>
+    public bool UseDefaults;
     /// <summary>Restore the scenario's vehicle from its record by this route when its setup is done, before the first
     /// heartbeat, instead of leaving it as its script set it up (<see cref="VehicleRestore"/>). Every route but the
     /// physics switch removes the actor and builds a new one from the record at the same place, as the simulator's
@@ -266,7 +303,7 @@ public sealed class RunResult
     /// physics steps are on.</summary>
     public string Label => PhysicsRateHz > 0 ? $"{Scenario}{Variant}/p{Fmt(PhysicsRateHz, "0.#")}" : Scenario + Variant;
 
-    public const string CsvHeader = "t,x,y,z,vx,vy,vz,speed,hspeed,tilt_deg,height,touching,active,ox,oy,oz,ospeed,wx,wy,wz";
+    public const string CsvHeader = "t,x,y,z,vx,vy,vz,speed,hspeed,tilt_deg,height,touching,active,ox,oy,oz,ospeed,wx,wy,wz,ovx,ovy,ovz";
 
     /// <summary>The trace as CSV: one line per heartbeat, invariant culture, fixed decimals.</summary>
     public string ToCsv()
@@ -283,7 +320,8 @@ public sealed class RunResult
               .Append(s.Touching ? '1' : '0').Append(',').Append(s.Active.ToString(CultureInfo.InvariantCulture)).Append(',')
               .Append(Fmt(s.Other.X, "0.0000")).Append(',').Append(Fmt(s.Other.Y, "0.0000")).Append(',').Append(Fmt(s.Other.Z, "0.0000")).Append(',')
               .Append(Fmt(s.OtherSpeed, "0.0000")).Append(',')
-              .Append(Fmt(s.AngularVelocity.X, "0.0000")).Append(',').Append(Fmt(s.AngularVelocity.Y, "0.0000")).Append(',').Append(Fmt(s.AngularVelocity.Z, "0.0000")).Append('\n');
+              .Append(Fmt(s.AngularVelocity.X, "0.0000")).Append(',').Append(Fmt(s.AngularVelocity.Y, "0.0000")).Append(',').Append(Fmt(s.AngularVelocity.Z, "0.0000")).Append(',')
+              .Append(Fmt(s.OtherVelocity.X, "0.0000")).Append(',').Append(Fmt(s.OtherVelocity.Y, "0.0000")).Append(',').Append(Fmt(s.OtherVelocity.Z, "0.0000")).Append('\n');
         }
         return sb.ToString();
     }
@@ -422,7 +460,14 @@ public sealed class Run
     /// adds 0.2 m to the height (AVBOXAJUST).</summary>
     public static readonly Vector3 SimulatorAvatarSize = new(0.45f, 0.6f, 2.1f);
     /// <summary>The avatar box this run uses: <see cref="SimulatorAvatarSize"/> with <see cref="HarnessOptions.SimulatorDefaults"/>.</summary>
-    public Vector3 AvatarBox => Options.SimulatorDefaults ? SimulatorAvatarSize : AvatarSize;
+    public Vector3 AvatarBox
+    {
+        get
+        {
+            Vector3 box = Options.SimulatorAvatars ? SimulatorAvatarSize : AvatarSize;
+            return Options.AvatarHeight is float h ? new Vector3(box.X, box.Y, h) : box;
+        }
+    }
     /// <summary>How far an avatar's capsule centre stands above what it stands on.</summary>
     public float AvatarStandHalf => JoltCharacter.StandHalfFor(AvatarBox);
 
@@ -432,7 +477,7 @@ public sealed class Run
     /// 0, set on a root only). Returns the actor.</summary>
     public PhysicsActor AsSimulatorAdds(PhysicsActor pa, bool root = true)
     {
-        if (!Options.SimulatorDefaults || pa == null)
+        if (!Options.SimulatorPrims || pa == null)
             return pa;
         pa.SetMaterial((int)Material.Wood);
         pa.Density = 1000f;
@@ -450,7 +495,11 @@ public sealed class Run
 
     /// <summary>Physics time stepped so far (s): the backend's steps times their length, which with [Jolt]
     /// PhysicsStepRate on can differ from the heartbeats' time by up to one step.</summary>
-    public double PhysicsTime => Scene.Substepping ? Scene.Substeps.Steps * (double)Scene.Substeps.StepSeconds : Heartbeats * Dt;
+    public double PhysicsTime => Scene.Substepping ? (Scene.Substeps.Steps - WarmUpSubsteps) * (double)Scene.Substeps.StepSeconds : Heartbeats * Dt;
+    /// <summary>The physics steps the warm-up heartbeat (<see cref="HarnessOptions.WarmUpStep"/>) ran, which are not the run's.</summary>
+    internal long WarmUpSubsteps;
+    /// <summary>The region's mesher (<see cref="HarnessOptions.RegionMesher"/>), or null when the run has none.</summary>
+    public IMesher Mesher { get; internal set; }
     /// <summary>Heartbeats run so far.</summary>
     public int Heartbeats;
     /// <summary>Bodies the engine has awake now.</summary>
@@ -460,11 +509,26 @@ public sealed class Run
     /// <summary>The backend's counters now: live bodies and shapes among them.</summary>
     public OpenSim.Region.PhysicsModules.Jolt.Backend.PhysicsCapacityStats Capacity => Scene.CapacityStats();
 
-    /// <summary>A physical sphere prim, as a SceneObjectPart adds one (density 1000).</summary>
-    public PhysicsActor AddSphere(float diameter, Vector3 position)
+    /// <summary>How a prim that is phantom from the start is built. The simulator passes isPhantom to AddPrimShape
+    /// (SceneObjectPart.AddToPhysics); the earlier harness built it solid and set Phantom after, which is what the
+    /// simulator does for a prim that turns phantom later. <see cref="HarnessOptions.SimulatorPrims"/> picks the first.</summary>
+    private PhysicsActor AddPrimShapeAs(string name, PrimitiveBaseShape shape, Vector3 position, Vector3 size, Quaternion rotation,
+                                        bool physical, bool phantom, uint localId)
     {
-        PhysicsActor pa = Scene.AddPrimShape("harness sphere", PrimitiveBaseShape.CreateSphere(), position,
-                                             new Vector3(diameter, diameter, diameter), Quaternion.Identity, true, ActorLocalId);
+        bool atCreation = phantom && Options.SimulatorPrims;
+        PhysicsActor pa = atCreation
+            ? Scene.AddPrimShape(name, shape, position, size, rotation, physical, true, (byte)PhysShapeType.prim, localId)
+            : Scene.AddPrimShape(name, shape, position, size, rotation, physical, localId);
+        if (phantom && !atCreation)
+            pa.Phantom = true;
+        return pa;
+    }
+
+    /// <summary>A physical sphere prim, as a SceneObjectPart adds one (density 1000).</summary>
+    public PhysicsActor AddSphere(float diameter, Vector3 position, bool phantom = false)
+    {
+        PhysicsActor pa = AddPrimShapeAs("harness sphere", PrimitiveBaseShape.CreateSphere(), position,
+                                         new Vector3(diameter, diameter, diameter), Quaternion.Identity, true, phantom, ActorLocalId);
         AsSimulatorAdds(pa);
         pa.Density = 1000f;
         Actor = pa;
@@ -485,9 +549,9 @@ public sealed class Run
     }
 
     /// <summary>The second object: a box prim, physical (density 1000) or not (a fixed wall).</summary>
-    public PhysicsActor AddOtherBox(Vector3 size, Vector3 position, Quaternion rotation, bool physical)
+    public PhysicsActor AddOtherBox(Vector3 size, Vector3 position, Quaternion rotation, bool physical, bool phantom = false)
     {
-        PhysicsActor pa = Scene.AddPrimShape("harness other", PrimitiveBaseShape.CreateBox(), position, size, rotation, physical, OtherLocalId);
+        PhysicsActor pa = AddPrimShapeAs("harness other", PrimitiveBaseShape.CreateBox(), position, size, rotation, physical, phantom, OtherLocalId);
         AsSimulatorAdds(pa);
         if (physical)
             pa.Density = 1000f;
@@ -548,7 +612,7 @@ public sealed class Run
     public PhysicsActor AddAvatarAt(Vector3 position, bool flying)
     {
         PhysicsActor pa = Scene.AddAvatar(ActorLocalId, "Test User", position, AvatarBox, 0f, flying);
-        if (Options.SimulatorDefaults)
+        if (Options.SimulatorAvatars)
         {
             // ScenePresence.AddToPhysicalScene, after AddAvatar: the body's rotation (none for a new arrival), a 100 ms
             // collision subscription, and always-run as the agent last set it (off).
@@ -569,11 +633,15 @@ public sealed class Run
     /// <see cref="HarnessOptions.VehicleScriptAgain"/>.</summary>
     internal readonly List<Action<PhysicsActor>> VehicleCalls = new();
 
+    /// <summary>The run takes the earlier material keys (see <see cref="MaterialPins"/>).</summary>
+    public bool Pinned => MaterialPins.Enabled && !Options.UseDefaults;
+
     public void MakeVehicle(Vehicle type)
     {
         VehiclePart ??= VehicleRestore.NewRecord(Actor);
         VehiclePart.SetVehicleType((int)type);
-        VehicleCalls.Add(a => a.VehicleType = (int)type);
+        bool pinned = Pinned;
+        VehicleCalls.Add(a => { MaterialPins.PinVehicle(a, pinned); a.VehicleType = (int)type; });
     }
 
     public void SetFloat(Vehicle code, float v)
@@ -702,6 +770,8 @@ public sealed class Scenario
     public Func<Run, Sample, bool> PassedThrough;
     /// <summary>A shot scenario: it takes the ball's diameter and speed from the options, and its run is named by them.</summary>
     public bool UsesShot;
+    /// <summary>The scenario can take its ground from <see cref="HarnessOptions.TerrainFile"/>.</summary>
+    public bool AllowsTerrainFile;
 }
 
 public static class Harness
@@ -1048,6 +1118,19 @@ public static class Harness
         },
         new()
         {
+            Name = "mouselook-hold",
+            Description = "VEHICLE_TYPE_CAR with its presets on level ground facing east, VEHICLE_FLAG_MOUSELOOK_STEER, the driver's camera looking along the car's heading (east), shaking as a hand on a mouse does when --camera-noise is given: motor <3,0,0> (slow enough to stay inside the region for 25 s) and angular motor <0,0,1.5> held. For measuring whether the steering hunts.",
+            DefaultDuration = _ => 25f, DefaultHold = _ => 1000f,
+            Setup = r =>
+            {
+                SetupCar(r, false, MouselookSteerFlag);
+                DriverCamera(r, Vector3.UnitX);
+            },
+            Input = r => r.HoldMotor(new Vector3(3f, 0f, 0f), new Vector3(0f, 0f, 1.5f)),
+            Steady = (r, s) => LastSeconds(r, s, 5.0),
+        },
+        new()
+        {
             Name = "mouselook-bank",
             Description = "VEHICLE_TYPE_AIRPLANE with its presets, held up by buoyancy 1, 60 m up facing east, VEHICLE_FLAG_MOUSELOOK_BANK, the driver's camera looking 60 degrees right of east: motor <15,0,0> and angular motor <0.5,0,0> (the fastest it may roll) held for the whole run. The camera's yaw becomes a roll to the right, and banking turns the airplane right toward the camera.",
             DefaultDuration = _ => 15f, DefaultHold = _ => 1000f,
@@ -1345,6 +1428,83 @@ public static class Harness
             Input = r => r.HoldMotor(CarMotor),
         },
 
+        // A test-drive script's car dropped onto level ground, driven, released and left to the end of the run.
+        new()
+        {
+            Name = "drop-drive-script",
+            Description = "A script-set car (VEHICLE_TYPE_CAR, attractor 0.8 / 1 s, LIMIT_ROLL_ONLY removed, deflection, banking, hover and buoyancy 0, sideways friction 0.6 s, forward 12 s) dropped 0.4 m onto level ground; motor <7,0,0> for 6 s, then released and left for 30 s.",
+            DefaultDuration = _ => 36f, DefaultHold = _ => 6f,
+            Setup = r => SetupDropDrive(r, false),
+            Input = r => r.HoldMotor(GarageMotor),
+        },
+        new()
+        {
+            Name = "drop-drive-script-link",
+            Description = "As drop-drive-script, the car a linkset of the sports car's seven parts (a cabin, four wheel cylinders, a headlight and a spoiler on the root box) in place of one box.",
+            DefaultDuration = _ => 36f, DefaultHold = _ => 6f,
+            Setup = r => SetupDropDrive(r, false, true),
+            Input = r => r.HoldMotor(GarageMotor),
+        },
+        new()
+        {
+            Name = "drop-drive-script-old",
+            Description = "As drop-drive-script with the earlier script's values: attractor 0.6 / 1.5 s, LIMIT_ROLL_ONLY kept, sideways friction 2 s, the type's deflection, banking and hover presets.",
+            DefaultDuration = _ => 36f, DefaultHold = _ => 6f,
+            Setup = r => SetupDropDrive(r, true),
+            Input = r => r.HoldMotor(GarageMotor),
+        },
+        new()
+        {
+            Name = "drop-drive-script-old-link",
+            Description = "As drop-drive-script-old, the car a linkset of the sports car's seven parts (a cabin, four wheel cylinders, a headlight and a spoiler on the root box) in place of one box.",
+            DefaultDuration = _ => 36f, DefaultHold = _ => 6f,
+            Setup = r => SetupDropDrive(r, true, true),
+            Input = r => r.HoldMotor(GarageMotor),
+        },
+        new()
+        {
+            Name = "drop-drive-preset",
+            Description = "A VEHICLE_TYPE_CAR with its presets only, dropped 0.4 m onto level ground; motor <7,0,0> for 6 s, then released and left for 30 s.",
+            DefaultDuration = _ => 36f, DefaultHold = _ => 6f,
+            Setup = r => SetupDropDrive(r, null),
+            Input = r => r.HoldMotor(GarageMotor),
+        },
+        new()
+        {
+            Name = "drop-drive-preset-link",
+            Description = "As drop-drive-preset, the car a linkset of the sports car's seven parts (a cabin, four wheel cylinders, a headlight and a spoiler on the root box) in place of one box.",
+            DefaultDuration = _ => 36f, DefaultHold = _ => 6f,
+            Setup = r => SetupDropDrive(r, null, true),
+            Input = r => r.HoldMotor(GarageMotor),
+        },
+        new()
+        {
+            Name = "drop-rock-old-link",
+            Description = "The sports car linkset let fall 1.5 m onto level ground rolled 7 and pitched 5 degrees (as if landing on a slope or a bump), with the earlier test-drive script's values; no key; left 30 s.",
+            DefaultDuration = _ => 30f, DefaultHold = _ => 0f,
+            Setup = r => SetupDropDrive(r, true, true, 1.5f, 7f, 5f, false),
+        },
+        new()
+        {
+            Name = "drop-rock-script-link",
+            Description = "The sports car linkset let fall 1.5 m onto level ground rolled 7 and pitched 5 degrees (as if landing on a slope or a bump), with the current test-drive script's values; no key; left 30 s.",
+            DefaultDuration = _ => 30f, DefaultHold = _ => 0f,
+            Setup = r => SetupDropDrive(r, false, true, 1.5f, 7f, 5f, false),
+        },
+        new()
+        {
+            Name = "drop-rock-old-sitter-link",
+            Description = "The sports car linkset with a 70 kg block at the driver's sit offset let fall 1.5 m onto level ground rolled 7 and pitched 5 degrees (as if landing on a slope or a bump), with the earlier test-drive script's values; no key; left 30 s.",
+            DefaultDuration = _ => 30f, DefaultHold = _ => 0f,
+            Setup = r => SetupDropDrive(r, true, true, 1.5f, 7f, 5f, true),
+        },
+        new()
+        {
+            Name = "drop-rock-script-sitter-link",
+            Description = "The sports car linkset with a 70 kg block at the driver's sit offset let fall 1.5 m onto level ground rolled 7 and pitched 5 degrees (as if landing on a slope or a bump), with the current test-drive script's values; no key; left 30 s.",
+            DefaultDuration = _ => 30f, DefaultHold = _ => 0f,
+            Setup = r => SetupDropDrive(r, false, true, 1.5f, 7f, 5f, true),
+        },
         new()
         {
             Name = "park-wake",
@@ -1398,6 +1558,7 @@ public static class Harness
             {
                 SetupCrashCar(r);
                 r.AddOtherBox(CarSize, new Vector3(CrashStartX + 60f, 85f, Course.Ground + CarSize.Z * 0.5f + 0.02f), West, true);
+                MaterialPins.PinVehicle(r.Other, r.Pinned);
                 r.Other.VehicleType = (int)Vehicle.TYPE_CAR;
                 r.AlsoDriven.Add(r.Other);
             },
@@ -1432,7 +1593,7 @@ public static class Harness
             Gap = GapBelow,
             PassedThrough = (r, s) => s.Position.Z < r.GroundAt(s.Position.X, s.Position.Y),
         },
-    }.Concat(PhantomScenarios.All).Concat(ContactScenarios.All).Concat(AvatarHitScenarios.All).Concat(TunnelScenarios.All).Concat(AvatarForceScenarios.All).Concat(GrabScenarios.All).ToList();
+    }.Concat(PhantomScenarios.All).Concat(ContactScenarios.All).Concat(AvatarHitScenarios.All).Concat(TunnelScenarios.All).Concat(AvatarForceScenarios.All).Concat(GrabScenarios.All).Concat(SpinScenarios.All).Concat(SeamScenarios.All).Concat(KinematicScenarios.All).Concat(SledScenarios.All).ToList();
 
     private static readonly Quaternion West = Quaternion.CreateFromEulers(0f, 0f, MathF.PI);
     private static readonly Vector3 CrashMotor = new(20f, 0f, 0f);
@@ -1485,11 +1646,51 @@ public static class Harness
     /// ScenePresence hands it to the vehicle's root actor once the driver's controls are taken.</summary>
     private static void DriverCamera(Run r, Vector3 at)
     {
+        HarnessOptions o = r.Options;
+        if (o.CameraNoiseDegrees > 0f)
+        {
+            // A shaking camera: a new offset at every camera update, held until the next (simulated time).
+            float yaw0 = MathF.Atan2(at.Y, at.X);
+            float sigma = o.CameraNoiseDegrees * MathF.PI / 180f;
+            var rng = new Random(o.CameraSeed);
+            long last = long.MinValue;
+            long? t0 = null;
+            float dyaw = 0f, dpitch = 0f;
+            float Gauss() => (float)(Math.Sqrt(-2.0 * Math.Log(1.0 - rng.NextDouble())) * Math.Cos(2.0 * Math.PI * rng.NextDouble()));
+            r.Actor.OnPhysicsRequestingCameraData += () =>
+            {
+                // The time of the step reading the camera: the vehicle controller's clock, which moves with each physics
+                // step (the harness's own time moves once a heartbeat); the harness time before a controller has one.
+                double now = r.Now;
+                Func<DateTime> clock = (r.Actor as JoltPrim)?.VehicleControl?.Clock;
+                if (clock != null)
+                {
+                    long ticks = clock().Ticks;
+                    t0 ??= ticks - (long)(r.Now * TimeSpan.TicksPerSecond);
+                    now = (ticks - t0.Value) / (double)TimeSpan.TicksPerSecond;
+                }
+                long tick = (long)Math.Floor(now * o.CameraRateHz + 1e-9);
+                if (tick != last)
+                {
+                    last = tick;
+                    dyaw = Gauss() * sigma;
+                    dpitch = Gauss() * sigma;
+                }
+                float yaw = yaw0 + dyaw;
+                return new CameraData
+                {
+                    CameraAtAxis = new Vector3(MathF.Cos(dpitch) * MathF.Cos(yaw), MathF.Cos(dpitch) * MathF.Sin(yaw), MathF.Sin(dpitch)),
+                    CameraRotation = Quaternion.CreateFromEulers(0f, -dpitch, yaw),
+                    MouseLook = o.DriverInMouselook,
+                };
+            };
+            return;
+        }
         var camera = new CameraData
         {
-            CameraAtAxis = Vector3.Normalize(at),
+            CameraAtAxis = Vector3.Normalize(in at),
             CameraRotation = Quaternion.CreateFromEulers(0f, 0f, MathF.Atan2(at.Y, at.X)),
-            MouseLook = true,
+            MouseLook = r.Options.DriverInMouselook,
         };
         r.Actor.OnPhysicsRequestingCameraData += () => camera;
     }
@@ -1525,6 +1726,67 @@ public static class Harness
         r.ApplyVehicleOverrides();
     }
 
+    // A sports car's linkset: a 3.4 x 1.5 x 0.45 m root box, a cabin, four wheel cylinders on their sides (their bottoms level
+    // with the ground when the root centre is 0.52 m up), a headlight and a spoiler. Facing east, dropped `drop` metres.
+    private static void AddSportsCar(Run r, float x, float y, float drop, float rollDeg = 0f, float pitchDeg = 0f, bool sitter = false)
+    {
+        var rootSize = new Vector3(3.4f, 1.5f, 0.45f);
+        var centre = new Vector3(x, y, r.GroundAt(x, y) + 0.52f + drop);
+        Quaternion lean = Quaternion.CreateFromEulers((r.Options.CrashAngle + rollDeg) * MathF.PI / 180f, pitchDeg * MathF.PI / 180f, 0f);   // --crash-angle adds to the roll
+        PhysicsActor root = r.AddBox(rootSize, centre, lean);
+        uint id = 1100;
+        void Part(PrimitiveBaseShape shape, Vector3 at, Vector3 size, Quaternion rot) => r.AddPart(shape, size, centre + Vector3.Transform(at, lean), lean * rot, true, id++, root);
+        Quaternion onSide = Quaternion.CreateFromEulers(MathF.PI / 2f, 0f, 0f);
+        Part(PrimitiveBaseShape.CreateBox(), new Vector3(-0.2f, 0f, 0.4f), new Vector3(1.5f, 1.3f, 0.4f), Quaternion.Identity);
+        foreach (var (wx, wy) in new[] { (1.05f, 0.85f), (1.05f, -0.85f), (-1.05f, 0.85f), (-1.05f, -0.85f) })
+            Part(PrimitiveBaseShape.CreateCylinder(), new Vector3(wx, wy, -0.17f), new Vector3(0.7f, 0.7f, 0.3f), onSide);
+        Part(PrimitiveBaseShape.CreateBox(), new Vector3(1.72f, 0f, 0.05f), new Vector3(0.12f, 0.9f, 0.14f), Quaternion.Identity);
+        Part(PrimitiveBaseShape.CreateBox(), new Vector3(-1.55f, 0f, 0.5f), new Vector3(0.45f, 1.4f, 0.06f), Quaternion.Identity);
+        if (sitter)
+        {
+            // A seated driver as a 70 kg block at the sit offset (-0.25, 0, 0.62 from the root centre), density 70 / 0.064 m3.
+            r.AddPart(PrimitiveBaseShape.CreateBox(), new Vector3(0.4f, 0.4f, 0.4f), centre + Vector3.Transform(new Vector3(-0.25f, 0f, 0.62f), lean), lean, true, id++, root, 70f / 0.064f);
+        }
+    }
+
+    private static readonly Vector3 GarageMotor = new(7f, 0f, 0f);
+
+    /// <summary>The drop-drive scenarios: a car box 0.4 m above level ground facing east. <paramref name="earlierScript"/>
+    /// null leaves the type's presets; false sets what a current test-drive script sets; true what an earlier one set.</summary>
+    private static void SetupDropDrive(Run r, bool? earlierScript, bool linkset = false, float drop = 0.4f, float roll = 0f, float pitch = 0f, bool sitter = false)
+    {
+        if (linkset)
+            AddSportsCar(r, 165f, 85f, drop, roll, pitch, sitter);
+        else
+            r.AddBox(CarSize, new Vector3(165f, 85f, r.GroundAt(165f, 85f) + CarSize.Z * 0.5f + drop), Quaternion.Identity);
+        r.MakeVehicle(Vehicle.TYPE_CAR);
+        if (earlierScript.HasValue)
+        {
+            bool old = earlierScript.Value;
+            r.SetVector(Vehicle.LINEAR_FRICTION_TIMESCALE, new Vector3(12f, old ? 2f : 0.6f, 1000f));
+            r.SetFloat(Vehicle.LINEAR_MOTOR_TIMESCALE, 1f);
+            r.SetFloat(Vehicle.LINEAR_MOTOR_DECAY_TIMESCALE, 0.4f);
+            r.SetVector(Vehicle.ANGULAR_FRICTION_TIMESCALE, new Vector3(2f, 2f, 0.6f));
+            r.SetFloat(Vehicle.ANGULAR_MOTOR_TIMESCALE, 0.4f);
+            r.SetFloat(Vehicle.ANGULAR_MOTOR_DECAY_TIMESCALE, 0.4f);
+            r.SetFloat(Vehicle.VERTICAL_ATTRACTION_EFFICIENCY, old ? 0.6f : 0.8f);
+            r.SetFloat(Vehicle.VERTICAL_ATTRACTION_TIMESCALE, old ? 1.5f : 1f);
+            if (!old)
+            {
+                r.SetFlags(0x2, true);   // VEHICLE_FLAG_LIMIT_ROLL_ONLY
+                r.SetFloat(Vehicle.LINEAR_DEFLECTION_EFFICIENCY, 0f);
+                r.SetFloat(Vehicle.ANGULAR_DEFLECTION_EFFICIENCY, 0f);
+                r.SetFloat(Vehicle.BANKING_EFFICIENCY, 0f);
+                r.SetFloat(Vehicle.HOVER_EFFICIENCY, 0f);
+                r.SetFloat(Vehicle.BUOYANCY, 0f);
+            }
+        }
+        r.ApplyVehicleOverrides();
+        r.NextKey = r.Options.Feed == InputFeed.Region ? r.Options.KeyDelay : 0.0;
+        r.ReleaseAt = r.NextKey + r.Hold;
+        r.StopAtRest = false;
+    }
+
     private static void SetupParked(Run r, bool testCar)
     {
         r.AddBoxOnGround(CarSize, 165f, 85f, Quaternion.Identity);
@@ -1556,6 +1818,24 @@ public static class Harness
     private const double RestSeconds = 1.0;
     private static readonly DateTime ClockEpoch = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>The name of the shipped defaults file, which the harness project copies next to the harness.</summary>
+    public const string ShippedDefaultsFile = "RegionServerDefaults.ini";
+
+    private static IConfig _shippedJolt;
+
+    /// <summary>The [Jolt] section of RegionServerDefaults.ini, which every simulator reads before its own ini.</summary>
+    public static IConfig ShippedJolt()
+    {
+        if (_shippedJolt != null)
+            return _shippedJolt;
+        string path = Path.Combine(AppContext.BaseDirectory, ShippedDefaultsFile);
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"{ShippedDefaultsFile} is not next to the harness; the harness project copies it from Source/OpenSim.Server.RegionServer/AppData.", path);
+        IConfig section = new IniConfigSource(path).Configs["Jolt"]
+            ?? throw new InvalidDataException($"{ShippedDefaultsFile} has no [Jolt] section.");
+        return _shippedJolt = section;
+    }
+
     /// <summary>Runs one scenario at one rate and slope. Writes nothing; the caller decides where output goes.</summary>
     public static RunResult Run(Scenario sc, HarnessOptions o)
     {
@@ -1574,8 +1854,13 @@ public static class Harness
         startup.Set("physics", "Jolt");
         startup.Set("meshing", "Meshmerizer");
         IConfig jolt = config.AddConfig("Jolt");
+        if (o.ShippedConfig)
+            foreach (string key in ShippedJolt().GetKeys())
+                jolt.Set(key, ShippedJolt().Get(key));
         // 0 is one step per heartbeat, set as such: the module's own default is 45 Hz. A --jolt key overrides it.
         jolt.Set("PhysicsStepRate", "0");
+        if (!o.UseDefaults)
+            MaterialPins.Apply(jolt);
         foreach (KeyValuePair<string, string> kv in o.Jolt)
             jolt.Set(kv.Key, kv.Value);
         if (o.PhysicsRateHz > 0)
@@ -1586,6 +1871,8 @@ public static class Harness
         scene.Initialise(config);
         scene.VehicleClock = () => ClockEpoch.AddTicks((long)Math.Round(r.Clock * TimeSpan.TicksPerSecond));
         (float[] heights, float water) = sc.World(slope);
+        if (sc.AllowsTerrainFile && o.TerrainFile != null)
+            heights = SledScenarios.LoadTerrain(o.TerrainFile);
         scene.InitialiseWithoutScene("Harness", Course.Size, Course.Size, heights, water, (float)r.Dt);
 
         var result = new RunResult { Scenario = sc.Name, RateHz = o.RateHz, PhysicsRateHz = scene.Substepping ? scene.Substeps.RateHz : 0, SlopeDeg = slope };
@@ -1596,6 +1883,17 @@ public static class Harness
         try
         {
             r.Clock = -r.Dt * 0.5;
+            if (o.RegionMesher)
+            {
+                r.Mesher = RegionMesher.Create(Path.Combine(Path.GetTempPath(), "harness-sculpt-cache"));
+                r.UseMesher(r.Mesher);
+            }
+            if (o.WarmUpStep && o.VehicleRoute != VehicleRoute.RegionStart)
+            {
+                scene.Simulate((float)r.Dt);
+                if (scene.Substepping)
+                    r.WarmUpSubsteps = scene.Substeps.Steps;
+            }
             sc.Setup(r);
             if (o.VehicleRoute != VehicleRoute.None)
                 RestoreVehicle(r, o.VehicleRoute);
@@ -1874,6 +2172,20 @@ public static class Harness
     private static void SummariseCollision(Run r, Scenario sc, List<Sample> samples, Summary m)
     {
         int impact = samples.FindIndex(s => sc.Gap(r, s) < ContactGap);
+        // A sample is read after its step. A hard hit in the middle of a step can leave the two objects further apart than
+        // ContactGap again by the end of it (the second one thrown ahead faster than the first follows), so no sample ever
+        // reads as touching. The step also counts as the impact when, at the speed they had at its start, the objects
+        // would have met within it.
+        for (int i = 1; i < samples.Count && (impact < 0 || i < impact); i++)
+        {
+            Sample before = samples[i - 1];
+            float closing = (before.Velocity - before.OtherVelocity).Length();
+            if (sc.Gap(r, before) >= ContactGap && sc.Gap(r, before) < closing * (samples[i].T - before.T))
+            {
+                impact = i;
+                break;
+            }
+        }
         if (impact < 0)
             return;
         double t0 = samples[impact].T;

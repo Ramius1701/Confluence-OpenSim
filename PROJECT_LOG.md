@@ -29241,3 +29241,66 @@ Test: PhloxEnvironmentSetTests runs one script under both engines (day info, a g
 water blur, an unknown and an incomplete rule, a reset, the agent form without an Experience) and requires the same
 codes (1, 1, -6, -5, -5, 1, -1) and the same stored region environment. PhloxEnvironmentReplaceTests still passes. The
 agent form's rule parsing through an Experience-permitted avatar is not covered by a test here.
+
+## Jolt synced to Tranquillity develop; #325; #304 saved-state engine routing (2026-10-21)
+
+**Jolt.** Tranquillity merged Legion's Jolt series into develop on 10-19 (#329, #334, #338-#344). The module, backend
+and vehicle controller were three-way merged from our import (`fbd824abeb`, lane/jolt) to develop `7c74cb6bed`; every
+file now equals develop except Confluence's marked edits (JoltPhysicsSharp 2.23 / native 1.1.0 API and record, the two
+mesh-retry hooks). New with it: the `jolt` test commands moved into `Jolt.Diagnostics` (loaded only with
+`[Jolt] TestCommands = true`; added to runprebuild's solution list), Halcyon basic forces and physical limits, step
+providers, prim hull cells, kinematic and angular-target prims. #325 (the mesher's profile rings and path for the hull
+cells) was ported by hand into our Meshmerizer. #326 (natives from the package) is what Confluence already did. Tests
+follow develop's 8-project layout (Jolt, Backend, Vehicles, Diagnostics, Harness, Scenarios.Avatar/Prim/Vehicle).
+
+What the first test run (89 failures) came down to:
+- **Our `[Jolt]` defaults were still the import's.** develop's adds the InWorldz vehicle behaviour, friction / restitution
+  combining, terrain friction, push limits and more, and the harness starts from it, so every InWorldz vehicle, material
+  and push test ran with old settings. `bin/OpenSimDefaults.ini` `[Jolt]` is now develop's section, copied whole. The
+  harness reads a copy made when it is built: rebuild the test projects after changing it.
+- **The native record.** A merge had taken develop's 1.0.4 hashes into `JoltNative.cs`; restored to 1.1.0 (about 150
+  JoltNativeException failures).
+- **Baselines.** develop's `stock-1.0.4-*` folders are for its native and were removed; ours lacked the four new
+  InWorldz runs. All 13 runs were re-recorded for 1.1.0: two runs give identical rows (bar the timed ray cost), and the
+  check passes 13/13. Against develop's 1.0.4 rows every run agrees up to the first contact between bodies (the head-on
+  crash meets at 2.727 s and 19.246 m/s in both, the airplane flies the same) and differs after it.
+- **The complexity scene tests** needed the region services SceneHelpers loads by file name (`bin\OpenSim.Services.*.dll`).
+- **Three contact cases on the 1.1.0 native**, adjusted in the tests with `[Confluence]` notes rather than in the module:
+  the ten-box tower at 22.5 Hz stands within 1 cm but sways just above Jolt's 0.03 m/s sleep threshold (sleeps at 0.035
+  or with 30 velocity steps); the documented airplane's ground roll at 11 Hz with one physics step per heartbeat settles
+  at 13.71 m/s against 14.88-14.90 at the other rates (`PhysicsStepRate` ships at 45, so a region only runs that way if
+  its owner sets it); the InWorldz mouselook car rests 0.94-1.10 degrees short of the camera (develop: 0.9), inside the
+  2.8 degree dead zone. Before the sync the airplane row passed because our old ini set `VehicleContactFriction = 0`.
+  Two more of the same kind: a convex ring dropped on a pole tips off its top at 2.04 m (develop 2.1-2.2; it never
+  threads either way), and a physical mesh scaled to 4 mm thick is refused by Jolt 5.6's hull builder (our backend's
+  hull code equals develop's), so it collides as a 4 mm bounding box instead of the asset's hulls.
+  Worth knowing if Jolt is enabled on a region: vehicles on the ground and resting stacks are where Confluence's native
+  behaves a little differently from Tranquillity's.
+- `doc/JoltPhysics.md` merged to develop's (one new direct wiki quote put into our own words).
+
+Full run after the fixes: the 8 Jolt projects 5,627 passed, 5 skipped (Backend 86, Diagnostics 18, Harness 804,
+Scenarios.Avatar 904, Prim 996, Vehicle 878, Jolt 1,121, Vehicles 820); Phlox suite 6,485 passed, 2 skipped. Jolt stays
+off live; nothing deployed.
+
+**#304: saved state picks the engine** (Tranquillity, merged 10-13; missed in the earlier triage). An unheaded script is
+run by the engine that holds saved state for its item at this asset (the default engine checked first), else by
+`[Startup] DefaultScriptEngine`; a first-line header still wins. So a region can make Phlox its default without
+resetting anything: running scripts stay on YEngine with their state, and new or edited scripts (a new asset) go to
+Phlox. A reset does not move a script; a save does. Core: `IScriptStateProvider`, `Scene.ResolveScriptEngine(..., item)`,
+and `SceneObjectPartInventory.CreateScriptInstance` hands carried state to the engines before choosing, resolves once,
+and removes the object's copy only when the script may start. YEngine (`HasSavedScriptState` reads the `.state` file's
+`Asset` without creating folders or moving it) and Phlox (`StateManager.HasSavedState`, including carried and unwritten
+state) implement it; a store that cannot be read keeps the script on that engine. Phlox also gets
+`[InWorldz.Phlox] ScriptEnginesPath` (state and bytecode under `<path>/Phlox`). Tests from the PR: EngineStateSelectionTests,
+EngineSwitchStateTests, ScriptEnginesPathTests, StateWriteRetryTests and the rigs; with the related classes, 65 pass.
+`doc/PhloxSetup.md` explains it, with a "trying Phlox on one region" recipe, and corrects its claim that Confluence ships
+Phlox as the default.
+
+The engine header itself is old OpenSim: Melanie Thielker added `//XEngine:` / `//DotNetEngine:` (optionally with a
+language) in September 2008 (1602ba6175, then 79ac01fb0c so only the named engine runs it), when a region could load
+both engines. YEngine kept the rule and Phlox reads it the same way.
+
+**The 128,128 "bubble" (asked today):** not from Mobius. No Mobius port touches the world map or map tiles (they are the
+terrain console commands, `InternalPort = MATCHING` and small audit fixes), and a map render does not touch an avatar's
+position. Also checked: the solo-avatar agent-locations placeholder is at local (1,1), not (128,128). The two next steps
+in the 2026-09-29 entry still stand.

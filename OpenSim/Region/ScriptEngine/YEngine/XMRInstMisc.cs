@@ -225,6 +225,21 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             return GetScriptFileName(scriptBasePath, itemID.ToString() + ".state");
         }
 
+        // [Confluence] Tranquillity #304: opens the saved state for reading without creating folders or moving the file
+        // (HasSavedScriptState asks this of every script an object rezzes).
+        public static FileStream OpenSavedState(string scriptBasePath, UUID itemID)
+        {
+            var (oldPath, newPath) = GetScriptFilePaths(scriptBasePath, itemID.ToString() + ".state");
+            try
+            {
+                return File.OpenRead(newPath);
+            }
+            catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+            {
+                return File.OpenRead(oldPath);
+            }
+        }
+
         public string GetScriptFileName(string filename)
         {
             return GetScriptFileName(m_ScriptBasePath, filename);
@@ -237,19 +252,18 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             return Path.Combine(path, filename);
         }
 
+        // The old path has all files in one folder; the new one splits them by the first character of the name.
+        private static (string OldPath, string NewPath) GetScriptFilePaths(string scriptBasePath, string filename)
+        {
+            string oldPath = Path.Combine(scriptBasePath, filename);
+            string newPath = Path.Combine(scriptBasePath, filename[..1], filename[1..]);
+            return (oldPath, newPath);
+        }
+
         public static string GetScriptFileName(string scriptBasePath, string filename)
         {
-             // Get old path, ie, all files lumped in a single huge directory.
-            string oldPath = Path.Combine(scriptBasePath, filename);
-
-             // Get new path, ie, files split up based on first 2 chars of name.
-             //           string subdir = filename.Substring (0, 2);
-             //           filename = filename.Substring (2);
-            string subdir = filename[..1];
-            filename = filename[1..];
-            scriptBasePath = Path.Combine(scriptBasePath, subdir);
-            Directory.CreateDirectory(scriptBasePath);
-            string newPath = Path.Combine(scriptBasePath, filename);
+            var (oldPath, newPath) = GetScriptFilePaths(scriptBasePath, filename);
+            Directory.CreateDirectory(Path.GetDirectoryName(newPath));
 
              // If file exists only in old location, move to new location.
              // If file exists in both locations, delete old location.

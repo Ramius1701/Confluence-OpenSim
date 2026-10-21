@@ -73,12 +73,6 @@ public class JoltNativeTests
     }
 
     // The stock record entry for the platform the suite runs on.
-    // [Confluence: Confluence records no patched joltc build (it ships the stock native). Tests of the pool and
-    // start-line logic for a patched build use a synthetic record of one.]
-    private static JoltNativeBuild PatchedOrSynthetic(string folder, string file)
-        => JoltNative.Known.SingleOrDefault(b => b.Folder == folder && b.Origin == JoltNativeOrigin.PatchedBuild)
-           ?? new JoltNativeBuild(folder, file, new string('A', 64), JoltNativeOrigin.PatchedBuild, null, safeForMultiplePools: true, testedByProject: true);
-
     private static JoltNativeBuild StockFor(string rid)
         => JoltNative.Known.Single(b => b.Origin == JoltNativeOrigin.Package && b.Folder == JoltNative.Platforms[rid].Folder);
 
@@ -87,16 +81,25 @@ public class JoltNativeTests
     {
         JoltNativeInfo info = JoltNative.EnsureLoaded(allowUnrecorded: false);
 
-        string expectedRid = OperatingSystem.IsWindows() ? "win-x64" : OperatingSystem.IsLinux() ? "linux-x64" : null;
-        Assert.NotNull(expectedRid);   // the suite runs on win-x64 and linux-x64
+        string os = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsLinux() ? "linux" : OperatingSystem.IsMacOS() ? "osx" : null;
+        string arch = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => "x64",
+            Architecture.Arm64 => "arm64",
+            _ => null,
+        };
+        Assert.NotNull(os);     // the suite runs on Windows, Linux and macOS, on x64 and Arm64
+        Assert.NotNull(arch);
+        string expectedRid = os + "-" + arch;
         Assert.Equal(expectedRid, info.Rid);
         Assert.Equal(JoltNative.PathFor(JoltNative.DefaultBaseDirectory(), expectedRid), info.Path);
-        Assert.Equal(OperatingSystem.IsWindows() ? "joltc.dll" : "libjoltc.so", Path.GetFileName(info.Path));
+        Assert.Equal(os == "win" ? "joltc.dll" : os == "linux" ? "libjoltc.so" : "libjoltc.dylib", Path.GetFileName(info.Path));
         Assert.True(info.Recorded);
         Assert.Same(StockFor(expectedRid), info.Build);
         Assert.Equal(StockFor(expectedRid).Sha256, info.Sha256);
         Assert.False(info.SafeForMultiplePools);
-        Assert.Null(info.UntestedNotice);
+        // A platform the record marks as tested logs no notice; an untested one logs it.
+        Assert.Equal(!info.Build.TestedByProject, info.UntestedNotice != null);
         Assert.Contains(info.Path, info.Describe());
         Assert.Contains(info.Sha256, info.Describe());
         Assert.Contains($"stock JoltPhysics.Native {JoltNative.PackageVersion}; one job pool", info.Describe());
@@ -150,10 +153,10 @@ public class JoltNativeTests
     // ------------------------------------------------------------------ the record's entries
 
     [Fact]
-    public void The_record_has_the_stock_files_and_the_patched_builds()
+    public void The_record_has_the_stock_files()
     {
         // Stock files of the package version the projects use: tested here on win-x64 and linux-x64, none safe for more
-        // than one pool. The patched builds: win-x64 and linux-x64, safe for more than one pool.
+        // than one pool.
         var rows = JoltNative.Known.Select(b => (b.Folder, b.File, b.Origin, b.PackageVersion, b.SafeForMultiplePools, b.TestedByProject))
             .OrderBy(r => r.Origin).ThenBy(r => r.Folder, StringComparer.Ordinal).ToArray();
         var v = JoltNative.PackageVersion;
@@ -174,17 +177,19 @@ public class JoltNativeTests
     public void The_start_line_names_the_build_and_an_untested_platform_gets_a_notice()
     {
         JoltNativeBuild stockWin = JoltNative.Known.Single(b => b.Folder == "win-x64" && b.Origin == JoltNativeOrigin.Package);
-        JoltNativeBuild patchedLinux = PatchedOrSynthetic("linux-x64", "libjoltc.so");
         JoltNativeBuild stockOsx = JoltNative.Known.Single(b => b.Folder == "osx");
 
         var stock = new JoltNativeInfo("win-x64", "p", stockWin.Sha256, stockWin);
         Assert.Equal($"joltc for win-x64: p sha256 {stockWin.Sha256} (stock JoltPhysics.Native {JoltNative.PackageVersion}; one job pool)", stock.Describe());
         Assert.Null(stock.UntestedNotice);
 
-        var patched = new JoltNativeInfo("linux-x64", "p", patchedLinux.Sha256, patchedLinux);
-        Assert.Equal($"joltc for linux-x64: p sha256 {patchedLinux.Sha256} (patched build (native/joltc); safe for more than one job pool)", patched.Describe());
-        Assert.True(patched.SafeForMultiplePools);
-        Assert.Null(patched.UntestedNotice);
+        // The record has no build safe for more than one pool; the line for one that was, built here.
+        var safeBuild = new JoltNativeBuild("linux-x64", "libjoltc.so", new string('A', 64), JoltNativeOrigin.Package, JoltNative.PackageVersion,
+                                            safeForMultiplePools: true, testedByProject: true);
+        var safe = new JoltNativeInfo("linux-x64", "p", safeBuild.Sha256, safeBuild);
+        Assert.Equal($"joltc for linux-x64: p sha256 {safeBuild.Sha256} (stock JoltPhysics.Native {JoltNative.PackageVersion}; safe for more than one job pool)", safe.Describe());   // [Confluence: the package version, not 1.0.4]
+        Assert.True(safe.SafeForMultiplePools);
+        Assert.Null(safe.UntestedNotice);
 
         var mac = new JoltNativeInfo("osx-arm64", "p", stockOsx.Sha256, stockOsx);
         Assert.Equal($"the joltc for osx-arm64 (stock JoltPhysics.Native {JoltNative.PackageVersion}) is recorded from its package, but this project does not test it: " +
@@ -218,63 +223,25 @@ public class JoltNativeTests
 
     // ------------------------------------------------------------------ the hash record
 
-    private static IEnumerable<JoltNativeBuild> Patched => JoltNative.Known.Where(b => b.Origin == JoltNativeOrigin.PatchedBuild);
-
-    [Fact(Skip = "Confluence: the patched-build tooling (assert-joltc-native.ps1, native/joltc) is not carried; Confluence runs the stock native")]
+    [Fact(Skip = "Confluence: assert-joltc-native.ps1 records Tranquillity's JoltPhysics.Native 1.0.4 files; Confluence runs 1.1.0 (JoltNative.Known)")]
     public void The_record_matches_the_guard_script_and_the_repository_keeps_no_native()
     {
-        string guard = File.ReadAllText(Path.Combine(RepoRoot(), "OpenSim", "Region", "PhysicsModules", "Jolt" /* [Confluence path] */, "assert-joltc-native.ps1"));
-        var guardEntries = Regex.Matches(guard, "\"([a-z0-9-]+)\"\\s*=\\s*@\\{\\s*File\\s*=\\s*\"([^\"]+)\";\\s*Sha256\\s*=\\s*\"([0-9A-F]{64})\"")
-            .ToDictionary(m => m.Groups[1].Value, m => (m.Groups[2].Value, m.Groups[3].Value));
-        Assert.Equal(Patched.Select(b => b.Folder).OrderBy(k => k), guardEntries.Keys.OrderBy(k => k));
+        string guard = File.ReadAllText(Path.Combine(RepoRoot(), "OpenSim", "Region", "PhysicsModules", "Jolt.Backend" /* [Confluence path] */, "assert-joltc-native.ps1"));
         var guardStock = Regex.Matches(guard, "\"([0-9A-F]{64})\"\\s*=\\s*@\\{\\s*Folder\\s*=\\s*\"([^\"]+)\";\\s*File\\s*=\\s*\"([^\"]+)\"")
             .Select(m => (Folder: m.Groups[2].Value, File: m.Groups[3].Value, Sha256: m.Groups[1].Value)).OrderBy(x => x.Folder).ToArray();
         Assert.Equal(JoltNative.Known.Where(b => b.Origin == JoltNativeOrigin.Package)
             .Select(b => (b.Folder, b.File, b.Sha256)).OrderBy(x => x.Folder).ToArray(), guardStock);
         Assert.Contains($"$stockVersion = \"{JoltNative.PackageVersion}\"", guard);
 
-        foreach (JoltNativeBuild b in Patched)
-        {
-            Assert.Equal((b.File, b.Sha256), guardEntries[b.Folder]);
-            // No build copies the patched file: the output holds the package's.
-            string inOutput = JoltNative.PathFor(JoltNative.DefaultBaseDirectory(), b.Folder);
-            Assert.NotEqual(b.Sha256, JoltNative.Sha256Of(inOutput));
-        }
-
-        // The patched builds come from the joltc-native workflow, not from the repository: the module's project holds
-        // no compiled native.
+        // The module's project holds no compiled native: the package's file reaches the output through NuGet.
         string[] kept = Directory.Exists(ModuleRuntimes) ? Directory.GetFiles(ModuleRuntimes, "*", SearchOption.AllDirectories) : [];
         Assert.Empty(kept);
     }
 
-    [PatchedNativeFact]
-    public void The_supplied_patched_files_match_the_record()
-    {
-        // The running platform's file must be there; another platform's is checked when it is there too.
-        string supplied = PatchedNativeChild.SuppliedFolder!;
-        PatchedNativeChild.Require();
-        int checkedFiles = 0;
-        foreach (JoltNativeBuild b in Patched)
-        {
-            string path = PatchedNativeChild.PathIn(supplied, b.Folder);
-            if (!File.Exists(path))
-                continue;
-            Assert.Equal(b.Sha256, JoltNative.Sha256Of(path));
-            checkedFiles++;
-        }
-        Assert.True(checkedFiles >= 1);
-    }
-
-    [Fact(Skip = "Confluence: the patched-build tooling (assert-joltc-native.ps1, native/joltc) is not carried; Confluence runs the stock native")]
+    [Fact(Skip = "Confluence: native/joltc/README.md (Tranquillity's hash tables, for 1.0.4) is not carried; Confluence runs the stock 1.1.0 native")]
     public void The_readme_hash_tables_match_the_record()
     {
         string readme = File.ReadAllText(Path.Combine(RepoRoot(), "native", "joltc", "README.md"));
-        // The patched builds: `runtimes/<rid>/native/<file>` | `<sha256>`.
-        var patched = Regex.Matches(readme, @"^\| `runtimes/([a-z0-9-]+)/native/([^`]+)` \| `([0-9a-f]{64})` \|", RegexOptions.Multiline)
-            .Select(m => (Folder: m.Groups[1].Value, File: m.Groups[2].Value, Sha256: m.Groups[3].Value.ToUpperInvariant()))
-            .OrderBy(x => x.Folder).ToArray();
-        Assert.Equal(Patched.Select(b => (b.Folder, b.File, b.Sha256)).OrderBy(x => x.Folder).ToArray(), patched);
-
         // The stock files of the package: `JoltPhysics.Native <version>` | `<folder>/<file>` | `<sha256>`.
         var stock = Regex.Matches(readme, @"^\| `JoltPhysics\.Native ([0-9.]+)` \| `([a-z0-9-]+)/([^`]+)` \| `([0-9a-f]{64})` \|", RegexOptions.Multiline)
             .Select(m => (Version: m.Groups[1].Value, Folder: m.Groups[2].Value, File: m.Groups[3].Value, Sha256: m.Groups[4].Value.ToUpperInvariant()))
@@ -291,7 +258,7 @@ public class JoltNativeTests
         {
             string native = Path.Combine(dir, "runtimes", "win-x64", "native", "joltc.dll");
             Directory.CreateDirectory(Path.GetDirectoryName(native)!);
-            File.WriteAllText(native, "not the patched build");
+            File.WriteAllText(native, "not a recorded build");
             string hash = JoltNative.Sha256Of(native);
 
             var e = Assert.Throws<JoltNativeException>(() => JoltNative.Check(dir, "win-x64", allowUnrecorded: false));
@@ -309,21 +276,6 @@ public class JoltNativeTests
         {
             if (Directory.Exists(dir))
                 Directory.Delete(dir, true);
-        }
-    }
-
-    [PatchedNativeFact]
-    public void The_patched_file_passes_the_check_without_the_key()
-    {
-        // An operator who replaces the package's file with the patched build gets it recognised by its hash. The
-        // supplied folder holds each file flat in its platform's folder, as a build for one runtime identifier does.
-        string supplied = PatchedNativeChild.SuppliedFolder!;
-        PatchedNativeChild.Require();
-        foreach (JoltNativeBuild b in Patched.Where(b => File.Exists(PatchedNativeChild.PathIn(supplied, b.Folder))))
-        {
-            JoltNativeInfo info = JoltNative.Check(Path.Combine(supplied, b.Folder), b.Folder, allowUnrecorded: false);
-            Assert.Same(b, info.Build);
-            Assert.True(info.SafeForMultiplePools);
         }
     }
 
@@ -350,9 +302,11 @@ public class JoltNativeTests
     {
         JoltNativeBuild stockWin = JoltNative.Known.Single(b => b.Folder == "win-x64" && b.Origin == JoltNativeOrigin.Package);
         JoltNativeBuild stockArm = JoltNative.Known.Single(b => b.Folder == "linux-arm64");
-        JoltNativeBuild patchedWin = PatchedOrSynthetic("win-x64", "joltc.dll");
+        // The record has no build safe for more than one pool; ResolveJobPools is checked on one built here.
+        var safeWin = new JoltNativeBuild("win-x64", "joltc.dll", new string('A', 64), JoltNativeOrigin.Package, JoltNative.PackageVersion,
+                                          safeForMultiplePools: true, testedByProject: true);
         var stock = new JoltNativeInfo("win-x64", "p", stockWin.Sha256, stockWin);
-        var patched = new JoltNativeInfo("win-x64", "p", patchedWin.Sha256, patchedWin);
+        var safe = new JoltNativeInfo("win-x64", "p", safeWin.Sha256, safeWin);
         var unrecorded = new JoltNativeInfo("win-x64", "p", new string('0', 64), null);
 
         foreach (int asked in new[] { 0, 1 })
@@ -363,21 +317,21 @@ public class JoltNativeTests
         }
         Assert.Equal(1, JoltPhysicsBackend.ResolveJobPools(3, stock));
         Assert.Equal(1, JoltPhysicsBackend.ResolveJobPools(3, unrecorded));
-        Assert.Equal(3, JoltPhysicsBackend.ResolveJobPools(3, patched));
-        Assert.Equal(64, JoltPhysicsBackend.ResolveJobPools(100, patched));
-        Assert.Null(JoltPhysicsBackend.JobPoolLimitReason(3, patched));
-        Assert.Null(CapacityReport.JobPoolLimitWarning(3, patched));
+        Assert.Equal(3, JoltPhysicsBackend.ResolveJobPools(3, safe));
+        Assert.Equal(64, JoltPhysicsBackend.ResolveJobPools(100, safe));
+        Assert.Null(JoltPhysicsBackend.JobPoolLimitReason(3, safe));
+        Assert.Null(CapacityReport.JobPoolLimitWarning(3, safe));
 
         string reason = $"the loaded joltc (stock JoltPhysics.Native {JoltNative.PackageVersion}) is not safe for more than one job pool: its physics systems " +
                         "share one scratch allocator, and two physics updates at once would stop the process";
         Assert.Equal(reason, JoltPhysicsBackend.JobPoolLimitReason(3, stock));
         // [Confluence: no patched build is recorded for win-x64 here, so the warning says so instead of naming one.]
         Assert.Equal(
-            $"[Jolt] JobPools = 3, but the module runs ONE job pool: {reason}. Regions take turns on that pool. " +
-            "This project has no patched build for win-x64; set [Jolt] JobPools = 1.",
+            $"[Jolt] JobPools = 3, but the module runs ONE job pool: {reason}. Regions take turns on that pool. More than one pool needs " +
+            "a change in joltc itself; set [Jolt] JobPools = 1.",
             CapacityReport.JobPoolLimitWarning(3, stock));
         Assert.Contains("(a build this module has no record of)", JoltPhysicsBackend.JobPoolLimitReason(2, unrecorded));
-        Assert.EndsWith("This project has no patched build for linux-arm64; set [Jolt] JobPools = 1.",
+        Assert.EndsWith("More than one pool needs a change in joltc itself; set [Jolt] JobPools = 1.",
             CapacityReport.JobPoolLimitWarning(2, new JoltNativeInfo("linux-arm64", "p", stockArm.Sha256, stockArm)));
     }
 

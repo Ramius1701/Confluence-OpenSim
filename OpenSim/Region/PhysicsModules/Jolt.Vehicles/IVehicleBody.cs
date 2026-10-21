@@ -34,6 +34,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Vehicles
     ///    (deltaV = f / mass * dt). Bullet ApplyCentralForce == Jolt AddForce.
     ///  - AddTorque(t) = continuous torque consumed by the NEXT step
     ///    (deltaW = invInertia * t * dt). Bullet ApplyTorque == Jolt AddTorque.
+    ///    (A host that runs the controller inside the engine's collision steps gives the body these two as the velocity
+    ///    changes they make over the collision step; the controller itself adds no force and no torque.)
     ///  - Orientation is the PRIM orientation (SL convention), not any engine-internal
     ///    axis-corrected body orientation.
     /// </summary>
@@ -63,6 +65,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Vehicles
         /// spreads it over the step as it does any gravity, and it does not keep a resting body awake.</summary>
         void SetGravityFactor(float factor);
 
+        /// <summary>The body's gravity multiplier (llSetPhysicsMaterial GRAVITY_MULTIPLIER), 1 by default. Under
+        /// <see cref="VehicleBehaviour.InWorldz"/> the vehicle's weight is this less its buoyancy; Second Life's vehicles
+        /// ignore it.</summary>
+        float GravityMultiplier => 1f;
+
         /// <summary>Body currently has a contact (ground-vehicle gravity fudge; unused by boats).</summary>
         bool HasCollision { get; }
 
@@ -80,5 +87,24 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Vehicles
 
         /// <summary>Water height at the given position's XY.</summary>
         float GetWaterLevel(Vector3 pos);
+
+        /// <summary>
+        /// The vehicle's bounding box in its own frame, as a centre and half sizes, for the motor-height rule's down rays.
+        /// False when the host has none (the rule then never finds the vehicle high).
+        /// </summary>
+        bool TryGetBounds(out Vector3 center, out Vector3 halfSize) { center = Vector3.Zero; halfSize = Vector3.Zero; return false; }
+
+        /// <summary>
+        /// The nearest thing along a ray other than the vehicle itself (its own parts do not count): the distance from the
+        /// origin to it. False when the ray hits nothing within <paramref name="maxDistance"/>, or the host casts none.
+        /// </summary>
+        bool CastRayNearest(Vector3 origin, Vector3 direction, float maxDistance, out float distance) { distance = 0f; return false; }
+
+        /// <summary>
+        /// The wind at a region position, in m/s along the world's x and y: the region's wind module gives the water's
+        /// current below the water, the surface wind above it and the wind aloft over that. False when the host has no wind
+        /// module; the vehicle then behaves as if the air were still.
+        /// </summary>
+        bool TryGetWind(Vector3 position, out Vector3 wind) { wind = Vector3.Zero; return false; }
     }
 }

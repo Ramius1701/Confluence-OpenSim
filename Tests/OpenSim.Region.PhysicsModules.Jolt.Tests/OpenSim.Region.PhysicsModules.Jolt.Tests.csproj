@@ -1,11 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    Tests for the Jolt module and its backend, from Legion's Tranquillity lane/jolt
-    (Tests/OpenSim.Region.PhysicsModules.Jolt.Tests). Most drive real JoltPhysicsBackend instances and so need the
-    native joltc. Confluence project file: references the Confluence module paths and the shared bin\ DLLs.
-    Hand-maintained and outside OpenSim.sln. Run: dotnet test Tests\OpenSim.Region.PhysicsModules.Jolt.Tests -c Release
-  -->
+  <!-- [Confluence] From Tranquillity develop (Tests/OpenSim.Region.PhysicsModules.Jolt.Tests/OpenSim.Region.PhysicsModules.Jolt.Tests.csproj), with Confluence paths: the modules under
+       OpenSim\Region\PhysicsModules, bin\ references, xunit packages as the Phlox suite. Hand-maintained and outside
+       OpenSim.sln. Run: dotnet test Tests\OpenSim.Region.PhysicsModules.Jolt.Tests -c Release -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>
@@ -29,17 +26,44 @@
   <ItemGroup>
     <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt.Backend\OpenSim.Region.PhysicsModules.Jolt.Backend.csproj" />
     <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt\OpenSim.Region.PhysicsModules.Jolt.csproj" />
-    <ProjectReference Include="..\JoltPhysicsHarness\JoltPhysicsHarness.csproj" />
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Meshing\OpenSim.Region.PhysicsModule.Meshing.csproj" />
+    <ProjectReference Include="..\OpenSim.Tests.Common\OpenSim.Tests.Common.csproj" />
   </ItemGroup>
 
-  <!-- NotSelectedTests drives the module through Tranquillity's plugin discovery (PluginRegistry,
-       DotNetCorePluginsDiscovery), which Confluence does not have; Confluence registers through Mono.Addins
-       (Jolt/ConfluenceRegistration.cs). -->
+  <ItemGroup>
+    <Compile Include="..\JoltTestShared\TestNativeOverride.cs" Link="Shared\TestNativeOverride.cs" />
+    <Compile Include="..\JoltTestShared\JoltTestBackend.cs" Link="Shared\JoltTestBackend.cs" />
+    <Compile Include="..\JoltTestShared\HalcyonMotorModel.cs" Link="Shared\HalcyonMotorModel.cs" />
+    <Compile Include="..\JoltTestShared\VehicleBehaviourRig.cs" Link="Shared\VehicleBehaviourRig.cs" />
+    <Compile Include="..\JoltTestShared\FloatRounding.cs" Link="Shared\FloatRounding.cs" />
+    <Compile Include="..\JoltTestShared\HalcyonAttitudeAndHoverModels.cs" Link="Shared\HalcyonAttitudeAndHoverModels.cs" />
+    <Compile Include="..\JoltTestShared\PinnedMaterialsAttribute.cs" Link="Shared\PinnedMaterialsAttribute.cs" />
+    <Compile Include="..\JoltTestShared\MaterialPins.cs" Link="Shared\MaterialPins.cs" />
+    <Compile Include="..\JoltTestShared\ScratchFolders.cs" Link="Shared\ScratchFolders.cs" />
+    <Compile Include="..\JoltTestShared\MeshShapesTodayHelpers.cs" Link="Shared\MeshShapesTodayHelpers.cs" />
+    <Compile Include="..\JoltTestShared\HalcyonLinearReference.cs" Link="Shared\HalcyonLinearReference.cs" />
+    <Compile Include="..\JoltTestShared\VehicleInWorldzMotorModel.cs" Link="Shared\VehicleInWorldzMotorModel.cs" />
+    <Compile Include="..\JoltTestShared\PrimHullProbeShapes.cs" Link="Shared\PrimHullProbeShapes.cs" />
+  </ItemGroup>
+
+  <!-- [Confluence] NotSelectedTests drives Tranquillity's plugin discovery; Confluence registers through Mono.Addins. -->
   <ItemGroup>
     <Compile Remove="NotSelectedTests.cs" />
   </ItemGroup>
 
-  <!-- The module takes these from bin\ without copying them; the test host needs them beside it. -->
+  <!-- [Confluence] These drive the standing-rider crossing of Tranquillity #337 (CrossingTargets), which Confluence has not taken yet. -->
+  <ItemGroup>
+    <Compile Remove="CrossingTargetsArrivalTests.cs" />
+    <Compile Remove="DragCrossingArrivalTests.cs" />
+  </ItemGroup>
+
+  <!-- [Confluence] These decode sculpt and mesh images with CoreJ2K and SkiaSharp, which Tranquillity ships; Confluence decodes with CSJ2K and System.Drawing. -->
+  <ItemGroup>
+    <Compile Remove="MeshAssetFetchTests.cs" />
+    <Compile Remove="SculptFlagsTests.cs" />
+  </ItemGroup>
+
+  <!-- [Confluence] The modules take these from bin\ without copying them; the test host needs them beside it. -->
   <ItemGroup>
     <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
     <Reference Include="Mono.Addins"><HintPath>..\..\bin\Mono.Addins.dll</HintPath></Reference>
@@ -48,6 +72,8 @@
     <Reference Include="OpenMetaverseTypes"><HintPath>..\..\bin\OpenMetaverseTypes.dll</HintPath></Reference>
     <Reference Include="OpenMetaverse.StructuredData"><HintPath>..\..\bin\OpenMetaverse.StructuredData.dll</HintPath></Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath></Reference>
+    <!-- SceneHelpers loads the region's local services by file name (PhysicalComplexitySceneTests). -->
+    <Reference Include="..\..\bin\OpenSim.Services.*.dll" />
   </ItemGroup>
 
   <!-- Keeps the native package's unused files (joltc_double, Android) out of the output. -->

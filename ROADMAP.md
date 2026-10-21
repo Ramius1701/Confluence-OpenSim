@@ -247,11 +247,11 @@ checked by `Tools/data-backend-check`.)*
   notices with #311, opensim-master's XFF comments). Since done: the wind series (#315/#320/#321/#322) and #301/#319
   (2026-10-19), opensim #68/#63 and Tranquillity #336 (2026-10-19), Tranquillity's open PRs #345/#346 (2026-10-20);
   all deployed. Waiting on the owner: #302 (viewer addresses; a regions-table migration) and #327 (built on it),
-  #337 (standing riders across borders; open PR), the Jolt upstreaming series #325/#326/#328-#334/#338-#344, and the
-  Janus PRs #347-#350 (open; #350's parcel voice checks touch the region module ConfluenceVoice uses too). Legion's
-  `lane/jolt` 10-14..17 (~240 commits: Halcyon vehicle motors on a 15 ms clock, move-to / hover / look-at kept across
-  a crossing, one copy kept when a crossing fails, size limits, mouse drag, spike cut, and an engine side of #314's
-  `CaptureVehicleRunningState`) - its own session, while Jolt stays off live.
+  #337 (standing riders across borders; merged upstream 10-19, not taken: the Jolt tests that drive it are left out),
+  and the Janus PRs #347-#350 (open; #350's parcel voice checks touch the region module Confluence-Voice uses too).
+  Done 2026-10-21: the Jolt series (Legion's `lane/jolt` 10-14..17 as merged in develop #329/#334/#338-#344, #325's
+  mesher shape data, #328, #330-#333) - Jolt is synced to develop `7c74cb6bed` and still off live; #304 (saved state
+  picks the engine for an unheaded script, `[InWorldz.Phlox] ScriptEnginesPath`).
 - **Weather rethink - tabled 2026-10-19** at the owner's request. Deployed: 0.6.1, whose rain and snow fire upward
   in Firestorm (fixed in 0.6.2, not deployed: emitter upside down, cone round its +Z; a wider lifetime margin). Before
   resuming: confirm the four-weather test script in a viewer, then deploy once. Earlier notes:

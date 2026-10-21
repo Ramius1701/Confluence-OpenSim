@@ -1,4 +1,36 @@
 /*
+ * Copyright (c) Contributors, http://opensimulator.org/
+ * See CONTRIBUTORS.TXT for a full list of copyright holders.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of the OpenSimulator Project nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE DEVELOPERS ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * The quotations from http://wiki.secondlife.com/wiki/Linden_Vehicle_Tutorial
+ * are Copyright (c) 2009 Linden Research, Inc and are used under their license
+ * of Creative Commons Attribution-Share Alike 3.0
+ * (http://creativecommons.org/licenses/by-sa/3.0/).
+ */
+
+/*
  * Copyright (c) 2015, InWorldz Halcyon Developers
  * All rights reserved.
  * 
@@ -29,8 +61,9 @@
  */
 
 /*
- * Vehicle dynamics ported from InWorldz Halcyon (InWorldz.PhysxPhysics/Vehicle/VehicleProperties.cs),
- * through OpenSim's BulletSim vehicle code.
+ * Vehicle dynamics ported from InWorldz Halcyon (InWorldz.PhysxPhysics/Vehicle/VehicleProperties.cs); Halcyon's notice above applies.
+ * No code from OpenSim's BulletSim vehicle code is in this file; the OpenSim notice above stays with the
+ * file's header.
  * Adapted 2026 by Legion Builds
  */
 
@@ -111,7 +144,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Vehicles
         Boat = 3,
         Airplane = 4,
         Balloon = 5,
-        // InWorldz extensions — kept for completeness but not settable via standard LSL
+        // InWorldz's two extra types, as scripts name them: VEHICLE_TYPE_SAILBOAT 10001 and VEHICLE_TYPE_MOTORCYCLE 10002
+        // (Vehicle.TYPE_SAILBOAT, TYPE_MOTORCYCLE). The numbers here are the module's own.
         Motorcycle = 6,
         Sailboat = 7,
     }

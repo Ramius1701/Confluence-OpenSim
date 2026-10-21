@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- [Confluence] From Tranquillity develop (Tests/OpenSim.Region.PhysicsModules.Jolt.Harness.Tests/OpenSim.Region.PhysicsModules.Jolt.Harness.Tests.csproj), with Confluence paths: the modules under
+       OpenSim\Region\PhysicsModules, bin\ references, xunit packages as the Phlox suite. Hand-maintained and outside
+       OpenSim.sln. Run: dotnet test Tests\OpenSim.Region.PhysicsModules.Jolt.Harness.Tests -c Release -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt.Backend\OpenSim.Region.PhysicsModules.Jolt.Backend.csproj" />
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Jolt\OpenSim.Region.PhysicsModules.Jolt.csproj" />
+    <ProjectReference Include="..\..\OpenSim\Region\PhysicsModules\Meshing\OpenSim.Region.PhysicsModule.Meshing.csproj" />
+    <ProjectReference Include="..\JoltPhysicsHarness\JoltPhysicsHarness.csproj" />
+    <ProjectReference Include="..\OpenSim.Tests.Common\OpenSim.Tests.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\JoltTestShared\TestNativeOverride.cs" Link="Shared\TestNativeOverride.cs" />
+    <Compile Include="..\JoltTestShared\JoltTestBackend.cs" Link="Shared\JoltTestBackend.cs" />
+    <Compile Include="..\JoltTestShared\PinnedMaterialsAttribute.cs" Link="Shared\PinnedMaterialsAttribute.cs" />
+    <Compile Include="..\JoltTestShared\MeshShapesTodayHelpers.cs" Link="Shared\MeshShapesTodayHelpers.cs" />
+    <Compile Include="..\JoltTestShared\ScratchFolders.cs" Link="Shared\ScratchFolders.cs" />
+    <Compile Include="..\JoltTestShared\PrimHullProbeShapes.cs" Link="Shared\PrimHullProbeShapes.cs" />
+    <Compile Include="..\JoltTestShared\HarnessVehiclePins.cs" Link="Shared\HarnessVehiclePins.cs" />
+  </ItemGroup>
+
+  <!-- [Confluence] The modules take these from bin\ without copying them; the test host needs them beside it. -->
+  <ItemGroup>
+    <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
+    <Reference Include="Mono.Addins"><HintPath>..\..\bin\Mono.Addins.dll</HintPath></Reference>
+    <Reference Include="Nini"><HintPath>..\..\bin\Nini.dll</HintPath></Reference>
+    <Reference Include="OpenMetaverse"><HintPath>..\..\bin\OpenMetaverse.dll</HintPath></Reference>
+    <Reference Include="OpenMetaverseTypes"><HintPath>..\..\bin\OpenMetaverseTypes.dll</HintPath></Reference>
+    <Reference Include="OpenMetaverse.StructuredData"><HintPath>..\..\bin\OpenMetaverse.StructuredData.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions"><HintPath>..\..\bin\Microsoft.Extensions.Logging.Abstractions.dll</HintPath></Reference>
+  </ItemGroup>
+
+  <!-- Keeps the native package's unused files (joltc_double, Android) out of the output. -->
+  <Import Project="..\..\OpenSim\Region\PhysicsModules\Jolt.Backend\JoltNative.targets" />
+
+</Project>

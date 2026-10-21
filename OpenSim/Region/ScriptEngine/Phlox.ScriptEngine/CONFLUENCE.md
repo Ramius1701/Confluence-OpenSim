@@ -59,6 +59,7 @@ they change nothing a script or user can see, except the DEBUG_CHANNEL filter in
 | #243 | `OnExperiencePermissionsRevoked`; blocking an Experience ends every grant to its scripts |
 | #269 | `OnScriptPermissionsRemoved`; `Scene.MoveTaskInventoryItemsAllOrNone` (all-or-nothing task inventory gives) |
 | #272 | `OnGroupBeginInTransit` / `OnGroupEndInTransit` |
+| #304 | `IScriptStateProvider` (YEngine and Phlox); `Scene.ResolveScriptEngine` picks the engine holding saved state for an unheaded script (the default first); `CreateScriptInstance` offers carried state before choosing and removes it only when the script may start (2026-10-21) |
 | `IHttpServiceRequest` | completed HTTP requests read through an interface (`HttpRequestClass` keeps its fields) |
 
 #221 (script responses offered to every engine of the region) and #279 were already in Confluence. The #212

@@ -8,15 +8,15 @@
 // Jolt implementation of IPhysicsBackend.
 //
 // ============================ READ THIS FIRST ============================
-// Jolt binding: JoltPhysicsSharp 2.18.6 (newest still shipping lib/net8.0/),
+// Jolt binding: JoltPhysicsSharp 2.19.1,
 // single precision (Foundation.Init(false); the native is loaded by JoltNative). The Jolt calls below
-// are the 2.18.6 surface, checked by reflection against the shipped assembly.
+// are the 2.19.1 surface.
 //
 // The parts worth reading carefully are the ones that are easy to get wrong and
 // expensive to discover later:
 //   - broad phase / object layer filtering  (BroadPhase region + Initialize)
 //   - DontActivate on insert                (CreateBody)
-//   - ScaledShape for prim resize           (CreateScaledShape)
+//   - ScaledShape wrapper                   (CreateScaledShape; a resized mesh prim wraps its asset's cooked shape)
 //   - contact ring buffer                   (JoltContactListener)
 //   - CharacterVirtual stepping order       (Step)
 // =========================================================================
@@ -31,6 +31,12 @@ using JoltPhysicsSharp;
 
 // The test-only hooks (HoldPoolGateForTest) are internal.
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Backend.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Vehicles.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Harness.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Scenarios.Avatar.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Scenarios.Prim.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenSim.Region.PhysicsModules.Jolt.Scenarios.Vehicle.Tests")]
 
 namespace OpenSim.Region.PhysicsModules.Jolt.Backend
 {
@@ -47,7 +53,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         private readonly HandleTable<JoltBodyRecord> _bodies = new HandleTable<JoltBodyRecord>();
         private readonly HandleTable<JoltShapeRecord> _shapes = new HandleTable<JoltShapeRecord>();
         private readonly HandleTable<JoltCharacterRecord> _characters = new HandleTable<JoltCharacterRecord>();
-        private readonly HandleTable<JoltConstraintRecord> _constraints = new HandleTable<JoltConstraintRecord>();
 
         private JoltContactListener _contactListener = null!;
 
@@ -58,7 +63,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // ONE shared, process-capped set of JobSystemThreadPools for ALL regions, created with Foundation
         // (first region in) and disposed with it (last region out). A per-region pool of ProcessorCount-1
         // threads makes N regions cost N*(cores-1) threads (measured ~36/region, 78 for two). InWorldz ran
-        // ~1 thread/region in production; a capped process-wide pool is the target shape. Sized once by the
+        // ~1 thread/region with the default settings; a capped process-wide pool is the target shape. Sized once by the
         // first region's settings (ThreadCount / DeterministicMode) under s_foundationGate, then shared.
         //
         // ONE PHYSICS UPDATE PER POOL. A JobSystemThreadPool's queue is a fixed ring of 1024 slots
@@ -202,8 +207,116 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             public long Queued => Interlocked.Read(ref _nextTicket) - Interlocked.Read(ref _serving);
         }
 
+        // ALL POOL GATES, for creating and destroying a physics system.
+        //
+        // joltc keeps every physics system in one process-wide map (s_PhysicsSystems, joltc.cpp): Create inserts,
+        // Destroy erases, and a step listener's OnStep reads it (joltc.cpp:5396) with no lock. An Update on any pool
+        // can call OnStep, so a system may be created or destroyed only while NO pool is inside an Update: the
+        // caller holds every pool's gate. Step holds one gate, so waiting for all of them waits for the Updates in
+        // flight (one frame at most) and holds off every region's next step while the native call runs.
+        //
+        // LOCK ORDER, whole backend: pool gates in ascending pool index (all of them, or the one a Step takes),
+        // then a region's _simLock, then _characterGate; s_systemMapGate and s_foundationGate are leaves taken
+        // last, and nothing takes a gate while holding any of them. Step takes a single gate, so two takers of
+        // all gates cannot invert, and a Step holding gate k never waits for a gate. Dispose takes the gates
+        // BEFORE _simLock (the order Step uses); Initialize takes them for the system create only, and holds no
+        // _simLock then. A fair gate is not re-entrant: do not create or dispose a region on a thread inside
+        // its own Step.
+        private readonly struct AllPoolGates : IDisposable
+        {
+            private readonly JobPool[] _held;
+            private AllPoolGates(JobPool[] held) { _held = held; }
+
+            public static AllPoolGates Take(JobPool[] pools, string? name)
+            {
+                int taken = 0;
+                try
+                {
+                    for (; taken < pools.Length; taken++)
+                        pools[taken].Enter(name, out _, out _);
+                    return new AllPoolGates(pools);
+                }
+                catch
+                {
+                    for (int i = taken - 1; i >= 0; i--)
+                        pools[i].Exit();
+                    throw;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (_held == null)
+                    return;   // default(AllPoolGates): nothing was taken
+                for (int i = _held.Length - 1; i >= 0; i--)
+                    _held[i].Exit();
+            }
+        }
+
+        /// <summary>
+        /// TEST-ONLY: the lock order of AllPoolGates on <paramref name="poolCount"/> stand-alone pools (the stock native
+        /// runs one pool, so a real two-pool process cannot be built here). Two threads take every gate and
+        /// <paramref name="poolCount"/> x 2 threads each take one gate as Step does, <paramref name="rounds"/> times; a
+        /// holder of all gates must never find a Step inside, and a Step must never run while all gates are held. Returns
+        /// false for Completed when the threads did not finish within <paramref name="limit"/> (a deadlock). Needs Foundation
+        /// up, as any live backend has it.
+        /// </summary>
+        internal static (bool Completed, int Violations) AllGatesProbeForTest(int poolCount, bool fair, int rounds, TimeSpan limit)
+        {
+            var pools = new JobPool[poolCount];
+            for (int i = 0; i < poolCount; i++)
+                pools[i] = new JobPool(i, new JobSystemThreadPool(new JobSystemThreadPoolConfig
+                    { maxJobs = JoltMaxJobs, maxBarriers = JoltMaxBarriers, numThreads = 1 }), fair);
+            var inside = new int[poolCount];
+            int allHeld = 0, violations = 0;
+            var threads = new List<Thread>();
+            for (int k = 0; k < 2; k++)
+                threads.Add(new Thread(() =>
+                {
+                    for (int r = 0; r < rounds; r++)
+                        using (AllPoolGates.Take(pools, "probe"))
+                        {
+                            Volatile.Write(ref allHeld, 1);
+                            for (int p = 0; p < poolCount; p++)
+                                if (Volatile.Read(ref inside[p]) != 0)
+                                    Interlocked.Increment(ref violations);
+                            Thread.SpinWait(200);
+                            Volatile.Write(ref allHeld, 0);
+                        }
+                }) { IsBackground = true, Name = "probe-all-gates" });
+            for (int k = 0; k < poolCount * 2; k++)
+            {
+                int p = k % poolCount;
+                threads.Add(new Thread(() =>
+                {
+                    for (int r = 0; r < rounds * 2; r++)
+                    {
+                        pools[p].Enter("probe-step", out _, out _);
+                        try
+                        {
+                            Interlocked.Increment(ref inside[p]);
+                            if (Volatile.Read(ref allHeld) != 0)
+                                Interlocked.Increment(ref violations);
+                            Thread.SpinWait(100);
+                            Interlocked.Decrement(ref inside[p]);
+                        }
+                        finally { pools[p].Exit(); }
+                    }
+                }) { IsBackground = true, Name = "probe-step" });
+            }
+            foreach (Thread th in threads) th.Start();
+            var deadline = DateTime.UtcNow + limit;
+            bool completed = true;
+            foreach (Thread th in threads)
+                completed &= th.Join(Math.Max(0, (int)(deadline - DateTime.UtcNow).TotalMilliseconds));
+            if (completed)
+                foreach (JobPool p in pools)
+                    DestroyJobSystem(p.System);
+            return (completed, Volatile.Read(ref violations));
+        }
+
         public const int MaxJobPools = 64;
-        private const int JoltMaxJobs = 2048;       // PhysicsSettings.h cMaxPhysicsJobs (one Update per pool)
+        private const int JoltMaxJobs = 2048;     // PhysicsSettings.h cMaxPhysicsJobs (one Update per pool)
         private const int JoltMaxBarriers = 8;      // PhysicsSettings.h cMaxPhysicsBarriers
         private static JobPool[]? s_pools;
         private static int s_jobThreads;            // the resolved total the pools were sized from (capacity stat)
@@ -309,7 +422,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         private ObjectLayerPairFilterTable? _objectLayerPairFilter;
         private BroadPhaseLayerInterfaceTable? _broadPhaseInterface;
         private ObjectVsBroadPhaseLayerFilterTable? _objectVsBroadPhaseFilter;
-        // NOTE: 2.18.6 has NO TempAllocator - temp allocation is internal
+        // NOTE: 2.19.1 has NO TempAllocator - temp allocation is internal
         // to PhysicsSystem.Update. There is deliberately no _tempAllocator field.
 
         // Cached BodyInterface, valid for the PhysicsSystem's lifetime.
@@ -322,7 +435,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         //   3. body Create/Remove races Update -> TempAllocator abort on login with a physical object
         //      (so EVERY body op takes _simLock)
         //   4. Update races Update ACROSS REGIONS on a process-shared TempAllocator (stock joltc) -> abort
-        //      (so the patched joltc gives each PhysicsSystem its own allocator - see _simLock's comment).
+        //      (so every region's Update runs on one job pool - see _simLock's comment).
         // The per-body locking BodyInterface protects per-body DATA, but structural broadphase mutation
         // (add/remove) and the LIFO TempAllocator are NOT safe concurrent with _system.Update.
         //
@@ -366,6 +479,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // read from Step and from the contact/activation callbacks (worker threads).
         private readonly ConcurrentDictionary<uint, JoltBodyRecord> _joltToRecord =
             new ConcurrentDictionary<uint, JoltBodyRecord>();
+
+        // The Jolt ids of the bodies removed since the avatars were last stepped (only kept while there is an avatar): an avatar
+        // whose ground was one of them finds its ground again before its step (StepCharacter). Written under _simLock, read and
+        // cleared by the step.
+        private readonly ConcurrentDictionary<uint, byte> _removedBodyIds = new ConcurrentDictionary<uint, byte>();
 
         // Current terrain body (SetTerrain replaces it). BodyId.Invalid = none.
         private BodyId _terrainBody = BodyId.Invalid;
@@ -412,26 +530,25 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // touching this lock's scope or the gate must keep every allocator use
         // inside the gate (ShapeAndAllocatorRuleTests).
         //
-        // The patched joltc (amerkoleci/joltc @ 1715c5aab8 + a per-system
-        // allocator patch; that commit is the exact source of the shipped
-        // 1.0.4, exports identical 1086/1086) gives EACH
-        // JPH_PhysicsSystem its own TempAllocatorImplWithMallocFallback(8MB),
-        // wired through ALL SEVEN consuming sites: PhysicsSystem_Update and
-        // CharacterVirtual Update / ExtendedUpdate / RefreshContacts /
-        // WalkStairs / StickToFloor / SetShape. That matches BulletSim's
-        // per-world scratch and InWorldz PhysX's per-PxScene scratch model:
-        // regions share no native scratch, so cross-region native calls need no
-        // mutual exclusion, and _simLock only guards INTRA-region races (this
-        // region's scene thread vs its own heartbeat Step).
+        // The stock joltc (amerkoleci/joltc @ 1715c5aab8, the source of
+        // JoltPhysics.Native 1.0.4) has ONE process-wide
+        // TempAllocatorImplWithMallocFallback(8MB), used at ALL SEVEN consuming
+        // sites: PhysicsSystem_Update and CharacterVirtual Update /
+        // ExtendedUpdate / RefreshContacts / WalkStairs / StickToFloor /
+        // SetShape. All regions in the process therefore share one job pool,
+        // and its gate keeps two regions' native calls from overlapping.
+        // _simLock guards the INTRA-region races (this region's scene thread vs
+        // its own heartbeat Step). A joltc with an allocator per physics system
+        // (BulletSim's per-world scratch, PhysX's per-PxScene scratch) would
+        // allow one pool per region; that needs a change in joltc itself.
         //
         // The races (all real, all still needed):
         //   1. NarrowPhaseQuery races Update   -> queries take _simLock
         //   2. Dispose races Step              -> Dispose takes _simLock + _disposed
         //   3. body Create/Remove races Update -> all body ops take _simLock
         //   4. Update races Update ACROSS REGIONS on the stock shared allocator
-        //      -> a STATIC _simLock would cover it, at the cost of all
-        //      cross-region parallelism; the patched joltc instead gives every
-        //      PhysicsSystem its own allocator, so the lock stays per-instance.
+        //      -> the one job pool's gate covers it (a STATIC _simLock would
+        //      too); this lock stays per-instance.
         //      1-3 are the races this lock guards.
         //
         // LOCK ORDER - always _simLock FIRST, then _characterGate. Both are
@@ -447,7 +564,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // =====================================================================
         // The allocator owner check.
         //
-        // The patched joltc hands system->tempAllocator to exactly SEVEN native entry points
+        // joltc hands its TempAllocator to exactly SEVEN native entry points
         // (joltc.cpp:1050 PhysicsSystem_Update, :8107/:8135/:8151/:8182/:8198/:8223 the CharacterVirtual
         // scratch users). TempAllocatorImpl is a LIFO stack with a non-atomic mTop whose ordering Jolt
         // guarantees "though job dependencies" (Jolt/Core/TempAllocator.h:11-13) - so two callers that are
@@ -459,7 +576,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // RequireSimLock first, which asks Monitor.IsEntered - "does THIS thread hold this backend's
         // _simLock" - and throws a managed, catchable exception naming the API when it does not. That
         // turns an unrecoverable native abort into a test failure, so an unlocked call site can be searched
-        // for in tests instead of waited for in production.
+        // for in tests instead of waited for in normal running.
         //
         // On by default in DEBUG. In RELEASE it costs a static bool read per call and is off unless a
         // test turns it on, so the shipped simulator pays nothing.
@@ -491,8 +608,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // ---------------------------------------------------------------------
         // The pool gate rule.
         //
-        // Several regions can share one job pool, and on a joltc without the per-system allocator patch (the stock
-        // JoltPhysics.Native) every PhysicsSystem draws on ONE process-wide TempAllocatorImpl. Two regions on one pool
+        // Several regions can share one job pool, and with the stock joltc of the
+        // JoltPhysics.Native package every PhysicsSystem draws on ONE process-wide TempAllocatorImpl. Two regions on one pool
         // are then safe only because every use of that allocator happens inside the pool's gate, which admits one
         // Step at a time: PhysicsSystem::Update and CharacterVirtual::ExtendedUpdate are called only from Step, under
         // the gate. CharacterVirtual::SetShape is the one call outside it, and it never reaches the allocator (see
@@ -613,8 +730,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // collapse to one - matching BulletSim's single terrain hit without touching legitimate multi-hit.
         private const float CoincidentEpsilonSq = 1e-6f;
 
-        // Minimum heightfield sample count per side. joltc 2.18.6 silently mis-cooks n<3 (asserts
-        // compiled out); the terrain feed passes region-derived (N+1) odd counts (257, 513, ...),
+        // Minimum heightfield sample count per side. joltc silently mis-cooks n<3 (asserts
+        // compiled out; checked against JoltPhysicsSharp 2.18.6); the terrain feed passes region-derived (N+1) odd counts (257, 513, ...),
         // which a 257-sample test showed cook faithfully. 4 is a defensive floor above the 3 hard limit.
         private const int MinHeightFieldSampleCount = 4;
 
@@ -662,6 +779,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             PhysicsLayer.Sensor => BroadPhase.Sensor,
             PhysicsLayer.AvatarQuery => BroadPhase.Moving, // in the broadphase so queries find it; collides with nothing
             PhysicsLayer.Phantom => BroadPhase.Moving,
+            PhysicsLayer.MovingStatic => BroadPhase.Moving, // a prim keyframed motion moves: kept out of the tree of fixed prims
             _ => BroadPhase.Moving,
         };
 
@@ -683,6 +801,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // rests on the ground (llVolumeDetect's comparison of Phantom and VolumeDetect, wiki.secondlife.com).
             if (a == PhysicsLayer.Phantom || b == PhysicsLayer.Phantom)
                 return a == PhysicsLayer.Terrain || b == PhysicsLayer.Terrain;
+
+            // A prim that keyframed motion moves collides exactly as a fixed one does; only its broad phase differs.
+            if (a == PhysicsLayer.MovingStatic) a = PhysicsLayer.Static;
+            if (b == PhysicsLayer.MovingStatic) b = PhysicsLayer.Static;
 
             // Normalise so we only fill the lower triangle.
             if (a > b) (a, b) = (b, a);
@@ -856,7 +978,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 ObjectVsBroadPhaseLayerFilter = _objectVsBroadPhaseFilter,
             };
 
-            // JPH_PhysicsSystem_Create inserts into joltc's global map of systems; see s_systemMapGate.
+            // JPH_PhysicsSystem_Create inserts into joltc's global map of systems, which an Update on any pool may
+            // read; so no pool may be inside an Update (AllPoolGates). The reference this region took above keeps
+            // s_pools alive until its own Dispose.
+            using (AllPoolGates.Take(s_pools!, settings.RegionName))
             lock (s_systemMapGate)
             {
                 _system = new PhysicsSystem(systemSettings);
@@ -865,6 +990,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             _system.Gravity = settings.Gravity;
             _linearCastThreshold = _system.Settings.LinearCastThreshold;
             _bodyInterface = _system.BodyInterface;
+            _bodyInterfaceNoLock = _system.BodyInterfaceNoLock;
             // [Jolt] VelocityIterations and PositionIterations: the solver's velocity and position steps per collision step.
             // PhysicsBackendSettings.Default keeps Jolt's own 10 and 2; the module's [Jolt] default is 20 velocity steps, since a
             // tall stack needs more to come to rest: ten 0.5 m boxes do not fall asleep at 10 and do at 20.
@@ -873,13 +999,17 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 solver.NumVelocitySteps = (uint)settings.VelocityIterations;
             if (settings.PositionIterations > 0)
                 solver.NumPositionSteps = (uint)settings.PositionIterations;
+            if (settings.SpeculativeContactDistance is float speculative)
+                solver.SpeculativeContactDistance = speculative;
+            if (settings.SleepVelocityThreshold is float sleepThreshold)
+                solver.PointVelocitySleepThreshold = sleepThreshold;
             _system.Settings = solver;
             _penetrationSlop = solver.PenetrationSlop;
             _positionShare = 1f - MathF.Pow(1f - solver.Baumgarte, Math.Max(1, solver.NumPositionSteps));
 
             // Determinism (for A/B parity runs): single-threaded ALONE is not enough - Jolt
             // also needs its DeterministicSimulation flag on to guarantee bit-identical re-runs. It
-            // defaults true in 2.18.6, but we set it EXPLICITLY when asked rather than lean on a default
+            // defaults true in Jolt's PhysicsSettings, but we set it EXPLICITLY when asked rather than lean on a default
             // that a future lib bump could flip. (Left untouched otherwise, to keep the fast path fast.)
             if (settings.DeterministicMode)
             {
@@ -888,7 +1018,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 _system.Settings = physicsSettings;
             }
 
-            // Contacts + body activation arrive as C# EVENTS in 2.18.6, not a
+            // Contacts + body activation arrive as C# EVENTS in 2.19.1, not a
             // listener object. The handlers ONLY enqueue / push into the ring - they never touch
             // scene state, never allocate, and never mutate the active set (see the field notes).
             _system.OnBodyActivated += HandleBodyActivated;
@@ -906,7 +1036,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // Avatar-vs-avatar collision registry (characters add themselves on create).
             _charVsChar = new CharacterVsCharacterCollisionSimple();
 
-            // Contact ring; it is engine-agnostic. 2.18.6 exposes contacts as EVENTS on PhysicsSystem
+            // Contact ring; it is engine-agnostic. 2.19.1 exposes contacts as EVENTS on PhysicsSystem
             // (OnContactAdded/Persisted/Removed), NOT a SetContactListener object; the handlers
             // subscribed above push into this ring, and OnBodyActivated / OnBodyDeactivated keep
             // the O(active) set.
@@ -921,6 +1051,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // touching any now-freed native object. _disposed is set BEFORE any native free.
             // Deadlock-free: Step never blocks on anything Dispose holds, so a Dispose waiting on _simLock
             // waits at most one step, then proceeds. Lock order _simLock -> _characterGate is preserved.
+            // Every pool gate first, then _simLock (see AllPoolGates): DisposeNative destroys the physics system,
+            // which erases it from joltc's map while no Update may be reading it. A backend that never took a pool
+            // (Initialize did not get that far) has no system to destroy and takes no gate.
+            JobPool[]? pools = _pool != null ? s_pools : null;
+            using (pools != null ? AllPoolGates.Take(pools, _settings.RegionName) : default)
             lock (_simLock)
             {
                 if (_disposed)
@@ -1004,6 +1139,26 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             settings.Dispose();
         }
 
+        // =====================================================================
+        // Body creation settings are freed by us too.
+        //
+        // The same OwnsHandle defect: JoltPhysicsSharp 2.19.1 builds BodyCreationSettings through the parameterless
+        // NativeObject constructor, so Dispose() frees nothing native. The native settings object keeps its reference on
+        // the shape it was made with, so the shape outlives its last release and the destroy of the system that held the
+        // body: measured, about 243 KB for every region start and stop (the terrain heightfield), and the shape of every
+        // body ever created. The settings are only read by the call that makes the body, so they are destroyed right after.
+        // =====================================================================
+        [System.Runtime.InteropServices.DllImport("joltc", CallingConvention = System.Runtime.InteropServices.CallingConvention.Cdecl)]
+        private static extern void JPH_BodyCreationSettings_Destroy(IntPtr settings);
+
+        internal static void FreeBodyCreationSettings(BodyCreationSettings settings)
+        {
+            bool bindingDestroys = s_ownsHandle?.GetValue(settings) is true;
+            if (!bindingDestroys && !settings.IsDisposed && settings.Handle != IntPtr.Zero)
+                JPH_BodyCreationSettings_Destroy(settings.Handle);
+            settings.Dispose();
+        }
+
         private readonly struct ShapeSettingsScope : IDisposable
         {
             private readonly ShapeSettings _settings;
@@ -1032,9 +1187,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         //
         // joltc keeps every system in a global map, s_PhysicsSystems: JPH_PhysicsSystem_Create inserts and
         // JPH_PhysicsSystem_Destroy erases. Regions are created and torn down on different threads. The native this
-        // module ships now locks the map itself (native/joltc/physics-systems-map-lock.patch), around the insert, the
-        // erase and the read in joltc's step-listener callback (ManagedPhysicsStepListener::OnStep). Both calls are
-        // still taken under s_systemMapGate as well, so a stock joltc, which has no such lock, stays safe here.
+        // module runs on, the stock joltc of the JoltPhysics.Native package, has no lock on it. Both calls
+        // are taken under s_systemMapGate, and with every pool's gate held (AllPoolGates), so no Update is running that
+        // could read the map from a step listener's OnStep.
         // =====================================================================
         private static readonly object s_systemMapGate = new object();
 
@@ -1152,6 +1307,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // Jolt object lives here so it is serialised against Step by the caller's lock.
         private void DisposeNative()
         {
+            // The step listener comes off first: it points at this backend, and the system is about to go.
+            ReleaseStepProviders();
+
             // Characters own native CharacterVirtual objects + shapes and hold a ref to _system, so
             // dispose them BEFORE the system teardown below.
             lock (_characterGate)
@@ -1176,10 +1334,17 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             _queryFilters.Clear();
 
             // Our own handle tables first (pure managed bookkeeping).
-            _constraints.Clear();
             _characters.Clear();
             _bodies.Clear();
-            _shapes.Clear();
+            // Shapes the callers never released. A body holds its own native reference, so letting go of ours here
+            // is the same as ReleaseShape at the last count; left to finalizers they would outlive the system.
+            foreach (JoltShapeRecord shapeRec in _shapes.TakeAll())
+            {
+                shapeRec.NativeShape?.Dispose();
+                shapeRec.NativeShape = null;
+                shapeRec.InnerShape?.Dispose();
+                shapeRec.InnerShape = null;
+            }
             _joltToRecord.Clear();
             _activeBodies.Clear();
             while (_activationQueue.TryDequeue(out _)) { }
@@ -1256,9 +1421,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
 
         // WORKER-THREAD context, inside the step (which holds _simLock, so no setter changes a record meanwhile). The
         // friction and restitution of the two touching parts, each a linkset child's own where the body is a compound,
-        // combined as ubODE combines them (ODEScene's near callback: friction sqrt(f1 x f2), restitution r1 x r2; the
-        // SL wiki gives no rule for two surfaces). Jolt's own rule, with which it fills `settings`, is the same for
-        // friction but takes the larger restitution. A pair with an avatar's query marker is left as Jolt made it.
+        // combined by [Jolt] FrictionCombine and RestitutionCombine (average by default, which is what PhysX does when no
+        // combine mode is set, as in Halcyon's tree; the SL wiki gives no rule for two surfaces). Jolt's own rules, with
+        // which it fills `settings`, are the geometric mean for friction and the larger value for restitution. A pair with
+        // an avatar's query marker is left as Jolt made it.
         private void CombineMaterials(in Body body1, in Body body2, in ContactManifold manifold, ref ContactSettings settings)
         {
             _joltToRecord.TryGetValue(body1.ID.ID, out JoltBodyRecord? ra);
@@ -1267,9 +1433,20 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 return;
             PartMaterial(ra, manifold.SubShapeID1.Value, out float f1, out float r1);
             PartMaterial(rb, manifold.SubShapeID2.Value, out float f2, out float r2);
-            settings.CombinedFriction = MathF.Sqrt(f1 * f2);
-            settings.CombinedRestitution = BounceFromTheSurface(in body1, in body2, ra, rb, in manifold, r1 * r2);
+            settings.CombinedFriction = Combine(ra.FrictionMin || rb.FrictionMin ? MaterialCombine.Min : _settings.FrictionCombine, f1, f2);
+            settings.CombinedRestitution = BounceFromTheSurface(in body1, in body2, ra, rb, in manifold,
+                                                                Combine(_settings.RestitutionCombine, r1, r2));
         }
+
+        /// <summary>The value two surfaces' <paramref name="a"/> and <paramref name="b"/> give a contact under <paramref name="rule"/>.</summary>
+        internal static float Combine(MaterialCombine rule, float a, float b) => rule switch
+        {
+            MaterialCombine.GeometricMean => MathF.Sqrt(a * b),
+            MaterialCombine.Multiply => a * b,
+            MaterialCombine.Min => MathF.Min(a, b),
+            MaterialCombine.Max => MathF.Max(a, b),
+            _ => (a + b) * 0.5f,
+        };
 
         // The length of one solver step of the current Update (the step's time over its collision steps). Written under
         // _simLock before the Update, read by the contact callbacks inside it.
@@ -1414,6 +1591,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         {
             _joltToRecord.TryGetValue(body1.ID.ID, out JoltBodyRecord? ra);
             _joltToRecord.TryGetValue(body2.ID.ID, out JoltBodyRecord? rb);
+
+            // A sensor pair the engine found in this update needs no help from the sweep of fast bodies (SweepFastBodiesForSensors).
+            if (Volatile.Read(ref _sensorSweepActive) && (body1.IsSensor || body2.IsSensor))
+                _sensorPairsReported[SensorPairKey(body1.ID.ID, body2.ID.ID)] = 0;
 
             // Stamp both bodies as touching in this step (BodyHadContact), before the Persist gate: Added or
             // Persisted fires for every touching pair in every step while either body is awake. A sensor or an
@@ -1568,9 +1749,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
 
         public ShapeId CreateMeshShape(ReadOnlySpan<Vector3> vertices, ReadOnlySpan<int> indices)
         {
-            // Cook once per ASSET, never per prim. Key the cache on the mesh asset UUID plus LOD, and
-            // hand the same ShapeId to every prim that references it. Cooking is the single most
-            // expensive operation here and re-cooking per prim is how region startup gets slow.
+            // This cooks the mesh it is given and keeps no cache: every caller that wants a shape shared between prims
+            // has to hold the ShapeId itself. Cooking is the single most expensive operation here.
             // NOTE: a MeshShape reports Volume 0 (Jolt does not integrate triangle-soup volume), so a
             // DYNAMIC body on a mesh gets the clamped fallback mass - meshes are meant to be static.
             if (indices.Length % 3 != 0)
@@ -1584,9 +1764,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 if ((uint)indices[i] >= (uint)vertices.Length)
                     throw new ArgumentException($"CreateMeshShape: index {i} = {indices[i]} is outside [0, {vertices.Length}).");
             int triCount = indices.Length / 3;
-            var tris = new IndexedTriangle[triCount];
+            // Two-sided: each triangle is followed by its reverse (the same corners in the opposite order), whose front face
+            // is the original's back face.
+            int copies = _settings.TwoSidedMeshes ? 2 : 1;
+            var tris = new IndexedTriangle[triCount * copies];
             for (int t = 0; t < triCount; t++)
-                tris[t] = new IndexedTriangle(indices[t * 3], indices[t * 3 + 1], indices[t * 3 + 2], 0u, 0u);
+            {
+                tris[t * copies] = new IndexedTriangle(indices[t * 3], indices[t * 3 + 1], indices[t * 3 + 2], 0u, 0u);
+                if (copies == 2)
+                    tris[t * copies + 1] = new IndexedTriangle(indices[t * 3], indices[t * 3 + 2], indices[t * 3 + 1], 0u, 0u);
+            }
             var verts = vertices.ToArray();
             var settings = new MeshShapeSettings(verts.AsSpan(), tris.AsSpan());
             using var free = new ShapeSettingsScope(settings);
@@ -1638,6 +1825,36 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             return new ShapeId(_shapes.Add(rec));
         }
 
+        public ShapeId CreateHullCompoundShape(ReadOnlySpan<ShapeId> hulls)
+        {
+            // Same Jolt limit as CreateCompoundShape: a StaticCompoundShape with fewer than 2 sub-shapes access-violates.
+            if (hulls.Length < 2)
+                throw new ArgumentException($"a hull compound needs >= 2 hulls (got {hulls.Length}); use the single hull directly.");
+
+            var settings = new StaticCompoundShapeSettings();
+            using var free = new ShapeSettingsScope(settings);
+            var handles = new IntPtr[hulls.Length];
+            for (int i = 0; i < hulls.Length; i++)
+            {
+                if (!_shapes.TryGet(hulls[i].Value, out JoltShapeRecord hullRec) || !IsLive(hullRec))
+                    throw new ArgumentException($"CreateHullCompoundShape: hull {i} ({hulls[i]}) is not a live shape.");
+                if (hullRec.NativeShape!.Type != ShapeType.Convex)
+                    throw new ArgumentException($"CreateHullCompoundShape: shape {i} ({hulls[i]}) is not a convex hull.");
+                // Create() AddRefs each hull, so it lives on in the compound after the caller releases its handle.
+                settings.AddShape(Vector3.Zero, Quaternion.Identity, hullRec.NativeShape, 0u);
+                handles[i] = hullRec.NativeShape.Handle;
+            }
+
+            var rec = new JoltShapeRecord
+            {
+                NativeShape = RequireCooked(settings.Create(), "CreateHullCompoundShape"),
+                RefCount = 1,
+                IsWrapper = true,
+                HullHandles = handles,   // no CompoundChildUserData: a hit on any hull is a hit on the body
+            };
+            return new ShapeId(_shapes.Add(rec));
+        }
+
         public ShapeId CreateHeightFieldShape(
             ReadOnlySpan<float> heights, int sampleCountX, int sampleCountY, Vector3 scale)
         {
@@ -1648,9 +1865,9 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // Y-up field, then wrap it in a RotatedTranslatedShape and return the WRAPPER's handle,
             // which is already Z-up-correct and self-consistent for any caller/query. See below.
             //
-            // Sample-count constraint (checked empirically against joltc 2.18.6):
-            // the managed HeightFieldShapeSettings exposes NO block-size / bits-per-sample setter, so the
-            // native default block size is used. joltc is a RELEASE build with Jolt's asserts compiled
+            // Sample-count constraint (checked empirically against JoltPhysicsSharp 2.18.6):
+            // the managed HeightFieldShapeSettings has BlockSize and BitsPerSample properties in 2.19.1;
+            // this leaves both at the native defaults. joltc is a RELEASE build with Jolt's asserts compiled
             // out, so a bad count does NOT throw - it silently mis-cooks (n>=3 incl. odd/non-PoT all
             // return a non-null shape; only n<3 fails). A 257-sample test showed an odd/prime count
             // reproduces its input faithfully (block divisibility is a NON-constraint), and a var region
@@ -1666,7 +1883,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             if (n < MinHeightFieldSampleCount)
                 throw new ArgumentException(
                     $"HeightFieldShape sample count must be >= {MinHeightFieldSampleCount}; got {n} " +
-                    "(n<3 silently mis-cooks in joltc 2.18.6).");
+                    "(n<3 silently mis-cooks in joltc).");
             if (heights.Length < n * n)
                 throw new ArgumentException($"height buffer too small: need {n * n} samples, got {heights.Length}.");
 
@@ -1733,10 +1950,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
 
         public ShapeId CreateScaledShape(ShapeId baseShape, Vector3 scale)
         {
-            // The whole reason this is on the interface: prim resize wraps the cooked shape in a
-            // ScaledShape - cheap, shares the underlying geometry, no re-cook. Verified per-type in
-            // 2.18.6: box/hull/mesh accept ANY scale (incl. mirror/tri-non-uniform); sphere/capsule
-            // reject non-uniform (MakeScaleValid uniform-ises to the mean); cylinder allows an axial
+            // Wraps a cooked shape in a ScaledShape: cheap, shares the underlying geometry, no re-cook. A mesh prim that is
+            // resized takes one of these over the shape cooked for its asset (JoltScene.CookMeshShape). Verified per-type
+            // against JoltPhysicsSharp 2.18.6: box/hull/mesh accept ANY scale (incl. mirror/tri-non-uniform);
+            // sphere/capsule reject non-uniform (MakeScaleValid uniform-ises to the mean); cylinder allows an axial
             // scale with UNIFORM radial only. We MakeScaleValid so we never cook a distorted/invalid
             // shape; the layer above can pre-check IsValidScale if it wants to degrade differently
             // (e.g. swap a non-uniformly-scaled sphere for an ellipsoid hull) rather than accept the clamp.
@@ -1754,6 +1971,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 BaseShape = baseShape,
             };
             return new ShapeId(_shapes.Add(rec));
+        }
+
+        public bool IsScaleValid(ShapeId shape, Vector3 scale)
+        {
+            if (!IsFinite(scale) || scale.X <= 0f || scale.Y <= 0f || scale.Z <= 0f)
+                return false;
+            return _shapes.TryGet(shape.Value, out JoltShapeRecord rec) && IsLive(rec) && rec.NativeShape!.IsValidScale(scale);
         }
 
         public void AddShapeRef(ShapeId shape)
@@ -1852,6 +2076,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 bcs.Restitution = desc.Restitution;
                 bcs.IsSensor = desc.IsSensor;
                 bcs.UserData = desc.UserData;
+                if (_settings.BodyInternalEdgeRemoval && desc.MotionType == BodyMotionType.Dynamic)
+                    bcs.EnhancedInternalEdgeRemoval = true;
 
                 if (movable)
                 {
@@ -1932,12 +2158,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 uint handle = _bodies.Add(rec);
                 rec.Handle = handle;
                 _joltToRecord[joltId.ID] = rec;
+                if (desc.Layer == PhysicsLayer.Sensor)
+                    Interlocked.Increment(ref _sensorBodies);
                 return new BodyId(handle);
             }
             finally
             {
                 // CreateAndAddBody copies the settings; the managed settings object is ours to free.
-                bcs.Dispose();
+                FreeBodyCreationSettings(bcs);
             }
             }   // _simLock
         }
@@ -2000,9 +2228,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 return; // an avatar query-marker is owned by its character; RemoveCharacter destroys it.
 
             var joltId = new BodyID(rec.NativeBodyId);
+            DropProvidersOfBody(body.Value);   // a force provider never outlives its body
             _bodyInterface.RemoveAndDestroyBody(joltId);
             _joltToRecord.TryRemove(rec.NativeBodyId, out _);
             _bodies.Remove(body.Value); // bumps the generation so the stale handle fails validation.
+            if (_characterList.Count > 0)
+                _removedBodyIds[rec.NativeBodyId] = 0;   // an avatar that stood on it finds its ground again in its next step (StepCharacter)
+            if (rec.Layer == PhysicsLayer.Sensor)
+                Interlocked.Decrement(ref _sensorBodies);
             // _activeBodies is step-thread-owned; if this body happened to be active, the stale
             // id is self-healed at the top of Step (it no longer resolves via _joltToRecord).
             }   // _simLock
@@ -2071,6 +2304,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 if (!TryResolve(body, out JoltBodyRecord rec, out BodyID jid))
                     return;
                 _bodyInterface.SetObjectLayer(jid, new ObjectLayer((uint)layer));
+                if (rec.Layer == PhysicsLayer.Sensor && layer != PhysicsLayer.Sensor)
+                    Interlocked.Decrement(ref _sensorBodies);
+                else if (rec.Layer != PhysicsLayer.Sensor && layer == PhysicsLayer.Sensor)
+                    Interlocked.Increment(ref _sensorBodies);
                 rec.Layer = layer;
             }
         }
@@ -2099,6 +2336,36 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 if (TryResolve(body, out _, out BodyID jid))
                     _bodyInterface.SetPositionAndRotation(jid, position, orientation,
                         activate ? Activation.Activate : Activation.DontActivate);
+            }
+        }
+
+        // BodyInterface::MoveKinematic (Body::MoveKinematic): sets the linear and angular velocity that take the body to the
+        // pose in `seconds`, and wakes it when that velocity is not zero. What stands on the body is carried by it: an
+        // avatar takes the velocity of the body under its feet (CharacterVirtual ground velocity), a dynamic body by
+        // contact friction. Only a kinematic body takes it (a static one has no motion properties).
+        public void MoveKinematicBody(BodyId body, Vector3 position, Quaternion orientation, float seconds)
+        {
+            if (!IsFinite(position) || !IsUsable(orientation) || !float.IsFinite(seconds)) { CountRejectedNonFinite(); return; }
+            if (seconds <= 0f)
+                return;
+            lock (_simLock)
+            {
+                if (_disposed) return;
+                if (TryResolve(body, out JoltBodyRecord rec, out BodyID jid) && rec.MotionType == BodyMotionType.Kinematic)
+                    _bodyInterface.MoveKinematic(jid, position, orientation, seconds);
+            }
+        }
+
+        // BodyInterface::SetPositionRotationAndVelocity: the pose and the velocities at once. The body is activated when a
+        // velocity is not zero; with both zero a kinematic body stays where it is put and what rests on it is not flung.
+        public void SetBodyPoseAndVelocity(BodyId body, Vector3 position, Quaternion orientation, Vector3 linearVelocity, Vector3 angularVelocity)
+        {
+            if (!IsFinite(position) || !IsUsable(orientation) || !IsFinite(linearVelocity) || !IsFinite(angularVelocity)) { CountRejectedNonFinite(); return; }
+            lock (_simLock)
+            {
+                if (_disposed) return;
+                if (TryResolve(body, out JoltBodyRecord rec, out BodyID jid) && rec.MotionType != BodyMotionType.Static)
+                    _bodyInterface.SetPositionRotationAndVelocity(jid, position, orientation, linearVelocity, angularVelocity);
             }
         }
 
@@ -2139,7 +2406,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             if (rec.MotionType != BodyMotionType.Dynamic)
                 return; // mass is inert for static/kinematic motion; recorded for a later flip to Dynamic.
 
-            // No BodyInterface.SetMass in 2.18.6. Take the shape's geometry-correct mass properties,
+            // No BodyInterface.SetMass in 2.19.1. Take the shape's geometry-correct mass properties,
             // scale them to the target mass (keeps the inertia tensor's SHAPE, changes only its
             // magnitude), and push them through a body write-lock.
             BodyLockInterface bli = _system!.BodyLockInterface;
@@ -2245,6 +2512,25 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public float GetBodyMass(BodyId body)
         {
             return TryResolve(body, out JoltBodyRecord rec, out _) ? rec.Mass : 0f;
+        }
+
+        public bool GetBodyEnhancedEdgeRemoval(BodyId body)
+        {
+            lock (_simLock)
+            {
+                if (_disposed || !TryResolve(body, out _, out BodyID jid))
+                    return false;
+                BodyLockInterface bli = _system!.BodyLockInterface;
+                bli.LockRead(jid, out BodyLockRead lockRead);
+                try { return lockRead.Succeeded && lockRead.Body!.EnhancedInternalEdgeRemoval; }
+                finally { bli.UnlockRead(lockRead); }
+            }
+        }
+
+        public bool GetCharacterEnhancedEdgeRemoval(CharacterId character)
+        {
+            lock (_characterGate)
+                return _characters.TryGet(character.Value, out JoltCharacterRecord rec) && rec.Character != null && rec.Character.EnhancedInternalEdgeRemoval;
         }
 
         // Local principal moments of inertia (diagonal), read from the live MotionProperties.
@@ -2354,6 +2640,16 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             }
         }
 
+        public void SetBodyFrictionMin(BodyId body, bool min)
+        {
+            lock (_simLock)
+            {
+                if (_disposed) return;
+                if (TryResolve(body, out JoltBodyRecord rec, out BodyID _))
+                    rec.FrictionMin = min;
+            }
+        }
+
         public void SetBodyPartMaterial(BodyId body, uint partUserData, float friction, float restitution)
         {
             if (!float.IsFinite(friction) || !float.IsFinite(restitution)) { CountRejectedNonFinite(); return; }
@@ -2421,6 +2717,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             {
                 if (_disposed || density <= 0f || !_shapes.TryGet(shape.Value, out JoltShapeRecord rec) || !IsLive(rec))
                     return;
+                if (rec.HullHandles != null)
+                {
+                    // A hull compound (a mesh asset's hull list): every hull takes the density.
+                    foreach (IntPtr hull in rec.HullHandles)
+                        if (JPH_ConvexShape_GetDensity(hull) != density)
+                            JPH_ConvexShape_SetDensity(hull, density);
+                    return;
+                }
                 Shape native = rec.NativeShape!;
                 if (native.Type != ShapeType.Convex)
                     return;
@@ -2435,6 +2739,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             {
                 if (_disposed || !_shapes.TryGet(shape.Value, out JoltShapeRecord rec) || !IsLive(rec))
                     return 0f;
+                if (rec.HullHandles != null)
+                    return JPH_ConvexShape_GetDensity(rec.HullHandles[0]);
                 Shape native = rec.NativeShape!;
                 return native.Type == ShapeType.Convex ? JPH_ConvexShape_GetDensity(native.Handle) : 0f;
             }
@@ -2477,14 +2783,6 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 _bodyInterface.SetGravityFactor(jid, factor);
                 rec.GravityFactor = factor;
             }
-        }
-
-        public void SetBodyAxisLocks(BodyId body, Vector3 allowedTranslation, Vector3 allowedRotation)
-        {
-            // Jolt: SixDOFConstraint to world, or MotionProperties mass/inertia
-            // scaling. The constraint route is more predictable; the inertia
-            // route is cheaper. Start with the constraint and measure.
-            throw new NotImplementedException();
         }
 
         // Apply* only act on DYNAMIC bodies (see TryResolveDynamic). All of these auto-activate a
@@ -2551,13 +2849,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         {
             if (!float.IsFinite(waterHeight) || !float.IsFinite(buoyancy) || !float.IsFinite(linearDrag) || !float.IsFinite(angularDrag))
                 { CountRejectedNonFinite(); return; }
-            // Jolt: Body.ApplyBuoyancyImpulse(surfacePosition, surfaceNormal,
-            //         buoyancy, linearDrag, angularDrag, fluidVelocity,
-            //         gravity, deltaTime)
-            // Must be called every step while submerged - it is an impulse, not
-            // a persistent state. This should replace the hand-rolled lift in
-            // the vehicle buoyancy model.
-            throw new NotImplementedException();
+            // A no-op, not an implementation: nothing in the module calls it (the vehicle buoyancy model does its own
+            // lift), and Jolt's ApplyBuoyancyImpulse needs a step length and a fluid velocity this signature does not
+            // carry, so there is no one mapping to write and nothing to test it against. A call that does nothing cannot
+            // push a body the wrong way; a throw would only crash a caller that is not there yet.
         }
 
         public void ActivateBody(BodyId body)
@@ -2667,12 +2962,17 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // contact callbacks report during it. Written under _simLock, read from the solver's worker threads.
         private long _contactStep;
 
+        // The engine reports no contact for a body asleep, which has not moved since it last touched what it rests on, so
+        // a sleeping body keeps the state it went to sleep with: touching if it touched in the last step it was awake.
         public bool BodyHadContact(BodyId body)
         {
             if (!_bodies.TryGet(body.Value, out JoltBodyRecord rec))
                 return false;
             long step = Volatile.Read(ref _contactStep);
-            return step != 0 && Volatile.Read(ref rec.ContactStep) == step;
+            long last = Volatile.Read(ref rec.ContactStep);
+            if (step != 0 && !Volatile.Read(ref rec.Awake) && rec.MotionType == BodyMotionType.Dynamic)
+                return last != 0 && last >= Volatile.Read(ref rec.SleptStep);
+            return step != 0 && last == step;
         }
 
         public bool IsBodyAwake(BodyId body)
@@ -2722,6 +3022,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // Z-up adaptation (Jolt's CharacterVirtual defaults are Y-up): Up = +Z, the capsule is
             // rotated to stand along Z, and SupportingVolume is a plane one radius below the centre so
             // the bottom hemisphere counts as ground. The Y-up ExtendedUpdateSettings are remapped in Step.
+            if (_disposed)
+                return CharacterId.Invalid;   // a region being torn down: refused, as CreateBody does
             if (_system == null)
                 throw new InvalidOperationException("CreateCharacter before Initialize.");
             if (!IsFinite(desc.Position) || !IsUsable(desc.Orientation))
@@ -2730,21 +3032,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             PhysicsSystem system = _system;
 
             (Shape wrapper, Shape inner) = BuildStandingCapsule(desc.CapsuleHalfHeight, desc.CapsuleRadius);
-            var settings = new CharacterVirtualSettings
-            {
-                Shape = wrapper,
-                Up = Vector3.UnitZ,
-                SupportingVolume = new Plane(Vector3.UnitZ, -MathF.Max(0.01f, desc.CapsuleRadius)),
-                MaxSlopeAngle = desc.MaxSlopeAngle,
-                Mass = desc.Mass,
-                MaxStrength = MathF.Max(0f, desc.PushStrength) * PushStrengthBaseNewtons,
-                // NOTE: PredictiveContactDistance / PenetrationRecoverySpeed are left at Jolt's defaults
-                // (0.1 / 1.0). Raising PredictiveContactDistance to 0.15 (to reduce the feet dip) was
-                // tried and REVERTED: on a cone's incline the early look-ahead lifted the capsule off the ground
-                // (visible hover) and fought penetration recovery frame-to-frame (a walking hop/bob). The
-                // clean-hold walk (defaults) is "mostly SL-like" with only a MINOR feet-dip on transitions,
-                // which is preferable to hover+hop. Do not raise the look-ahead without a slope walk-test.
-            };
+            var settings = MakeCharacterSettings(wrapper, desc.CapsuleRadius, desc.MaxSlopeAngle, desc.Mass, desc.PushStrength);
+            settings.EnhancedInternalEdgeRemoval = _settings.AvatarInternalEdgeRemoval;
 
             // _simLock: AddCharacter runs on the LOGIN/TELEPORT thread and adds the query-marker body,
             // which mutates the broadphase Update is walking. Taken outside _characterGate per the
@@ -2752,6 +3041,13 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             lock (_simLock)
             lock (_characterGate)
             {
+                if (_disposed)
+                {
+                    // Disposed between the check above and the lock: the system is gone, so make nothing against it.
+                    wrapper.Dispose();
+                    inner.Dispose();
+                    return CharacterId.Invalid;
+                }
                 var character = new CharacterVirtual(settings, desc.Position, desc.Orientation, desc.UserData, system);
                 character.MaxSlopeAngle = desc.MaxSlopeAngle;
                 character.UserData = desc.UserData;
@@ -2765,6 +3061,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     WantsContactEvents = desc.WantsContactEvents,
                     CapsuleHalfHeight = desc.CapsuleHalfHeight,
                     CapsuleRadius = desc.CapsuleRadius,
+                    SupportRadius = SupportRadiusOf(desc.CapsuleRadius),
                     MaxSlopeAngle = desc.MaxSlopeAngle,
                     StepHeight = desc.StepHeight,
                     PushStrength = desc.PushStrength,
@@ -2789,7 +3086,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 markerBcs.UserData = desc.UserData;
                 BodyID markerId;
                 try { markerId = _bodyInterface.CreateAndAddBody(markerBcs, Activation.DontActivate); }
-                finally { markerBcs.Dispose(); }
+                finally { FreeBodyCreationSettings(markerBcs); }
 
                 // CreateBody's invalid-id policy. At MaxBodies the avatar gets no query
                 // marker (queries will not see it; it still walks and collides): count it, record nothing against
@@ -2817,41 +3114,69 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     rec.MarkerRecord = markerRec;
                 }
 
-                // Avatar as a COLLISION CITIZEN. Rather than an inner rigid body (which in 2.18.6
-                // cannot report kinematic-vs-static/terrain, whose CollideKinematicVsNonDynamic fix
-                // HANGS the solver, and which as a solid body perturbs the avatar push behaviour), we
+                // Avatar as a COLLISION CITIZEN. Rather than an inner rigid body (which, checked
+                // against JoltPhysicsSharp 2.18.6, cannot report kinematic-vs-static/terrain, whose
+                // CollideKinematicVsNonDynamic fix HANGS the solver, and which as a solid body perturbs the avatar push behaviour), we
                 // forward the CharacterVirtual's OWN contact events. They fire on THIS (step) thread
                 // during ExtendedUpdate, cover terrain/static/dynamic/sensor, and - crucially - a
                 // standing avatar re-reports its floor contact every step, which is the real thing the
                 // Persist gate exists to suppress. Movement is untouched (these are observational).
                 // A touching contact is noted and reported after the move (FinishCharacterContacts), when its relative speed
                 // is known and a loose object the avatar touches has been dealt with.
-                // [Confluence: JoltPhysicsSharp 2.22+ (Jolt 5.5+) passes the contact as one CharacterContact. Its ContactNormal points
-                // towards the character; Jolt 5.4 passed -mContactNormal (away from it, into the surface), which is what this
-                // code and its tests expect, hence the minus.]
-                character.OnContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Begin, ref s);
-                character.OnContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Persist, ref s);
-                character.OnContactRemoved += (CharacterVirtual cv, in BodyID b2, SubShapeID ss)
-                    => PushCharacterBodyContact(rec, b2.ID, ss.Value, default, default, ContactPhase.End);
-
-                // Avatar-avatar: register in the shared collision so capsules push/block, and report
-                // the contact. otherCharacter.UserData gives the other avatar's id directly.
-                if (_charVsChar != null)
-                {
-                    _charVsChar.Add(character);
-                    character.SetCharacterVsCharacterCollision(_charVsChar);
-                }
-                character.OnCharacterContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Begin);
-                character.OnCharacterContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
-                    => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Persist);
+                WireCharacter(rec, character);
 
                 _characterList.Add(rec);
                 return new CharacterId(handle);
             }
         }
+
+        // The controller's contact events, and its entry in the avatar-vs-avatar registry. Runs under _simLock and
+        // _characterGate, for a new controller and for the one that replaces it on a resize.
+        private void WireCharacter(JoltCharacterRecord rec, CharacterVirtual character)
+        {
+            // [Confluence: JoltPhysicsSharp 2.22+ (Jolt 5.5+) passes the contact as one CharacterContact. Its ContactNormal points
+            // towards the character; Jolt 5.4 passed -mContactNormal (away from it, into the surface), which is what this
+            // code and its tests expect, hence the minus.]
+            character.OnContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Begin, ref s);
+            character.OnContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                => NoteCharacterBodyContact(rec, c.BodyB.ID, c.SubShapeIDB.Value, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Persist, ref s);
+            character.OnContactRemoved += (CharacterVirtual cv, in BodyID b2, SubShapeID ss)
+                => PushCharacterBodyContact(rec, b2.ID, ss.Value, default, default, ContactPhase.End);
+
+            // Avatar-avatar: register in the shared collision so capsules push/block, and report
+            // the contact. otherCharacter.UserData gives the other avatar's id directly.
+            if (_charVsChar != null)
+            {
+                _charVsChar.Add(character);
+                character.SetCharacterVsCharacterCollision(_charVsChar);
+            }
+            character.OnCharacterContactAdded += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Begin);
+            character.OnCharacterContactPersisted += (CharacterVirtual cv, in CharacterContact c, ref CharacterContactSettings s)
+                => PushCharacterCharacterContact(rec, c.CharacterB, ToVec(c.RPosition), -c.ContactNormal, ContactPhase.Persist);
+        }
+
+        // The supporting plane is one radius below the capsule's centre, and CharacterVirtual takes it only at creation
+        // (joltc has no call to change it), so a radius change has to build a new controller. Clamped as the capsule is.
+        private static float SupportRadiusOf(float capsuleRadius) => MathF.Max(0.01f, capsuleRadius);
+
+        private static CharacterVirtualSettings MakeCharacterSettings(Shape wrapper, float capsuleRadius, float maxSlopeAngle, float mass, float pushStrength)
+            => new CharacterVirtualSettings
+            {
+                Shape = wrapper,
+                Up = Vector3.UnitZ,
+                SupportingVolume = new Plane(Vector3.UnitZ, -SupportRadiusOf(capsuleRadius)),
+                MaxSlopeAngle = maxSlopeAngle,
+                Mass = mass,
+                MaxStrength = MathF.Max(0f, pushStrength) * PushStrengthBaseNewtons,
+                // NOTE: PredictiveContactDistance / PenetrationRecoverySpeed are left at Jolt's defaults
+                // (0.1 / 1.0). Raising PredictiveContactDistance to 0.15 (to reduce the feet dip) was
+                // tried and REVERTED: on a cone's incline the early look-ahead lifted the capsule off the ground
+                // (visible hover) and fought penetration recovery frame-to-frame (a walking hop/bob). The
+                // clean-hold walk (defaults) is "mostly SL-like" with only a MINOR feet-dip on transitions,
+                // which is preferable to hover+hop. Do not raise the look-ahead without a slope walk-test.
+            };
 
         private static Vector3 ToVec(in RVector3 d) => new Vector3((float)d.X, (float)d.Y, (float)d.Z);   // 2.19.x renamed Double3 -> RVector3
 
@@ -3000,9 +3325,10 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // bounce 0, ODEScene's near callback): both go on along the contact normal at their common speed, weighted by mass
         // with the avatar's mass. So the object never goes on into the avatar. The avatar takes its share as a push, held to
         // the push limits ([Jolt] AvatarPushMaxSpeed); an avatar on the ground is not pushed down into it, so an object
-        // that lands on it stops there. An avatar moving into a loose object pushes it along, level, with at most its push
-        // force (PushStrength x 100 N, Jolt's own MaxStrength) and never faster than the avatar moves that way: a light
-        // object goes along at the avatar's pace, and a heavy one, held by its friction, barely moves.
+        // that lands on it stops there. An avatar moving into a loose object pushes it along, level, with a force of its mass
+        // times its speed into the object times [Jolt] AvatarObjectPushPerMomentum (held to AvatarObjectPushMaxForce, and
+        // scaled by its PushStrength), and never faster than the avatar moves that way: a light object goes along at the
+        // avatar's pace, a heavy one is accelerated by the force less its friction, so a run pushes it harder than a walk.
         private void FinishCharacterContacts(JoltCharacterRecord rec, CharacterVirtual ch, float dt)
         {
             List<CharacterBodyContact> contacts = rec.Contacts;
@@ -3014,7 +3340,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 return;
             Vector3 vChar = rec.StepVelocity;
             bool supported = ch.GroundState == GroundState.OnGround;
-            float pushForce = MathF.Max(0f, rec.PushStrength) * PushStrengthBaseNewtons;
+            float pushScale = MathF.Max(0f, rec.PushStrength);
             for (int i = 0; i < contacts.Count; i++)
             {
                 CharacterBodyContact c = contacts[i];
@@ -3051,8 +3377,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                         {
                             level /= len;
                             float ah = Vector3.Dot(vChar, level), bh = Vector3.Dot(vBody, level);
-                            if (ah > bh)
+                            // Only an avatar moving into the object pushes it. One moving away (ah below zero) with an object
+                            // coming at it from the side, a falling box against its rounded foot, would get a negative force
+                            // and so a push into the avatar of the force's size.
+                            if (ah > 0f && ah > bh)
                             {
+                                // The force is the avatar's mass x its speed into the object x the per-momentum factor, held to the
+                                // maximum: running (faster) pushes harder than walking, and a heavier avatar harder than a light one.
+                                float pushForce = pushScale * MathF.Min(_settings.AvatarObjectPushMaxForce, rec.Mass * ah * _settings.AvatarObjectPushPerMomentum);
                                 float target = MathF.Min(ah, bh + pushForce * dt / other.Mass);
                                 _bodyInterface.AddLinearVelocity(jid, level * (target - bh));
                             }
@@ -3103,6 +3435,181 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // The avatar takes its share on its next step, so for this one the object is held back by what it
             // would gain on the avatar meanwhile: else it goes that far into it.
             return n * ((a - common) * dt);
+        }
+
+        // ---------------------------------------------------------------------
+        // Fast bodies and volume-detect prims. Jolt finds a sensor's contact only where a body overlaps it at the start of a
+        // collision step: its cast of a fast body ignores sensors, and a sensor is not cast itself. A body that is wholly on
+        // one side of a thin detector at one step and wholly on the other at the next is never found, however the heartbeat is
+        // divided, and the detector raises nothing. Second Life documents that a detector "triggers collision_start and
+        // collision_end events when interpenetrating" and no speed beyond which that stops.
+        //
+        // So, in an update, when the region has a sensor: each awake dynamic body that would go further than
+        // SensorSweepMinTravel is noted before it (its centre of mass and its turn), and afterwards, from where it was to
+        // where the update left it, its shape is cast against the sensors. A sensor the path passed through, that the
+        // engine did not report in this update, and that the body does not overlap where it ended (the engine finds that one
+        // in the next update, as it finds every sensor contact), gets a begin contact, which the scene turns into one
+        // collision_start; the next heartbeat has no contact, which is the collision_end. A sensor the path meets on the way
+        // to a stop short of it is not passed through: the path cast is the one the update made (to where it ended), not the
+        // one it would have made.
+        // ---------------------------------------------------------------------
+
+        private int _sensorBodies;                       // bodies on the Sensor layer now
+        private bool _sensorSweepActive;                 // volatile reads: the contact callbacks run on the engine's job threads
+        private const float SensorSweepMinTravel = 0.1f; // m an update must move a body for it to be swept
+
+        private readonly struct SweptBody
+        {
+            public readonly uint JoltId;
+            public readonly Vector3 From;
+            public readonly Quaternion Rotation;
+            public SweptBody(uint id, Vector3 from, Quaternion rotation) { JoltId = id; From = from; Rotation = rotation; }
+        }
+
+        private readonly List<SweptBody> _sensorSwept = new List<SweptBody>();                                   // step-thread only
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, byte> _sensorPairsReported = new System.Collections.Concurrent.ConcurrentDictionary<ulong, byte>();
+        private readonly List<ShapeCastResult> _sensorCastHits = new List<ShapeCastResult>();
+        private readonly List<CollideShapeResult> _sensorEndOverlaps = new List<CollideShapeResult>();
+        private readonly HashSet<uint> _sensorsOverlappedAtEnd = new HashSet<uint>();
+
+        /// <summary>Begin contacts the sweep of fast bodies against sensors has raised that the engine did not (tests).</summary>
+        internal long SensorCrossingsRaised => Interlocked.Read(ref _sensorCrossingsRaised);
+        private long _sensorCrossingsRaised;
+
+        private static ulong SensorPairKey(uint a, uint b) => a < b ? ((ulong)a << 32) | b : ((ulong)b << 32) | a;
+
+        private void BeginSensorSweep(float deltaTime)
+        {
+            _sensorSwept.Clear();
+            _sensorPairsReported.Clear();
+            if (Volatile.Read(ref _sensorBodies) <= 0)
+            {
+                Volatile.Write(ref _sensorSweepActive, false);
+                return;
+            }
+            _sweptBodies.Clear();
+            _sweptBodies.UnionWith(_activeBodies);
+            if (!_activationQueue.IsEmpty)
+                foreach (ActivationDelta delta in _activationQueue)
+                    if (delta.Activated)
+                        _sweptBodies.Add(delta.BodyId);
+            foreach (uint joltId in _sweptBodies)
+            {
+                if (!_joltToRecord.TryGetValue(joltId, out JoltBodyRecord? rec) || rec.IsCharacterMarker
+                    || rec.MotionType != BodyMotionType.Dynamic || rec.Layer != PhysicsLayer.Dynamic)
+                    continue;
+                var jid = new BodyID(joltId);
+                if (_bodyInterface.GetLinearVelocity(jid).Length() * deltaTime <= SensorSweepMinTravel)
+                    continue;
+                _sensorSwept.Add(new SweptBody(joltId, ToVec(_bodyInterface.GetCenterOfMassPosition(jid)), _bodyInterface.GetRotation(jid)));
+            }
+            Volatile.Write(ref _sensorSweepActive, _sensorSwept.Count > 0);
+        }
+
+        private void FinishSensorSweep()
+        {
+            if (!Volatile.Read(ref _sensorSweepActive))
+                return;
+            Volatile.Write(ref _sensorSweepActive, false);
+            for (int i = 0; i < _sensorSwept.Count; i++)
+            {
+                SweptBody swept = _sensorSwept[i];
+                if (!_joltToRecord.TryGetValue(swept.JoltId, out JoltBodyRecord? rec) || !_shapes.TryGet(rec.Shape.Value, out JoltShapeRecord shapeRec) || shapeRec.NativeShape == null)
+                    continue;
+                var jid = new BodyID(swept.JoltId);
+                Vector3 to = ToVec(_bodyInterface.GetCenterOfMassPosition(jid));
+                Vector3 path = to - swept.From;
+                if (!(path.Length() > SensorSweepMinTravel))
+                    continue;
+
+                Matrix4x4 start = Matrix4x4.CreateFromQuaternion(swept.Rotation);
+                start.Translation = swept.From;
+                _sensorCastHits.Clear();
+                _system!.NarrowPhaseQuery.CastShape(shapeRec.NativeShape, Matrix4x4.Transpose(start), path, DefaultCastSettings(), Vector3.Zero,
+                    CollisionCollectorType.AllHit, _sensorCastHits, null, FilterFor(QueryFilter.Sensor), null, null);
+                if (_sensorCastHits.Count == 0)
+                    continue;
+
+                // The sensors the body overlaps where it is now: the engine reports those in its next update.
+                Matrix4x4 end = Matrix4x4.CreateFromQuaternion(_bodyInterface.GetRotation(jid));
+                end.Translation = to;
+                _sensorEndOverlaps.Clear();
+                _sensorsOverlappedAtEnd.Clear();
+                _system.NarrowPhaseQuery.CollideShape(shapeRec.NativeShape, Vector3.One, Matrix4x4.Transpose(end), DefaultCollideSettings(), Vector3.Zero,
+                    CollisionCollectorType.AllHit, _sensorEndOverlaps, null, FilterFor(QueryFilter.Sensor), null, null);
+                for (int k = 0; k < _sensorEndOverlaps.Count; k++)
+                    _sensorsOverlappedAtEnd.Add(_sensorEndOverlaps[k].BodyID2.ID);
+
+                for (int h = 0; h < _sensorCastHits.Count; h++)
+                {
+                    ShapeCastResult hit = _sensorCastHits[h];
+                    uint sensorId = hit.BodyID2.ID;
+                    if (sensorId == swept.JoltId || _sensorsOverlappedAtEnd.Contains(sensorId)
+                        || _sensorPairsReported.ContainsKey(SensorPairKey(swept.JoltId, sensorId))
+                        || !_joltToRecord.TryGetValue(sensorId, out JoltBodyRecord? sensorRec) || sensorRec.Layer != PhysicsLayer.Sensor)
+                        continue;
+                    // One begin for the pair, however many of the body's parts or the detector's the path crossed.
+                    _sensorPairsReported[SensorPairKey(swept.JoltId, sensorId)] = 0;
+                    Interlocked.Increment(ref _sensorCrossingsRaised);
+                    float axis = hit.PenetrationAxis.Length();
+                    Vector3 normal = axis > 1e-6f ? -hit.PenetrationAxis / axis : Vector3.UnitZ;
+                    Vector3 v = _bodyInterface.GetLinearVelocity(jid);
+                    _contactListener.Push(BuildContact(rec, sensorRec, hit.ContactPointOn2, normal, 0f, ContactPhase.Begin,
+                        ResolveStruckPart(rec, hit.SubShapeID1.Value), ResolveStruckPart(sensorRec, hit.SubShapeID2.Value), Vector3.Dot(v, -normal)));
+                }
+            }
+            _sensorSwept.Clear();
+        }
+
+        // The same for an avatar. Its own update (CharacterVirtual::ExtendedUpdate) reports the sensors it overlaps along the
+        // move it can make in a step, and an avatar that goes through a thin detector faster than its capsule is wide in one
+        // step (flying at 48 m/s at 11 Hz with one step per heartbeat) is wholly on one side of it at one step and wholly on
+        // the other at the next, so the detector raised nothing. After the avatar's move, when the region has a sensor and the
+        // avatar went further than SensorSweepMinTravel, its capsule is cast from where it was to where it is against the sensors;
+        // a sensor the path crossed, that its update did not report and that it does not overlap where it ended (the next update
+        // finds that one), gets a begin contact among the update's, so the detector's collision_start is raised and the next
+        // heartbeat's absence is the collision_end, as for a body.
+        private void SweepCharacterAgainstSensors(JoltCharacterRecord rec, CharacterVirtual ch, Vector3 from)
+        {
+            if (Volatile.Read(ref _sensorBodies) <= 0 || rec.StandingShape == null || _system == null)
+                return;
+            Vector3 to = ch.Position;
+            Vector3 path = to - from;
+            if (!(path.Length() > SensorSweepMinTravel))
+                return;
+            Matrix4x4 start = Matrix4x4.CreateFromQuaternion(ch.Rotation);
+            start.Translation = from;
+            _sensorCastHits.Clear();
+            _system.NarrowPhaseQuery.CastShape(rec.StandingShape, Matrix4x4.Transpose(start), path, DefaultCastSettings(), Vector3.Zero,
+                CollisionCollectorType.AllHit, _sensorCastHits, null, FilterFor(QueryFilter.Sensor), null, null);
+            if (_sensorCastHits.Count == 0)
+                return;
+
+            Matrix4x4 end = Matrix4x4.CreateFromQuaternion(ch.Rotation);
+            end.Translation = to;
+            _sensorEndOverlaps.Clear();
+            _sensorsOverlappedAtEnd.Clear();
+            _system.NarrowPhaseQuery.CollideShape(rec.StandingShape, Vector3.One, Matrix4x4.Transpose(end), DefaultCollideSettings(), Vector3.Zero,
+                CollisionCollectorType.AllHit, _sensorEndOverlaps, null, FilterFor(QueryFilter.Sensor), null, null);
+            for (int k = 0; k < _sensorEndOverlaps.Count; k++)
+                _sensorsOverlappedAtEnd.Add(_sensorEndOverlaps[k].BodyID2.ID);
+
+            for (int h = 0; h < _sensorCastHits.Count; h++)
+            {
+                ShapeCastResult hit = _sensorCastHits[h];
+                uint sensorId = hit.BodyID2.ID;
+                if (_sensorsOverlappedAtEnd.Contains(sensorId) || !(hit.Fraction > 0f)
+                    || !_joltToRecord.TryGetValue(sensorId, out JoltBodyRecord? sensorRec) || sensorRec.Layer != PhysicsLayer.Sensor)
+                    continue;
+                bool reported = false;
+                for (int c = 0; c < rec.Contacts.Count && !reported; c++)
+                    reported = rec.Contacts[c].BodyJoltId == sensorId;
+                if (reported)
+                    continue;   // the update found it, or an earlier hit of this cast was one
+                float axis = hit.PenetrationAxis.Length();
+                Vector3 normal = axis > 1e-6f ? hit.PenetrationAxis / axis : Vector3.UnitZ;
+                rec.Contacts.Add(new CharacterBodyContact(sensorId, hit.SubShapeID2.Value, hit.ContactPointOn2, normal, ContactPhase.Begin, false));
+            }
         }
 
         // An avatar meets bodies only in its own update, once per step before the simulation's update
@@ -3228,12 +3735,12 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // to the inner, and BOTH are disposed together when the character is removed.
         private static (Shape wrapper, Shape inner) BuildStandingCapsule(float halfHeight, float radius)
         {
-            Shape capsule = new CapsuleShape(MathF.Max(0.01f, halfHeight), MathF.Max(0.01f, radius));
+            Shape capsule = RequireCooked(new CapsuleShape(MathF.Max(0.01f, halfHeight), MathF.Max(0.01f, radius)), "avatar capsule");
             try
             {
                 var rt = new RotatedTranslatedShapeSettings(Vector3.Zero, CapsuleYToZ, capsule);
                 using var free = new ShapeSettingsScope(rt);
-                return (rt.Create(), capsule);
+                return (RequireCooked(rt.Create(), "avatar capsule (Z-up wrapper)"), capsule);
             }
             catch
             {
@@ -3323,7 +3830,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         }
 
         // This takes _simLock as well as _characterGate. CharacterVirtual::SetShape is one of the seven
-        // per-system TempAllocator consumers in the patched joltc (joltc.cpp:8223, *system->tempAllocator).
+        // TempAllocator consumers in joltc (joltc.cpp:8223).
         // Step holds _simLock for the whole step but releases _characterGate after phase 1, so with
         // _characterGate alone, for the whole of _system.Update (joltc.cpp:1050, the SAME allocator) this method
         // could acquire _characterGate freely and allocate into that stack behind Update's back. TempAllocator is
@@ -3372,8 +3879,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     rec.InnerCapsule = inner;
                     rec.CapsuleHalfHeight = capsuleHalfHeight;
                     rec.CapsuleRadius = capsuleRadius;
-                    // NOTE: the SupportingVolume plane still uses the ORIGINAL radius; a large radius change
-                    // would want it refreshed too. Minor, as resize is rare.
+                    // The query marker carries the capsule too: queries find the avatar at its new size.
+                    if (rec.MarkerBodyId != 0)
+                        _bodyInterface.SetShape(new BodyID(rec.MarkerBodyId), wrapper, false, Activation.DontActivate);
+                    if (SupportRadiusOf(capsuleRadius) != rec.SupportRadius)
+                        ReplaceCharacterForSupportRadius(rec);
                 }
                 else
                 {
@@ -3381,6 +3891,36 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     inner.Dispose();
                 }
             }
+        }
+
+        public void SetCharacterMass(CharacterId character, float mass)
+        {
+            if (!float.IsFinite(mass) || !(mass > 0f)) { CountRejectedNonFinite(); return; }
+            lock (_characterGate)
+            {
+                if (_characters.TryGet(character.Value, out JoltCharacterRecord rec))
+                    rec.Mass = mass;   // the controller takes it on its next step (StepCharacter)
+            }
+        }
+
+        // Builds the avatar's controller again from its current state, with the supporting plane for its present radius.
+        // The new one is made before the old is let go, so a failure leaves the avatar as it was. Under _simLock and
+        // _characterGate.
+        private void ReplaceCharacterForSupportRadius(JoltCharacterRecord rec)
+        {
+            CharacterVirtual old = rec.Character!;
+            CharacterVirtualSettings settings = MakeCharacterSettings(rec.StandingShape!, rec.CapsuleRadius, rec.MaxSlopeAngle, rec.Mass, rec.PushStrength);
+            settings.EnhancedInternalEdgeRemoval = _settings.AvatarInternalEdgeRemoval;
+            var replacement = new CharacterVirtual(settings, old.Position, old.Rotation, rec.UserData, _system!);
+            replacement.MaxSlopeAngle = rec.MaxSlopeAngle;
+            replacement.UserData = rec.UserData;
+            replacement.LinearVelocity = old.LinearVelocity;
+
+            _charVsChar?.Remove(old);
+            old.Dispose();
+            rec.Character = replacement;
+            rec.SupportRadius = SupportRadiusOf(rec.CapsuleRadius);
+            WireCharacter(rec, replacement);
         }
 
         /// <summary>
@@ -3436,6 +3976,39 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 rec.PushAllowance -= allowed;
                 rec.PendingPush += Vector3.Normalize(scaled) * allowed;
             }
+        }
+
+        public void SetCharacterCarry(CharacterId character, Vector3 velocity)
+        {
+            if (!IsFinite(velocity)) { CountRejectedNonFinite(); return; }
+            lock (_characterGate)
+            {
+                if (_characters.TryGet(character.Value, out JoltCharacterRecord rec))
+                    rec.Carry = new Vector3(velocity.X, velocity.Y, 0f);
+            }
+        }
+
+        /// <summary>
+        /// How fast the velocity an avatar arrived with gives way, on the ground, to the velocity its controls ask for (s). An
+        /// avatar that lands from a jump with its key let go stops within a step, so this is short: long enough to cover the
+        /// moments before the first control input reaches a region the avatar has just entered.
+        /// </summary>
+        internal const float ArrivalCarryFadeSeconds = 0.1f;
+
+        // The velocity an avatar arrived with (SetCharacterCarry), taken to the step's walking intent: it stays as it was in the
+        // air, and on walkable ground, and while flying, the part of it beyond the intent fades. Returns the horizontal velocity to move with.
+        private static Vector3 RelaxArrivalCarry(JoltCharacterRecord rec, Vector3 intent, bool onWalkable, float dt)
+        {
+            Vector3 rel = rec.Carry - intent;
+            if (onWalkable)
+                rel *= MathF.Exp(-dt / ArrivalCarryFadeSeconds);
+            if (rel.LengthSquared() < 1e-4f)
+            {
+                rec.Carry = Vector3.Zero;
+                return intent;
+            }
+            rec.Carry = intent + rel;
+            return rec.Carry;
         }
 
         // How fast an avatar's push speed fades: on ground it can walk on (s), and flying. In the air it keeps it.
@@ -3524,6 +4097,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             if (ch == null || _system == null)
                 return;
 
+            // The body the avatar stands on was removed since its last step, as a prim's body is when the prim becomes a kinematic
+            // one (a fixed body cannot): the character still holds the removed body as its ground and finds no ground velocity
+            // in it, so a platform that began to move in this step would take the avatar along only from the next one. Finding
+            // the ground again, as after a teleport, takes the new body's velocity at once.
+            if (!_removedBodyIds.IsEmpty && ch.GroundBodyId != 0 && _removedBodyIds.ContainsKey(ch.GroundBodyId))
+                using (Enter("CharacterVirtual::RefreshContacts (joltc.cpp:8151)"))
+                    ch.RefreshContacts(new ObjectLayer((uint)PhysicsLayer.Avatar), _system, null, null);
+
             // Buoyancy scales gravity as it does on a prim: 1 floats, 0.5 falls at half gravity, above 1 rises. As in ubODE
             // (ODECharacter.MoveCharacter), it does nothing while the avatar flies or hovers. With none set, gz * 1 is gz.
             float gz = _settings.Gravity.Z * (1f - rec.Buoyancy);
@@ -3531,6 +4112,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             Vector3 newVel;
             bool falling = false;
             bool hovering = rec.HoverAt != null;
+            if (hovering)
+                rec.Carry = Vector3.Zero;   // a hover is driven by its controls; the arrival velocity is for a walk or a flight
 
             // A constant force (an attachment's llSetForce): its acceleration, and the velocity it has given. Up and down while
             // walking or in the air it adds to gravity, which the controller's own vertical velocity carries; across, and in
@@ -3556,8 +4139,15 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             }
             else if (rec.Flying)
             {
-                // Flying: full 3D control, ground gravity disabled.
+                // Flying: full 3D control, ground gravity disabled. The horizontal velocity the avatar arrived with fades to what its
+                // controls ask for as it does on the ground, so a flight that crossed a border alone with no key held comes to rest
+                // where a flight stops when the key is let go; its climb and descent are its controls' alone.
                 newVel = desired;
+                if (rec.Carry != Vector3.Zero)
+                {
+                    Vector3 across = RelaxArrivalCarry(rec, new Vector3(desired.X, desired.Y, 0f), true, dt);
+                    newVel = new Vector3(across.X, across.Y, desired.Z);
+                }
                 if (forced)
                 {
                     forceStep = force;
@@ -3612,6 +4202,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 // is being pushed sideways. With no input this is zero on static ground - no residual
                 // slide velocity carries over frame to frame.
                 Vector3 horiz = new Vector3(desired.X, desired.Y, 0f);
+                if (rec.Carry != Vector3.Zero)
+                    horiz = RelaxArrivalCarry(rec, horiz, onWalkable, dt);
                 if (onWalkable)
                     horiz += new Vector3(ch.GroundVelocity.X, ch.GroundVelocity.Y, 0f);
 
@@ -3709,6 +4301,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             if (forced)
                 FinishForceCarry(rec, ch, forceStep, forceTau, newVel, startPos, dt);
 
+            SweepCharacterAgainstSensors(rec, ch, startPos);
             FinishCharacterContacts(rec, ch, dt);
 
             // Where it stands and what it touches are found again where it was left, after this update's contacts were
@@ -3924,34 +4517,21 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         }
 
         // =====================================================================
-        // Constraints
-        // =====================================================================
-
-        public ConstraintId CreateConstraint(in ConstraintDesc desc)
-        {
-            // ConstraintKind maps essentially 1:1 onto Jolt's set. The four with
-            // no PhysX equivalent - Pulley, Gear, RackAndPinion, Path - are the
-            // interesting ones for scripted content, and they are the reason
-            // this section is worth exposing to SLua rather than keeping internal.
-            throw new NotImplementedException();
-        }
-
-        public void RemoveConstraint(ConstraintId constraint) => throw new NotImplementedException();
-        public void SetConstraintEnabled(ConstraintId constraint, bool enabled) => throw new NotImplementedException();
-        public void SetConstraintMotor(ConstraintId constraint, MotorMode mode, float target, float maxForce) => throw new NotImplementedException();
-        public void SetConstraintLimits(ConstraintId constraint, float min, float max) => throw new NotImplementedException();
-        public bool IsConstraintBroken(ConstraintId constraint) => throw new NotImplementedException();
-
-        // =====================================================================
         // World
         // =====================================================================
 
         public void SetGravity(Vector3 gravity)
         {
             if (!IsFinite(gravity)) { CountRejectedNonFinite(); return; }
-            if (_system != null)
-                _system.Gravity = gravity;
-            _settings.Gravity = gravity;
+            // Under _simLock like every other write to the system: Step runs _system.Update under it, and Dispose frees it.
+            lock (_simLock)
+            {
+                if (_disposed)
+                    return;
+                if (_system != null)
+                    _system.Gravity = gravity;
+                _settings.Gravity = gravity;
+            }
         }
 
         public void SetTerrain(ShapeId heightFieldShape, Vector3 position)
@@ -3981,7 +4561,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 shapeRec.NativeShape, position, Quaternion.Identity, MotionType.Static, objectLayer);
             try
             {
-                bcs.Friction = 0.6f;
+                bcs.Friction = _settings.TerrainFriction;
+                bcs.Restitution = _settings.TerrainRestitution;
                 BodyID joltId = _bodyInterface.CreateAndAddBody(bcs, Activation.DontActivate);
 
                 // CreateBody's invalid-id policy. At MaxBodies there is no terrain body:
@@ -4011,7 +4592,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 _joltToRecord[joltId.ID] = rec;
                 _terrainBody = new BodyId(handle);
             }
-            finally { bcs.Dispose(); }
+            finally { FreeBodyCreationSettings(bcs); }
             }   // _simLock
         }
 
@@ -4211,6 +4792,35 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             return CollectUniqueBodies(found, results);
         }
 
+        public bool BodyPenetratesOthers(BodyId body, float tolerance)
+        {
+            if (_system == null || !float.IsFinite(tolerance))
+                return false;
+            var found = new List<CollideShapeResult>();
+            uint self;
+            lock (_simLock)
+            {
+                if (_disposed) return false;   // backend torn down (shutdown race) - no native call
+                if (!TryResolve(body, out JoltBodyRecord rec, out BodyID jid))
+                    return false;
+                self = jid.ID;
+                if (!_shapes.TryGet(rec.Shape.Value, out JoltShapeRecord shapeRec) || shapeRec.NativeShape == null)
+                    return false;
+                // the shape sits at the body's centre of mass, as in the sensor sweep above
+                Matrix4x4 com = Matrix4x4.CreateFromQuaternion(_bodyInterface.GetRotation(jid));
+                com.Translation = ToVec(_bodyInterface.GetCenterOfMassPosition(jid));
+                _system.NarrowPhaseQuery.CollideShape(shapeRec.NativeShape, Vector3.One, Matrix4x4.Transpose(com), DefaultCollideSettings(),
+                    Vector3.Zero, CollisionCollectorType.AllHit, found, null, FilterFor(QueryFilter.Static | QueryFilter.Dynamic), null, null);
+            }
+            for (int i = 0; i < found.Count; i++)
+            {
+                // the length of the penetration axis is the depth Jolt reports
+                if (found[i].BodyID2.ID != self && found[i].PenetrationAxis.Length() > tolerance)
+                    return true;
+            }
+            return false;
+        }
+
         public bool ShapeCast(ShapeId shape, Vector3 origin, Quaternion orientation, Vector3 direction, float maxDistance, QueryFilter filter, out RayHit hit)
         {
             hit = default;
@@ -4306,6 +4916,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         {
             PhysicsLayer.Terrain => (filter & QueryFilter.Terrain) != 0,
             PhysicsLayer.Static => (filter & QueryFilter.Static) != 0,
+            // A prim keyframed motion moves is a fixed prim to every query.
+            PhysicsLayer.MovingStatic => (filter & QueryFilter.Static) != 0,
             PhysicsLayer.Dynamic => (filter & QueryFilter.Dynamic) != 0,
             PhysicsLayer.Avatar => (filter & QueryFilter.Avatar) != 0,
             PhysicsLayer.Sensor => (filter & QueryFilter.Sensor) != 0,
@@ -4436,7 +5048,8 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
             // LOCK ORDER pool gate -> _simLock. The pool's gate (ONE Update at a time per pool)
             // is taken BEFORE this region's _simLock and held for the whole step, so a region waiting for its
             // pool does not hold _simLock - its scene-thread body ops and queries run meanwhile (with the gate
-            // inside _simLock, a multi-region crossing test went from under 5 s to ~2 min). Only Step takes a gate,
+            // inside _simLock, a multi-region crossing test went from under 5 s to ~2 min). Only Step (one gate) and
+            // the physics-system create and destroy (all gates, in pool order; see AllPoolGates) take a gate,
             // and nothing takes a gate while holding any _simLock, so the order cannot invert. If Dispose runs
             // while we wait, StepLocked's _disposed check returns once we have the gate and _simLock.
             JobPool? pool = _pool;
@@ -4522,6 +5135,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                         _bodyInterface.SetPositionAndRotation(
                             new BodyID(crec.MarkerBodyId), crec.Character.Position, crec.Character.Rotation, Activation.DontActivate);
                 }
+                _removedBodyIds.Clear();   // every avatar has been stepped since
             }
 
             // 2. Advance the simulation (3-arg Update, temp allocation internal).
@@ -4534,6 +5148,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     lock (_characterGate)
                         StrikeAvatarsInTheWay(deltaTime);
                 UpdateCastBySpeed(deltaTime / collisionSteps);
+                BeginSensorSweep(deltaTime);
                 // The update's capacity error is counted, not discarded.
                 PhysicsUpdateError updateError;
                 // ONE Update at a time on this region's pool - Step holds the pool's gate.
@@ -4549,6 +5164,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     Interlocked.Decrement(ref pool.Inside);
                 }
                 RecordUpdateError(updateError);
+                FinishSensorSweep();
             }
 
             // 3. Fold this frame's queued activation deltas into the step-thread-owned active
@@ -4571,7 +5187,11 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                     _justDeactivated.Add(delta.BodyId);
                 }
                 if (_joltToRecord.TryGetValue(delta.BodyId, out JoltBodyRecord? woken))
+                {
+                    if (!delta.Activated)
+                        Volatile.Write(ref woken.SleptStep, _contactStep);
                     Volatile.Write(ref woken.Awake, delta.Activated);
+                }
             }
 
             int bodyCount = 0;
@@ -4842,6 +5462,20 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
                 while (_free.TryDequeue(out _)) { }
             }
         }
+
+        /// <summary>Empties the table and returns what was live in it, so the caller can release what the entries own.</summary>
+        public List<T> TakeAll()
+        {
+            lock (_gate)
+            {
+                var live = new List<T>(_count);
+                for (int i = 0; i < _highWater; i++)
+                    if (_slots[i] is T item)
+                        live.Add(item);
+                Clear();
+                return live;
+            }
+        }
     }
 
     // Records hold the native handles plus whatever module-side bookkeeping the
@@ -4858,12 +5492,14 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public float Mass;                // explicit or Volume x Density; 0 where mass is unused (static)
         public bool AllowMotionChange;    // created movable (AllowDynamicOrKinematic) -> may flip motion type
         public bool IsCharacterMarker;    // a query-only avatar marker (owned by its character; not a real prim)
+        public long SleptStep;            // the step in which the engine last put the body to sleep (BodyHadContact)
         public long ContactStep;          // the last step in which the solver had this body touching another body (BodyHadContact)
         public byte RotationLocks;        // body-local axes it cannot turn about: 1 = x, 2 = y, 4 = z (SetBodyRotationLocks)
         public float Friction;            // the body's contact friction and restitution (SetBodyFriction, SetBodyRestitution)
         public float Restitution;
         public float[]? PartFriction;     // a compound's per-child values, in its child order (SetBodyPartMaterial); null = the body's
         public float[]? PartRestitution;
+        public bool FrictionMin;          // SetBodyFrictionMin: this body's contacts combine friction with the smaller value
         public float GravityFactor;       // the body's gravity factor as last set (SetBodyGravityFactor); the bounce correction reads it
         public bool Awake;                // the engine had the body awake at the end of the last step (IsBodyAwake)
         public ContinuousCollision Ccd;   // SetBodyContinuousCollision; Off for a static body
@@ -4881,6 +5517,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public ShapeId BaseShape;         // caller-visible wrapped shape (CreateScaledShape); Invalid otherwise
         public uint[]? CompoundChildUserData; // ordered child UserData for a StaticCompound; null otherwise
         public int CompoundIndexBits;     // low bits of a hit SubShapeID that encode the compound child index
+        public IntPtr[]? HullHandles;     // the native hulls of a hull compound (CreateHullCompoundShape), for SetShapeDensity; null otherwise
     }
 
     internal sealed class JoltCharacterRecord
@@ -4897,6 +5534,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         // Tuning knobs captured from CharacterDesc.
         public float CapsuleHalfHeight;
         public float CapsuleRadius;
+        public float SupportRadius;            // the radius the supporting plane was built from (CharacterVirtual has no setter for it)
         public float MaxSlopeAngle;
         public float StepHeight;
         public float PushStrength;
@@ -4912,6 +5550,7 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
         public Vector3 PendingPush;
         public Vector3 Push;
         public float PushAllowance;
+        public Vector3 Carry;                  // the horizontal velocity the avatar arrived with that its controls have not yet replaced (SetCharacterCarry)
 
         public float Mass;                     // CharacterDesc.Mass: what a loose object striking the avatar meets
         public Vector3 StepVelocity;           // the velocity the avatar moved with in its last step
@@ -4944,15 +5583,4 @@ namespace OpenSim.Region.PhysicsModules.Jolt.Backend
     internal readonly record struct CharacterStepTrace(uint UserData, Vector3 Displacement, Vector3 Asked, Vector3 Reported, float Seconds, bool Placed);
 
     internal readonly record struct CharacterBodyContact(uint BodyJoltId, uint SubShape, Vector3 Point, Vector3 Normal, ContactPhase Phase, bool Loose);
-
-    internal sealed class JoltConstraintRecord
-    {
-        public IntPtr Native;
-        public ConstraintKind Kind;
-        public BodyId BodyA;
-        public BodyId BodyB;
-        public float BreakForce;
-        public bool Broken;
-        public uint UserData;
-    }
 }
