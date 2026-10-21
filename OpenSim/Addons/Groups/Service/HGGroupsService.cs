@@ -143,7 +143,7 @@ namespace OpenSim.Groups
                 }
                 else
                 {
-                    m_log.DebugFormat("[Groups.HGGroupsService]: access token {0} did not match stored one {1}", token, membership.Data["AccessToken"]);
+                    m_log.DebugFormat("[Groups.HGGroupsService]: access token for {0} did not match the stored one", AgentID);
                     return false;
                 }
             }
@@ -350,7 +350,7 @@ namespace OpenSim.Groups
                 if (token != string.Empty && token.Equals(membership.Data["AccessToken"]))
                     return true;
                 else
-                    m_log.DebugFormat("[Groups.HGGroupsService]: access token {0} did not match stored one {1}", token, membership.Data["AccessToken"]);
+                    m_log.DebugFormat("[Groups.HGGroupsService]: access token for {0} did not match the stored one", agentID);
             }
             else
                 m_log.DebugFormat("[Groups.HGGroupsService]: membership not found for {0}", agentID);

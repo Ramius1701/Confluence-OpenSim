@@ -286,7 +286,7 @@ namespace OpenSim.Server.Handlers.Hypergrid
 
             if (!m_UserAgentService.VerifyAgent(sessionID, serviceKey))
             {
-                m_log.WarnFormat("[HGFRIENDS HANDLER]: Key {0} for session {1} did not match existing key. Ignoring request", serviceKey, sessionID);
+                m_log.WarnFormat("[HGFRIENDS HANDLER]: Key for session {0} did not match existing key. Ignoring request", sessionID);
                 return false;
             }
 

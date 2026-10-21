@@ -135,6 +135,13 @@ namespace Gloebit.GloebitMoneyModule {
             Authorize(user, agentName);
         }
 
+        // [Confluence] Tranquillity #360: the value of a callback parameter as it may be logged. A parameter that carries a
+        // credential (the authorization code and state, or the transaction callback key) is logged as "(withheld)".
+        private static object LoggableCallbackValue(DictionaryEntry e, params string[] withheld)
+        {
+            return Array.IndexOf(withheld, e.Key as string) >= 0 ? "(withheld)" : e.Value;
+        }
+
         /// <summary>
         /// Ask this user on this app to link this agent to their Gloebit account and to authorize
         /// the app to take actions on the agent's behalf which will access that Gloebit account
@@ -157,7 +164,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="requestData">response data from GloebitAPI.Authorize</param>
         public Hashtable authComplete_func(Hashtable requestData) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func");
-            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, e.Value); }
+            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, LoggableCallbackValue(e, "code", "state")); }
 
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
@@ -708,7 +715,7 @@ namespace Gloebit.GloebitMoneyModule {
         /// </returns>
         public Hashtable transactionState_func(Hashtable requestData) {
             m_log.DebugFormat("[GLOEBITMONEYMODULE] transactionState_func **************** Got Callback");
-            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, e.Value); }
+            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, LoggableCallbackValue(e, "key")); }
 
             // TODO: check that these exist in requestData.  If not, signal error and send response with false.
             string transactionIDstr = requestData["id"] as string;

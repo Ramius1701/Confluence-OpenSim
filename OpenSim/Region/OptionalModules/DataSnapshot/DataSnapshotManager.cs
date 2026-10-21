@@ -430,7 +430,7 @@ namespace OpenSim.Region.DataSnapshot
 
                     // This is not quite working, so...
                     // string responseStr = Util.UTF8.GetString(response);
-                    m_log.Info("[DATASNAPSHOT]: data service " + url + " notified. Secret: " + m_Secret);
+                    m_log.Info("[DATASNAPSHOT]: data service " + url + " notified");
                 }
             }
         }

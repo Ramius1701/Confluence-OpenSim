@@ -674,6 +674,15 @@ namespace OpenSim.Groups
                 UUID GroupID = new(im.imSessionID);
                 UUID AgentID = new(im.fromAgentID);
 
+                // A module that moderates group chat may refuse this line. Without one, nothing changes.
+                IGroupChatGate chatGate = remoteClient.Scene.RequestModuleInterface<IGroupChatGate>();
+                if (chatGate is not null && !chatGate.MaySend(GroupID, AgentID))
+                {
+                    if (m_debugEnabled)
+                        m_log.DebugFormat("[Groups.Messaging]: {0} may not send to group chat {1}; dropped", AgentID, GroupID);
+                    return;
+                }
+
                 if (m_debugEnabled)
                     m_log.DebugFormat("[Groups.Messaging]: Send message to session for group {0} with session ID {1}", GroupID, im.imSessionID.ToString());
 

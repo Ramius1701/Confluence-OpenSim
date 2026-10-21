@@ -974,6 +974,15 @@ multi-machine setup, deployment checklist) is in `HARDENING.md`.
   legitimate reverse-proxy deployments. Since 2026-10-16 this is
   OpenSimulator's `[Network] XFFTrustedProxies` mechanism; unset, Confluence
   trusts loopback only (a proxy on the same host), as it did before.
+  Since 2026-10-22 (opensim-master) a client's own `remote_addr` header is
+  ignored too: the server sets it from the connection.
+- **Credentials kept out of the logs** (Tranquillity #360, 2026-10-22) -
+  Gloebit authorization codes and callback keys, secure session ids,
+  remote admin and close-agent tokens, Hypergrid service and group access
+  tokens, the Groups secret key, the web login key, DTLNSL's script access
+  code, the IRC channel password and the DataSnapshot secret are no longer
+  written to the log; SQLite connection strings are logged with the
+  password masked, and HTTP client lines without the query string.
 - **Friends-list-wipe / presence-spoof bug fixed** — cross-grid
   friendship deletion and online/offline presence-status matching
   used to compare a caller-supplied secret against a stored value via

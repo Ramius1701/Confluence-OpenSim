@@ -240,6 +240,15 @@ namespace OpenSim.Framework
         }
 
         /// <summary>
+        /// The request address as it may appear in the log: without the query string, which callers fill through
+        /// AddQueryParameter and may use to carry a credential. (Tranquillity #360)
+        /// </summary>
+        private static string LoggableUri(Uri uri)
+        {
+            return uri.GetLeftPart(UriPartial.Path);
+        }
+
+        /// <summary>
         /// Perform a synchronous request
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -281,7 +290,7 @@ namespace OpenSim.Framework
 
 
                     if (WebUtil.DebugLevel >= 3)
-                        m_log.DebugFormat("[REST CLIENT] {0} to {1}", RequestMethod, uri);
+                        m_log.DebugFormat("[REST CLIENT] {0} to {1}", RequestMethod, LoggableUri(uri));
 
                     //_request.ContentType = "application/xml";
                     responseMessage = client.Send(request, HttpCompletionOption.ResponseHeadersRead);
@@ -314,16 +323,16 @@ namespace OpenSim.Framework
                             if (status == HttpStatusCode.NotFound)
                             {
                                 // This is often benign. E.g., requesting a missing asset will return 404.
-                                m_log.DebugFormat("[REST CLIENT] Resource not found (404): {0}", uri.ToString());
+                                m_log.DebugFormat("[REST CLIENT] Resource not found (404): {0}", LoggableUri(uri));
                             }
                             else
                             {
-                                m_log.Error($"[REST CLIENT] Error fetching resource from server: {uri} status: {status} {e.Message}");
+                                m_log.Error($"[REST CLIENT] Error fetching resource from server: {LoggableUri(uri)} status: {status} {e.Message}");
                             }
                         }
                         else
                         {
-                            m_log.Error($"[REST CLIENT] Error fetching resource from server: {uri} {e.Message}");
+                            m_log.Error($"[REST CLIENT] Error fetching resource from server: {LoggableUri(uri)} {e.Message}");
                         }
                     }
                     else
@@ -346,7 +355,7 @@ namespace OpenSim.Framework
                 }
 
                 if (bodyTimedOut)
-                    m_log.Error($"[REST CLIENT] Data receive timeout from: {uri}");
+                    m_log.Error($"[REST CLIENT] Data receive timeout from: {LoggableUri(uri)}");
 
                 if (WebUtil.DebugLevel >= 5)
                     WebUtil.LogOutgoingDetail("[REST CLIENT]", _resource);
@@ -393,9 +402,9 @@ namespace OpenSim.Framework
                 if(uri is not null)
                 { 
                     if (e.StatusCode is HttpStatusCode status)
-                        m_log.Warn($"[REST]: POST {uri} failed with status {status} and message {e.Message}");
+                        m_log.Warn($"[REST]: POST {LoggableUri(uri)} failed with status {status} and message {e.Message}");
                     else
-                        m_log.Warn($"[REST]: POST {uri} failed with message {e.Message}");
+                        m_log.Warn($"[REST]: POST {LoggableUri(uri)} failed with message {e.Message}");
                 }
                 else
                     m_log.Warn($"[REST]: POST failed {e.Message}");
@@ -404,7 +413,7 @@ namespace OpenSim.Framework
             catch (Exception e)
             {
                 if (uri is not null)
-                    m_log.Warn($"[REST]: POST {uri} failed with message {e.Message}");
+                    m_log.Warn($"[REST]: POST {LoggableUri(uri)} failed with message {e.Message}");
                 else
                     m_log.Warn($"[REST]: POST failed {e.Message}");
                 return;

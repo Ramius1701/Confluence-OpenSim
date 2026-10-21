@@ -3386,8 +3386,8 @@ namespace Gloebit.GloebitMoneyModule
             // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
             if (m_Debug)
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
-                agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3}",
+                agentId, confirm, currencyBuy, estimatedCost);   // [Confluence] Tranquillity #360: no secure session id
 
             GloebitUser u = GloebitUser.Get(m_key, agentId);
             Uri url = m_apiW.BuildPurchaseURI(BaseURI, u);

@@ -1359,7 +1359,7 @@ namespace OpenSim.Modules.Currency
                             MD5 md5 = MD5.Create();
                             byte[] code = md5.ComputeHash(ASCIIEncoding.Default.GetBytes(secretCode + "_" + scriptIP));
                             string hash = BitConverter.ToString(code).ToLower().Replace("-", "");
-                            m_log.InfoFormat("[MONEY MODULE]: SendMoneyHandler: SecretCode: {0} + {1} = {2}", secretCode, scriptIP, hash);
+                            m_log.InfoFormat("[MONEY MODULE]: SendMoneyHandler: access code received from script at {0}", scriptIP);
                             ret = SendMoneyTo(agentUUID, amount, type, hash);
                         }
                     }
@@ -1428,7 +1428,7 @@ namespace OpenSim.Modules.Currency
                         MD5 md5 = MD5.Create();
                         byte[] code = md5.ComputeHash(ASCIIEncoding.Default.GetBytes(secretCode + "_" + scriptIP));
                         string hash = BitConverter.ToString(code).ToLower().Replace("-", "");
-                        m_log.InfoFormat("[MONEY MODULE]: MoveMoneyHandler: SecretCode: {0} + {1} = {2}", secretCode, scriptIP, hash);
+                        m_log.InfoFormat("[MONEY MODULE]: MoveMoneyHandler: access code received from script at {0}", scriptIP);
                         ret = MoveMoneyFromTo(fromUUID, toUUID, amount, hash);
                     }
                     else

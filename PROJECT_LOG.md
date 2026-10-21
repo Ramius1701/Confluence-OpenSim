@@ -29304,3 +29304,55 @@ both engines. YEngine kept the rule and Phlox reads it the same way.
 terrain console commands, `InternalPort = MATCHING` and small audit fixes), and a map render does not touch an avatar's
 position. Also checked: the solo-avatar agent-locations placeholder is at local (1,1), not (128,128). The two next steps
 in the 2026-09-29 entry still stand.
+
+## Deployed 9d9dd3fac1 (2026-10-22)
+
+With the grid down (no Robust or OpenSim process running), the fresh Release build was copied to the live root by binary
+pattern only: 212 of 301 files (210 changed, 2 new: Jolt.Diagnostics, which loads only with `[Jolt] TestCommands = true`),
+0 failed, all 301 md5-verified against the build. Region bins take it from the root when the WebUI starts each region.
+No database changes. Live .ini files untouched; the live `OpenSimDefaults.ini` has drifted from the repo's (about 400
+lines apart, including the old `[Jolt]` section), which needs a look before any region selects Jolt.
+
+## Donor batch 2026-10-22: opensim-master to d55ce0d17e; Tranquillity #351, #359, #360
+
+Fetched both. Tranquillity develop and release/v1.1 unchanged; new open PRs #357-#367. opensim-master had nine commits
+(10-21). Ported as one batch:
+
+**opensim-master (merged, cb78616953).** HTTP header parsing: a client's own `remote_addr` header is ignored and the
+server sets it from the connection (before, a client could send one and it stood, since only an empty slot was
+filled). `Util.IsPrivateNetwork` also counts 100.64/10 (carrier-grade NAT) and 169.254/16 (link-local). `NrbfReader`
+decodes legacy BinaryFormatter-serialised asset data (.NET 10 has no BinaryFormatter). The merge also carried four
+commits ported by hand earlier (the XFF ini comments, #68, cosmetics): ours kept. Upstream's new `CheckXFF` reads the
+X-Forwarded-For chain from the right past trusted proxies, as ours already did since 10-19; ours stays (it also keeps
+every header of the chain and treats an unreadable entry as an unknown client), with upstream's IPv4-mapped
+normalisation added to `Contains(IPAddress)`. `SerializeToFile` / `DeserializeFromFile` were already gone here.
+
+**Tranquillity #360: credentials kept out of the logs.** Hand-ported (its lines are ILogger calls, ours log4net): Gloebit
+callbacks log "(withheld)" for the authorization code, state and transaction key, and buy_func no longer logs the
+secure session id; the Groups secret key (logged as set / not set) and HG group access tokens; remote admin tokens;
+the close-agent token; SQLite stores' connection strings (masked; `Util.GetDisplayConnectionString` now also masks a
+password written last, which it used to cut wrongly, and leaves a string with no value alone); RestClient request
+addresses without their query strings (the PR's four lines, and our four other lines that log the same address); the
+IRC channel password (set / not set); the DataSnapshot secret; DTLNSL's script access code; the HG friends service key;
+the web login key. Our UserAgentService does not log the token and our PresenceService line was already commented out.
+Its tests capture ILogger output in projects Confluence lacks; DisplayConnectionStringTests (6 cases) covers the masking.
+
+**#359: Jolt metrics and routine lines off the console** (applied as a patch; our module equals develop). The two
+`[JOLT METRICS]` lines are written at Debug level, every `[Jolt] MetricsLogIntervalSeconds` (30; 0 = not written), and
+repeated routine lines go through a `RepeatLimiter`. `[Jolt]` and doc/JoltPhysics.md updated. QuietLogTests pass.
+
+**#351: three optional hooks** - `IEventQueue.ChatterBoxSessionUpdate` (a session's moderated mode, sent as the viewer
+expects it; default does nothing), `IGroupChatGate` (a module may refuse a line of group chat; without one nothing
+changes), `PhysicsScene.MaximumLinearVelocity` (0 = no limit; BulletSim and Jolt report theirs). Applied to our files by
+hand-checked hunks. Tests: GroupChatGateTests (3) and EventQueueSessionUpdateTests (2), moved into
+Tests/InWorldz.Phlox.Tests (the CoreModules / ClientStack test projects there are Tranquillity's), and
+MaximumLinearVelocityTests in the Jolt tests.
+
+Not taken: **#361** (pins MessagePack and System.Security.Cryptography.Pkcs, neither of which Confluence ships; our
+MailKit/MimeKit come from bin\) and **#367** (fixes Tranquillity's Microsoft.Extensions.Logging console; Confluence logs
+through log4net and `set log level` is upstream's). The voice PRs #353-#358 and #362-#366 (stacked, about 69,000 lines)
+belong with Confluence-Voice.
+
+Tests: Jolt 5,639 passed, 5 skipped; Phlox 6,496 passed, 2 skipped. The first full Phlox run failed 8 cases of
+ViewerAddressDnsServerTests (a fake UDP DNS server that must answer, or stay silent, within 300 ms); they pass alone and
+in the next two full runs: timing under full-suite load, not this batch.

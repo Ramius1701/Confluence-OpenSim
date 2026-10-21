@@ -70,7 +70,7 @@ namespace OpenSim.Data.SQLite
 
             m_connectionString = connectionString;
 
-            m_log.Info("[PROFILES_DATA]: Sqlite - connecting: "+m_connectionString);
+            m_log.Info("[PROFILES_DATA]: Sqlite - connecting: " + Util.GetDisplayConnectionString(m_connectionString));
 
             m_connection = new SQLiteConnection(m_connectionString);
             m_connection.Open();

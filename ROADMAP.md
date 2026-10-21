@@ -251,7 +251,9 @@ checked by `Tools/data-backend-check`.)*
   and the Janus PRs #347-#350 (open; #350's parcel voice checks touch the region module Confluence-Voice uses too).
   Done 2026-10-21: the Jolt series (Legion's `lane/jolt` 10-14..17 as merged in develop #329/#334/#338-#344, #325's
   mesher shape data, #328, #330-#333) - Jolt is synced to develop `7c74cb6bed` and still off live; #304 (saved state
-  picks the engine for an unheaded script, `[InWorldz.Phlox] ScriptEnginesPath`).
+  picks the engine for an unheaded script, `[InWorldz.Phlox] ScriptEnginesPath`). Done 2026-10-22: opensim-master to
+  `d55ce0d17e`, Tranquillity #351/#359/#360 (#361, #367 not applicable). Open there now: the voice PRs #353-#358 and
+  #362-#366 (stacked, about 69,000 lines; for the Confluence-Voice session) and #347-#349.
 - **Weather rethink - tabled 2026-10-19** at the owner's request. Deployed: 0.6.1, whose rain and snow fire upward
   in Firestorm (fixed in 0.6.2, not deployed: emitter upside down, cone round its +Z; a wider lifetime margin). Before
   resuming: confirm the four-weather test script in a viewer, then deploy once. Earlier notes:

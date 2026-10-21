@@ -116,7 +116,7 @@ namespace OpenSim.Data.SQLite
 
                 ds = new DataSet("Region");
 
-                m_log.Info("[SQLITE REGION DB]: Sqlite - connecting: " + connectionString);
+                m_log.Info("[SQLITE REGION DB]: Sqlite - connecting: " + Util.GetDisplayConnectionString(connectionString));
                 m_conn = new SQLiteConnection(m_connectionString);
                 m_conn.Open();
 

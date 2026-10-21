@@ -481,6 +481,11 @@ namespace OpenSim.Region.PhysicsModule.BulletS
             return ret;
         }
 
+        public override float MaximumLinearVelocity
+        {
+            get { return BSParam.MaxLinearVelocity; }
+        }
+
         public override void Dispose()
         {
             // m_log.DebugFormat("{0}: Dispose()", LogHeader);

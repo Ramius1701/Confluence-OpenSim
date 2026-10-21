@@ -3,7 +3,9 @@
 The Jolt physics module, backend and vehicle controller are JohnLegionH's work on Tranquillity, first on branch
 `lane/jolt` (remote `tranquillity-johnlegionh`), imported at `fbd824abeb` (2026-10-11), and since merged into
 Tranquillity's `develop` (#329, #334, #338-#344, 2026-10-19). Confluence is synced to **develop `7c74cb6bed`**
-(2026-10-21; for the module this is lane/jolt's head). Their files keep their licence headers: most are MPL-2.0
+(2026-10-21; for the module this is lane/jolt's head), plus two PRs develop has not merged yet: #359 (metrics at Debug
+level, `RepeatLimiter`, `[Jolt] MetricsLogIntervalSeconds`) and #351's `MaximumLinearVelocity` (2026-10-22). When
+develop merges them they drop out of the next sync's three-way merge as already present. Their files keep their licence headers: most are MPL-2.0
 (Legion Builds); the vehicle controller carries the InWorldz Halcyon notice. The operator documentation is
 `doc/JoltPhysics.md` (theirs; Confluence's only edits put direct quotes from the Second Life wiki into our own words,
 with the page's link).
