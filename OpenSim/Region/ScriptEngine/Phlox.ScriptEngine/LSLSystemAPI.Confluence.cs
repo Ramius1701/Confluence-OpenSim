@@ -701,6 +701,124 @@ namespace Phlox.ScriptEngine
             return 1;
         }
 
+        // ── llSetEnvironment / llSetAgentEnvironment (LSL_Api.cs, YEngine's, over the shared EnvironmentRules) ─────────
+
+        /// <summary>
+        /// A Phlox list as YEngine's LSL_Types.list, for the rule parsers both engines share (the reverse of
+        /// PhloxEngine.ToPhloxValue): int, float, string, vector and rotation become YEngine's types.
+        /// </summary>
+        internal static OpenSim.Region.ScriptEngine.Shared.LSL_Types.list ToYEngineList(LSLList list)
+        {
+            if (list == null || list.Length == 0) return new OpenSim.Region.ScriptEngine.Shared.LSL_Types.list();
+            object[] items = new object[list.Length];
+            for (int i = 0; i < items.Length; i++)
+            {
+                object v = list.Data[i];
+                items[i] = v switch
+                {
+                    int n => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger(n),
+                    float f => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat(f),
+                    string str => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString(str),
+                    Vector3 vec => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3(vec.X, vec.Y, vec.Z),
+                    Quaternion q => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion(q.X, q.Y, q.Z, q.W),
+                    null => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString(string.Empty),
+                    _ => new OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString(v.ToString()),
+                };
+            }
+            return new OpenSim.Region.ScriptEngine.Shared.LSL_Types.list(items);
+        }
+
+        /// <summary>A texture (or, with AssetType.Unknown, any asset) by key or by the name of an item in this prim.</summary>
+        private UUID ResolveEnvironmentAsset(string name, AssetType type)
+            => type == AssetType.Unknown ? ScriptUtils.GetAssetIdFromKeyOrItemName(m_host, name)
+                                         : ScriptUtils.GetAssetIdFromKeyOrItemName(m_host, name, type);
+
+        /// <summary>
+        /// LSL_Api.cs llSetEnvironment: a negative x or y is the whole region (estate rights), else the parcel there
+        /// (parcel environment rights, if the estate allows parcel environments); rules applied with EnvironmentRules, an
+        /// empty list resets it. z is the altitude the sky rules apply to; a negative z changes every sky track.
+        /// </summary>
+        private int ConfluenceSetEnvironment(Vector3 position, LSLList paramList)
+        {
+            IEnvironmentModule env = EnvModule;
+            if (m_host == null || World == null) return ENV_NO_ENVIRONMENT;
+            bool hasParameters = paramList != null && paramList.Length > 0;
+            bool wholeRegion = position.X < 0 || position.Y < 0;
+            if (wholeRegion)
+            {
+                if (env == null) return ENV_NO_ENVIRONMENT;
+                if (!World.Permissions.CanIssueEstateCommand(m_host.OwnerID, true)) return ENV_NO_PERMISSIONS;
+
+                if (hasParameters)
+                {
+                    ViewerEnvironment regionEnv = env.GetRegionEnvironment().Clone();
+                    int result = OpenSim.Region.ScriptEngine.Shared.Api.EnvironmentRules.Apply(regionEnv, ToYEngineList(paramList),
+                        position.Z, position.Z < 0, ResolveEnvironmentAsset).value;
+                    if (result != 1) return result;
+                    env.StoreOnRegion(regionEnv);
+                    env.WindlightRefresh(0);
+                    return 1;
+                }
+
+                env.StoreOnRegion(null);
+                env.WindlightRefresh(0);
+                return 1;
+            }
+
+            if (!World.RegionInfo.EstateSettings.AllowEnvironmentOverride) return ENV_NO_PERMISSIONS;
+
+            ILandObject parcel = World.LandChannel?.GetLandObject(position.X, position.Y);
+            if (parcel == null) return ENV_NO_ENVIRONMENT;
+            if (!World.Permissions.CanEditParcelProperties(m_host.OwnerID, parcel, GroupPowers.AllowEnvironment, true))
+                return ENV_NO_PERMISSIONS;
+
+            if (hasParameters)
+            {
+                if (env == null) return ENV_NO_ENVIRONMENT;
+                ViewerEnvironment parcelEnv = (parcel.LandData.Environment ?? env.GetRegionEnvironment()).Clone();
+                int result = OpenSim.Region.ScriptEngine.Shared.Api.EnvironmentRules.Apply(parcelEnv, ToYEngineList(paramList),
+                    position.Z, position.Z < 0, ResolveEnvironmentAsset).value;
+                if (result != 1) return result;
+                parcel.StoreEnvironment(parcelEnv);
+                env.WindlightRefresh(0, false);
+                return 1;
+            }
+
+            parcel.StoreEnvironment(null);
+            env?.WindlightRefresh(0, false);
+            return 1;
+        }
+
+        /// <summary>
+        /// LSL_Api.cs llSetAgentEnvironment: an Experience script, with the avatar's permission for that Experience,
+        /// sends the avatar environment settings through the event queue (an empty list clears its override). The rules
+        /// are EnvironmentRules.ToAgentUpdate's, with rule errors on the debug channel as YEngine reports them.
+        /// </summary>
+        private int ConfluenceSetAgentEnvironment(string agentID, float transition, LSLList paramList)
+        {
+            if (m_host == null || World == null) return ENV_INVALID_AGENT;
+            UUID experience = GetScriptExperienceId();
+            if (experience == UUID.Zero) return ENV_NOT_EXPERIENCE;
+            if (!UUID.TryParse(agentID, out UUID avatar) || avatar == UUID.Zero) return ENV_INVALID_AGENT;
+            ScenePresence presence = World.GetScenePresence(avatar);
+            if (presence == null || presence.IsChildAgent || presence.Animator == null) return ENV_INVALID_AGENT;
+            if (World.ExperienceModule?.GetExperiencePermission(avatar, experience) != ExperiencePermission.Allowed)
+                return ENV_NO_EXPERIENCE_PERMISSION;
+
+            IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
+            if (eq == null) return ENV_NO_ENVIRONMENT;
+
+            TaskInventoryItem item = m_host.Inventory?.GetInventoryItem(m_itemID);
+            string parcelName = World.LandChannel?.GetLandObject(m_host.AbsolutePosition)?.LandData?.Name ?? string.Empty;
+            EnvironmentUpdate update = OpenSim.Region.ScriptEngine.Shared.Api.EnvironmentRules.ToAgentUpdate(
+                transition, ToYEngineList(paramList), item?.OwnerID ?? m_host.OwnerID, item?.Name ?? m_host.Name, parcelName,
+                ResolveEnvironmentAsset, (command, message) => ShoutError(command + ": " + message));
+            if (update == null) return ENV_INVALID_RULE;
+
+            eq.SendEnvironmentUpdate(experience, avatar, update);
+            return 1;
+        }
+
         // ── llReplaceEnvironment / llReplaceAgentEnvironment (LSL_Api.cs, YEngine's) ───────────────────────────────
 
         private const int ENV_NOT_EXPERIENCE = -1, ENV_NO_EXPERIENCE_PERMISSION = -2, ENV_NO_ENVIRONMENT = -3,

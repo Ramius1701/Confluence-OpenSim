@@ -20451,64 +20451,9 @@ public int llSetLinkGLTFOverrides(int link, int face, LSLList overrides)
         }
 
         public int llSetEnvironment(Vector3 pos, LSLList paramList)
-        {
-            // Check permissions - must be estate manager or land owner
-            var envModule = World?.RequestModuleInterface<IEnvironmentModule>();
-            if (envModule == null) return -1;
-
-            if (!World.Permissions.CanEditParcelProperties(m_host.OwnerID,
-                World.LandChannel.GetLandObject(m_host.AbsolutePosition.X, m_host.AbsolutePosition.Y), 0, false))
-            {
-                ShoutError("llSetEnvironment: insufficient permissions");
-                return -1;
-            }
-
-            var env = envModule.GetRegionEnvironment();
-            if (env == null) return -1;
-
-            bool changed = false;
-            for (int i = 0; i < paramList.Length - 1; i += 2)
-            {
-                int param;
-                try { param = Convert.ToInt32(paramList.Data[i]); }
-                catch { continue; }
-
-                switch (param)
-                {
-                    case ENV_DAY_LENGTH:
-                        try
-                        {
-                            int dayLen = Convert.ToInt32(paramList.Data[i + 1]);
-                            if (dayLen >= 14400 && dayLen <= 604800)
-                            {
-                                env.DayLength = dayLen;
-                                changed = true;
-                            }
-                        }
-                        catch { }
-                        break;
-                    case ENV_DAY_OFFSET:
-                        try
-                        {
-                            int dayOff = Convert.ToInt32(paramList.Data[i + 1]);
-                            env.DayOffset = dayOff;
-                            changed = true;
-                        }
-                        catch { }
-                        break;
-                    default:
-                        ShoutError("llSetEnvironment: parameter " + param + " not yet supported for setting");
-                        break;
-                }
-            }
-
-            if (changed)
-            {
-                envModule.StoreOnRegion(env);
-                envModule.WindlightRefresh(0);
-            }
-            return ENV_OK;
-        }
+            // [Confluence] YEngine's implementation (LSLSystemAPI.Confluence.cs) over the shared EnvironmentRules; Phlox's
+            // own handled ENV_DAY_LENGTH and ENV_DAY_OFFSET only, on the whole region, checking the object's own parcel.
+            => ConfluenceSetEnvironment(pos, paramList);
 
         public int llReplaceEnvironment(Vector3 pos, string environment, int track, int day_length, int day_offset)
             // [Confluence: YEngine's implementation, LSLSystemAPI.Confluence.cs; Tranquillity's logged the asset and did not load it]
@@ -20569,27 +20514,9 @@ public int llSetLinkGLTFOverrides(int link, int face, LSLList overrides)
         }
 
         public int llSetAgentEnvironment(string agentID, float transition, LSLList paramList)
-        {
-            // Experience-gated: set per-agent environment (EEP)
-            if (m_host == null || World == null) return -1;
-
-            UUID targetAgent;
-            if (!UUID.TryParse(agentID, out targetAgent)) return -1;
-
-            // Check experience permission
-            if (!HasExperiencePermission(targetAgent))
-                return -3; // XP_ERROR_NOT_EXPERIENCE
-
-            ScenePresence sp = World.GetScenePresence(targetAgent);
-            if (sp == null || sp.IsChildAgent) return -1;
-
-            // Per-agent EEP requires viewer/region support for GenericMessage or
-            // EnvironmentUpdate per-agent caps. Most OpenSim builds don't support this yet.
-            // Log the attempt and return success so scripts don't break.
-            m_log.LogInformation("[PhloxAPI]: llSetAgentEnvironment called for agent {0} with {1} params (transition={2}s). Per-agent EEP not yet implemented in viewer protocol.",
-                targetAgent, paramList.Length, transition);
-            return 0; // Report success so scripts proceed
-        }
+            // [Confluence] YEngine's implementation (LSLSystemAPI.Confluence.cs) over the shared EnvironmentRules; Phlox's
+            // was a stub that logged the call and reported success.
+            => ConfluenceSetAgentEnvironment(agentID, transition, paramList);
 
         public int llReplaceAgentEnvironment(string agentID, float transition, string environment)
             // [Confluence: YEngine's implementation, LSLSystemAPI.Confluence.cs; Tranquillity's logged the asset and did not load it]

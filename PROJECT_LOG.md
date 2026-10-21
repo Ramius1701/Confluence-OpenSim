@@ -29216,3 +29216,28 @@ complete" and then threw a NullReferenceException in `Scene.Update` on its first
 lists the known engines (ubODE, BulletSim, basicphysics, POS, Jolt), or, for a known engine, to see that engine's own
 error earlier in the log. Tests: PhysicsEngineStartupCheckTests (7). Not tried by starting a region server here: the
 repo's bin is configured for the live grid's ports and Robust, so a test start could register with the live grid.
+
+## Phlox llSetEnvironment / llSetAgentEnvironment on YEngine's rule parsers (2026-10-21)
+
+The roadmap item: Phlox's `llSetEnvironment` handled only ENV_DAY_LENGTH / ENV_DAY_OFFSET (on the whole region,
+checking the object's own parcel, and shouting "not yet supported" for every other rule), and its
+`llSetAgentEnvironment` was a stub that logged and reported success.
+
+YEngine's two rule parsers moved, unchanged, out of LSL_Api into `EnvironmentRules`
+(Shared/Api/Implementation/EnvironmentRules.cs): `Apply` (the llSetEnvironment rules on a ViewerEnvironment, Confluence's
+own code from 2026-08-06, 384 lines) and `ToAgentUpdate` (the llSetAgentEnvironment rules as an EnvironmentUpdate, from
+Tranquillity's 2024 experience work, 791 lines). The script-specific parts come in as arguments: the texture lookup by
+key or prim item name (AssetType.Unknown for the any-type form the agent rules used) and the error report. YEngine's
+`ApplyEnvironmentParameters` / `ParamsToEnvUpdate` now hand over to them with exactly the lookup and `Error` they used,
+so YEngine behaves as before; the small helpers the parsers use are copied (LSL_Api's other functions still use theirs).
+Neither parser is upstream opensim-master code.
+
+Phlox: `llSetEnvironment` and `llSetAgentEnvironment` are YEngine's (LSLSystemAPI.Confluence.cs: region with estate
+rights or parcel with parcel environment rights, reset on an empty list; the agent form gated by the script's
+Experience and the avatar's permission), passing the list through `ToYEngineList` (the reverse of
+PhloxEngine.ToPhloxValue) and reporting rule errors on the debug channel as "command: message".
+
+Test: PhloxEnvironmentSetTests runs one script under both engines (day info, a gamma on every sky track, an out-of-range
+water blur, an unknown and an incomplete rule, a reset, the agent form without an Experience) and requires the same
+codes (1, 1, -6, -5, -5, 1, -1) and the same stored region environment. PhloxEnvironmentReplaceTests still passes. The
+agent form's rule parsing through an Experience-permitted avatar is not covered by a test here.

@@ -693,7 +693,9 @@ avatar freeze and fly/walk flags, viewer name, link inventory giving, NPC tags/f
 environment and return functions, and `llCastRayV3`, the Experience trust queries, `llSetSculptAnim`), so a
 script behaves the same on either engine. A grid owner turns it on with `[InWorldz.Phlox] Enabled = true`; a script then runs on
 the engine its first line names (`//YEngine:` or `//InWorldz.Phlox:`), else on `[Startup] DefaultScriptEngine`,
-which stays YEngine. Built with the solution; its test suite runs 5,561 tests (2026-10-16), and its SLua
+which stays YEngine. Since 2026-10-21 `llSetEnvironment` (every sky, water and day rule, region or parcel) and
+`llSetAgentEnvironment` run the same rule parsers as YEngine (`EnvironmentRules`), where Phlox had day length and offset
+only and a stub. Built with the solution; its test suite runs 5,561 tests (2026-10-16), and its SLua
 conformance runner gives 60 pass / 0 divergent / 3 gaps. Port notes, the core hooks it needs and test details:
 `OpenSim/Region/ScriptEngine/Phlox.ScriptEngine/CONFLUENCE.md`; setup: `doc/PhloxSetup.md`.
 

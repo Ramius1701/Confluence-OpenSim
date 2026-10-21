@@ -267,8 +267,8 @@ checked by `Tools/data-backend-check`.)*
   sculpt/mesh shapes and face textures the region owner did not create with plywood and a default prim, marking them
   "(Replaced: Prim created by ...)" - a way for a grid owner to accept a resident's OAR without importing other
   creators' content. OpenSim has nothing like it. Not SL parity (SL has no OARs); not started.
-- **Phlox environment rules**: `llSetAgentEnvironment` (a stub) and `llSetEnvironment` (day length/offset only) need
-  YEngine's ~800-line rule parser; move it to a helper both engines share rather than copy it.
+- **Phlox environment rules** - **done 2026-10-21**: `llSetAgentEnvironment` (was a stub) and `llSetEnvironment` (was
+  day length/offset only) run YEngine's rule parsers, moved to `EnvironmentRules` (Shared.Api) for both engines.
 
 - **Follow-ups from 2026-10-13** (Phlox test suite, damage paths, service-outage fix):
   - Report upstream: `llRezObjectWithParams`' `REZ_LOCK_AXES` tests X twice, so Z never locks (fixed here).
