@@ -347,8 +347,7 @@ namespace OSHttpServer
                     }
                     break;
                 case "remote_addr":
-                    if (m_headers[name] == null)
-                        m_headers.Add(name, value);
+                    // A client's own remote_addr header is ignored: HttpClientContext sets it from the connection (opensim 1b9b55e451).
                     break;
 
                 // [Confluence] 2026-10-19: the RFC 7239 "Forwarded" header is not used. A reverse proxy such as Apache

@@ -156,6 +156,8 @@ namespace OpenSim.Framework
         {
             if (ip == null)
                 return false;
+            if (ip.IsIPv4MappedToIPv6)
+                ip = ip.MapToIPv4();
 
             lock (mainlock)
             {
