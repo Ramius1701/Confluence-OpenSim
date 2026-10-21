@@ -2096,6 +2096,10 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         // The override is a copy of the region's day cycle with the weather applied to every sky in it, so the sun
         // and moon keep moving. An avatar standing on a parcel with its own environment, or one a script has given its
         // own (llReplaceAgentEnvironment, osReplaceAgentEnvironment), is left alone.
+        //
+        // [Confluence] An interface the Confluence viewer relies on: it reaches the viewer as an EEP environment over the
+        // ExtEnvironment capability, and the viewer's sky stack was chosen to stay on EEP for it. Changing how the weather
+        // sky is delivered is a cross-project handoff (S:\Github\Confluence-Shared\HANDOFFS.md, "Interfaces").
 
         /// <summary>The override the module last gave avatars; null when no weather sky is showing.</summary>
         private ViewerEnvironment m_weatherEnvironment;

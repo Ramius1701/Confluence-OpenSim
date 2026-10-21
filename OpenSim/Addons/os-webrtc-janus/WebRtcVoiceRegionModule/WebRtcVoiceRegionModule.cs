@@ -200,6 +200,8 @@ namespace osWebRtcVoice
                     // "ICE server parsing failed: Empty uri" and the mic stays greyed out.
                     // Same fix as intelligentwolf/os-webrtc-janus d88c35f, but driven by the
                     // configured StunServers list instead of a hardcoded one.
+                    // [Confluence] An interface the Confluence viewer and Confluence-Voice rely on: keep sending it
+                    // (S:\Github\Confluence-Shared\HANDOFFS.md, "Interfaces").
                     var uris = new System.Collections.Generic.List<string>();
                     foreach (string s in stuns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         uris.Add(s.StartsWith("stun:", StringComparison.OrdinalIgnoreCase) ? s : "stun:" + s);

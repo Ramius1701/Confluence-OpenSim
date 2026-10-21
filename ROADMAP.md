@@ -254,6 +254,13 @@ checked by `Tools/data-backend-check`.)*
   picks the engine for an unheaded script, `[InWorldz.Phlox] ScriptEnginesPath`). Done 2026-10-22: opensim-master to
   `d55ce0d17e`, Tranquillity #351/#359/#360 (#361, #367 not applicable). Open there now: the voice PRs #353-#358 and
   #362-#366 (stacked, about 69,000 lines; for the Confluence-Voice session) and #347-#349.
+- **Held: the slvoice mixer feed (Tranquillity #362)** - decided 2026-10-22 with the Confluence-Voice session
+  (Confluence-Voice `docs/SLVOICE-FEED.md`). The feed would bring estate/parcel bans and access lists, hidden-avatar
+  parcels and parcel voice moderation into voice, but its region half is #362's feeder, matrix, sink and sender, stacked
+  on #345-#358 and open upstream, while Confluence's voice module has diverged (#345, #346, #350 ported). Confluence-Voice's
+  half (`peer_ctl_batch`) waits on this. **Check upstream again when #362 merges**, then port it here first. Also open,
+  not started: a shared secret on the region-to-Confluence-Voice connection (`WebRtcVoiceServiceConnector` cannot send
+  one; it needs a design on both sides; the port is IP-allow-listed meanwhile).
 - **Weather rethink - tabled 2026-10-19** at the owner's request. Deployed: 0.6.1, whose rain and snow fire upward
   in Firestorm (fixed in 0.6.2, not deployed: emitter upside down, cone round its +Z; a wider lifetime margin). Before
   resuming: confirm the four-weather test script in a viewer, then deploy once. Earlier notes:
