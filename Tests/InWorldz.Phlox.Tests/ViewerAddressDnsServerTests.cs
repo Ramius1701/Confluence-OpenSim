@@ -27,6 +27,11 @@ namespace OpenSim.Framework.Tests;
 /// with addresses the operating-system stand-in never gives, so each test shows which path produced the address.
 /// Only documentation addresses (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and example names are used.
 /// </summary>
+// [Confluence] Runs alone: the fake DNS server answers from a thread-pool task, and under full-suite load
+// (~6,500 tests in parallel) it was starved past the 300 ms window. On 2026-10-22 that failed
+// A_malformed_or_unrelated_reply_is_ignored (7 kinds) and A_later_dns_answer_replaces_the_operating_system_fallback;
+// the class passed alone and in the next two full runs.
+[Collection("viewer-address-dns")]
 public class ViewerAddressDnsServerTests
 {
     /// <summary>A DNS server on 127.0.0.1 (UDP, port chosen by the system) whose reply is decided per query.</summary>
@@ -170,6 +175,13 @@ public class ViewerAddressDnsServerTests
         }
     }
 
+    /// <summary>
+    /// [Confluence] The window for a lookup that needs the fake server to act in time: to answer, or to send the
+    /// reply that must be ignored before the lookup gives up. Tests that only show silence leads to the fallback keep
+    /// their short windows: a late server cannot make silence arrive late.
+    /// </summary>
+    private static readonly TimeSpan ServerActsWindow = TimeSpan.FromSeconds(1);
+
     private const string Host = "region.example.org";
     private static readonly IPEndPoint s_local = new(IPAddress.Parse("192.168.1.10"), 9000);
     private static readonly IPAddress s_viewer = IPAddress.Parse("203.0.113.9");
@@ -266,7 +278,7 @@ public class ViewerAddressDnsServerTests
         using FakeDns dns = new FakeDns().Answering("198.51.100.9");
         List<string> osAsked = new();
         using ViewerAddressSelector s = Sel(Cfg($"0.0.0.0/0={Host}", "127.0.0.1", log), dns, log, osAsked,
-            TimeSpan.FromMilliseconds(300));
+            ServerActsWindow);
         Assert.Equal(Ip("198.51.100.9"), Given(s));
 
         dns.Handler = _ => Array.Empty<byte[]>();
@@ -285,7 +297,7 @@ public class ViewerAddressDnsServerTests
         using FakeDns dns = new();
         List<string> osAsked = new();
         using ViewerAddressSelector s = Sel(Cfg($"0.0.0.0/0={Host}", "127.0.0.1", log), dns, log, osAsked,
-            TimeSpan.FromMilliseconds(300));
+            ServerActsWindow);
 
         Assert.Equal(s_os, Given(s));
         Assert.Equal(new[] { Host }, osAsked);
@@ -298,7 +310,7 @@ public class ViewerAddressDnsServerTests
         CapturingLogger log = new();
         using FakeDns dns = new();
         using ViewerAddressSelector s = Sel(Cfg($"0.0.0.0/0={Host}", "127.0.0.1", log), dns, log, null,
-            TimeSpan.FromMilliseconds(300));
+            ServerActsWindow);
         Assert.Equal(s_os, Given(s));
 
         dns.Answering("198.51.100.9");
@@ -414,7 +426,7 @@ public class ViewerAddressDnsServerTests
     {
         using FakeDns first = new();
         using FakeDns second = new FakeDns().Answering("198.51.100.9");
-        DnsAddressQuery query = new(new[] { first.EndPoint, second.EndPoint }, TimeSpan.FromMilliseconds(300));
+        DnsAddressQuery query = new(new[] { first.EndPoint, second.EndPoint }, ServerActsWindow);
 
         Assert.Equal(Ip("198.51.100.9"), query.Lookup(Host));
         Assert.Equal(1, first.Queries);
@@ -492,3 +504,7 @@ public class ViewerAddressDnsServerTests
             && m.Contains($"first lookup of {Host} succeeded: 198.51.100.9"));
     }
 }
+
+// [Confluence] See the comment on ViewerAddressDnsServerTests.
+[CollectionDefinition("viewer-address-dns", DisableParallelization = true)]
+public class ViewerAddressDnsServerCollection { }

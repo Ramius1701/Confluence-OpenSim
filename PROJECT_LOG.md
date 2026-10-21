@@ -29356,3 +29356,27 @@ belong with Confluence-Voice.
 Tests: Jolt 5,639 passed, 5 skipped; Phlox 6,496 passed, 2 skipped. The first full Phlox run failed 8 cases of
 ViewerAddressDnsServerTests (a fake UDP DNS server that must answer, or stay silent, within 300 ms); they pass alone and
 in the next two full runs: timing under full-suite load, not this batch.
+
+## Deployed 5bc8404a9f (2026-10-22, later)
+
+Grid down (no Robust or OpenSim process). Fresh Release build copied to the live root by binary pattern: 212 of 301
+files, 0 failed, 301/301 md5-verified. Carries the opensim-master merge (cb78616953: client remote_addr ignored, more
+private ranges, legacy asset decoder) and Tranquillity #360/#359/#351. No database changes; live .ini files untouched.
+
+## ViewerAddressDnsServerTests made reliable under full-suite load (2026-10-22)
+
+The first full Phlox run of the donor batch above failed 8 cases (A_malformed_or_unrelated_reply_is_ignored, 7 kinds,
+and A_later_dns_answer_replaces_the_operating_system_fallback). Cause: `DnsAddressQuery` listens for exactly its
+timeout, and the test's fake DNS server answers from a thread-pool task; with ~6,500 tests in parallel that task was
+starved past 300 ms, so the client gave up before the server had counted the query or sent its answer. Two changes, both
+marked `[Confluence]` in Tests/InWorldz.Phlox.Tests/ViewerAddressDnsServerTests.cs:
+
+- The class is in its own collection, `viewer-address-dns`, with `DisableParallelization = true` (as
+  `viewer-address-wiring` and `phlox-state` already are).
+- Tests that need the fake server to act in time (to answer, or to send the reply that must be ignored) use a 1 s
+  window instead of 300 ms: the malformed-reply theory, the later-answer test, the no-answer-keeps-last-good test and
+  the second-server test. Tests that only show silence leads to the fallback keep 300 ms / 200 ms, since a late server
+  cannot make silence late. No assertion was removed or loosened.
+
+Tests: the class alone 30 passed (7 s); full Phlox suite twice: 6,496 passed, 2 skipped each (14 m 28 s, 13 m 43 s).
+Test-only change; nothing to deploy.
