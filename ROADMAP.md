@@ -58,7 +58,12 @@ gap today. For what already exists, see `FEATURES.md`.
   avatar's session.
 - **In-world map "Find" fails when searching for your own current
   region's name specifically - exact trigger identified, root cause
-  still not found (2026-09-29, updated).** The real breakthrough:
+  still not found (2026-09-29, updated; status 2026-10-24).** Latest: a
+  search that returns one region fails at 128,128 on the ground, one that
+  returns several does not; the server's Find path is identical to
+  opensim-master; the owner reports OSGrid keeps a single result, so a
+  Confluence-specific cause is not ruled out. Next: a one-region vanilla
+  standalone comparison (see `PROJECT_LOG.md` 2026-10-24). The real breakthrough:
   this is 100% reproducible by standing at region-local coordinate
   (128, 128) specifically, at or near ground level - not just "your
   current region," and not tied to which 10 of 15 regions happen to

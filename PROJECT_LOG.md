@@ -29424,5 +29424,29 @@ IBSA hub returned a list of several regions and stayed), this confirms the trigg
 has reached a Find result (within 3 m of its local 128,128 at ground + 1.5 m), deletes the result list when it holds
 exactly one entry (`clearLocationSelection`: `!dest_reached || count == 1`). Casperia's region names do not
 overlap, so a search for your own region is always a single result; in SL and on OSGrid names usually match several.
-Not a server fault. Open: the 2026-09-29 note that vanilla opensim-master standalone did not reproduce it conflicts
+Whether something on the server side is also involved is open (see the status below and the owner's OSGrid result). The 2026-09-29 note that vanilla opensim-master standalone did not reproduce it conflicts
 with this; a single-region vanilla standalone repeat would settle it.
+
+**Status at the end of 2026-10-24 (owner's call: document, investigate later).** Still open. What is established:
+
+- The owner's observations: every Confluence region shows it; only at local (128, 128); only when standing on the
+  ground (not on a prim landing at 128,128,37); about 6 m away in any direction it works; it is purely positional -
+  walking away and back to 128,128 after arriving brings it back, so it is not tied to the teleport in. In Firestorm,
+  a search returning several regions keeps its list at 128,128; a search returning one region flashes and is emptied.
+- The owner reports that on OSGrid (official OpenSim) the result stays. The owner holds that the cause is
+  Confluence-specific; that has not been ruled out.
+- Code checked and found identical to opensim-master on the Find path: `MapSearchModule` (the only handler of the
+  viewer's map name request), `HGWorldMapModule`, and the grid service's region search. Neither search module is on
+  the path: `ConfluenceSearchModule` (live on all 15 regions) hooks only the Search window's Dir* queries, and the
+  OpenSimSearch addon disables itself under that setting. The "Search is not available." message seen during search
+  testing comes from Confluence's Destination Guide page (`WebInterfaceServiceConnector.HandleGuide`), not the map;
+  the map's Find only ever sends `MapNameRequest` (Firestorm `sendNamedRegionRequest`).
+- The viewer side (above): Firestorm and CoolVL both track a Find result at local 128,128, ground + 1.5 m, count the
+  avatar as arrived within 3 m, and on arrival delete a single result. All the Casperia observations fit that check.
+  It does not by itself explain the OSGrid result, which is why this stays open.
+
+**Next step when resumed:** a controlled comparison on this machine - official opensim-master as a one-region
+standalone (separate folder, ports the live grid does not use), the same Firestorm, bare ground at 128,128, a
+single-result Find. If it stays there and vanishes on Casperia, find the Confluence difference by switching
+Confluence modules off one at a time on a test copy. Also useful: the owner's `Firestorm.log` from one Find on
+Casperia and one on OSGrid.

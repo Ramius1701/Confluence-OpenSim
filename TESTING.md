@@ -228,6 +228,7 @@ Try these on a test region first.
 ## 12. Open bugs that need a live reproduction
 
 - [ ] 12.1 Map "Find" for your own region's name fails while standing at region coordinates (128, 128) near the
-      ground. Does it happen on your grid? Which viewer?
+      ground. Does it happen on your grid? Which viewer? Does it happen when the search returns only that one
+      region, and not when it returns several? (2026-10-24: yes on Casperia, in Firestorm.)
 - [ ] 12.2 An avatar left as a cloud after login or teleport, cleared by Rebake Textures. When it happens, note the
       time and region and keep that region's log before restarting it.
