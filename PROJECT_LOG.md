@@ -29380,3 +29380,39 @@ marked `[Confluence]` in Tests/InWorldz.Phlox.Tests/ViewerAddressDnsServerTests.
 
 Tests: the class alone 30 passed (7 s); full Phlox suite twice: 6,496 passed, 2 skipped each (14 m 28 s, 13 m 43 s).
 Test-only change; nothing to deploy.
+
+## The 128,128 map Find "bubble": the viewer path it runs through, and the owner's tests (2026-10-24)
+
+Follows "Find self-search: the exact trigger finally identified, root cause still not found" (2026-09-29). Still
+open.
+
+**What the viewers do (read in source, both).** Firestorm `c33bfee253` (Release, Beta and Nightly share this code;
+the arrival logic is from 2007-2009) and CoolVL 1.32.5.19 (its own code):
+- A Find match is tracked at the region's origin plus local (128, 128): Firestorm `SIM_COORD_DEFAULT`
+  (llfloaterworldmap.cpp:2049); CoolVL the map's X/Y spinners, default 128 and reset to 128 when a selection clears.
+- The tracked height is lifted to the ground + 1.5 m where the viewer knows the terrain (Firestorm lltracker.cpp:159;
+  CoolVL lltracker.cpp:285).
+- Within 3 m of it (`DESTINATION_REACHED_RADIUS`; Firestorm counts height at half weight) the viewer stops tracking,
+  and stopping deletes the search results (`clearLocationSelection`; Firestorm when there is one result, CoolVL always)
+  and clears the pending search, so later replies for it are dropped.
+
+That path matches every 2026-09-29 observation, so it is very likely where the result is lost.
+
+**But it is not the whole cause.** The owner tested the same thing in Second Life and on OSGrid with these viewers,
+and Find for your own region works there. The viewer code is the same everywhere, so something Casperia sends puts
+the viewer on that path when SL and OSGrid do not. (A first reading on 2026-10-24 called it a viewer-only issue; the
+owner's tests showed that was wrong, and the note was withdrawn before it was pushed.)
+
+What the path depends on that comes from the server, so where to look next:
+- **The replies to one Find click.** The viewer sends 6-8 `MapNameRequest`s per click. In Firestorm, `updateSims`
+  rebuilds the result list from every reply while the search is pending; a reply with a "does not exist" block
+  (`Access = 255`) ends the search (`found_null_sim`). How many replies arrive, in what order, and with which blocks,
+  relative to the tracker's arrival check, decides whether the result survives. Vanilla `MapSearchModule` sends that
+  block alongside every real match (the terminator-block bug, 09-28); what OSGrid's servers send is not known.
+- **The region the viewer resolves for the result** (its map block: name, X/Y, size): if the tracked position or the
+  region it lands in differs from SL/OSGrid, the 3 m check differs.
+- **What the viewer believes the avatar's position and the ground height are** at 128,128 (agent updates, terrain).
+
+Next evidence, rather than more code reading: a Firestorm log (`Firestorm.log`, with WorldMap debug if available) of
+one Find on Casperia at 128,128 and one on OSGrid at 128,128, and the server's `MapSearchModule` replies for the
+Casperia click (its debug logging can be switched on as on 09-28).
