@@ -29416,3 +29416,13 @@ What the path depends on that comes from the server, so where to look next:
 Next evidence, rather than more code reading: a Firestorm log (`Firestorm.log`, with WorldMap debug if available) of
 one Find on Casperia at 128,128 and one on OSGrid at 128,128, and the server's `MapSearchModule` replies for the
 Casperia click (its debug logging can be switched on as on 09-28).
+
+**Owner's test, 2026-10-24, Firestorm, standing on the ground at Region K1 (128, 128, 24):** Find the part of the name Regions K1-K4 share (four
+results, Regions K1-K4) - the list stays. Find the full name of Region K1 (one result) - it flashes and the list is
+empty. Same viewer, spot and grid; only the number of results changed. With the owner's OSGrid test (Find at the
+IBSA hub returned a list of several regions and stayed), this confirms the trigger: Firestorm, on deciding the avatar
+has reached a Find result (within 3 m of its local 128,128 at ground + 1.5 m), deletes the result list when it holds
+exactly one entry (`clearLocationSelection`: `!dest_reached || count == 1`). Casperia's region names do not
+overlap, so a search for your own region is always a single result; in SL and on OSGrid names usually match several.
+Not a server fault. Open: the 2026-09-29 note that vanilla opensim-master standalone did not reproduce it conflicts
+with this; a single-region vanilla standalone repeat would settle it.
