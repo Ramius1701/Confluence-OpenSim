@@ -198,6 +198,14 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 9.7 Console `wind <plugin> <param> NaN` (or `Infinity`) is refused with "Invalid value" and the wind does not
       change; `osSetWindParam` with a non-finite value logs one warning and changes nothing.
 
+- [ ] 9.8 Gloebit after the switch to upstream's module (2026-10-25: gloebit/opensim-moneymodule-gloebit, which now
+      signs every enact/consume/cancel callback with `GLBSecret` and refuses an unsigned one). Real currency, so only
+      the grid owner tests it, in a region listed in `GLBEnabledOnlyInRegions`:
+      - Buy a Gloebit-priced object (or Gloebits): the purchase completes and the object or balance arrives.
+      - Pay another avatar: the payer sees "Transaction SUCCEEDED", the payee "You've received Gloebits from ...".
+      - If one hangs or fails, note the time and region; the region log's `[GLOEBITMONEYMODULE]` lines for that
+        transaction show whether a callback was refused (signature) or a step failed.
+
 - [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
       see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,
       the same; with it not listed, everything comes from the proxy's address.

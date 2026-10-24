@@ -29538,3 +29538,9 @@ and fail on the existing `CallbackKey` column), with the grid stopped. Not run y
 Tests: GloebitStateRequestTests (2) now test upstream's behaviour from outside (upstream checks the signature before
 `ProcessStateRequest`, which no longer takes a key); both pass.
 Full Phlox suite with upstream Gloebit: 6,593 passed, 2 skipped.
+
+## Deployed cb33600bfb: upstream Gloebit live (2026-10-25)
+
+Grid down. 212 of 301 files copied, 0 failed, 301/301 md5-verified. Live Gloebit.dll checked as the upstream build
+(GloebitCallbackSignature present, our old callback-key text absent). Still to do before the grid starts: the
+migration-version reset (S:\Github\Confluence-Shared\tools\Gloebit-migrations-to-upstream.sql), run by the owner.
