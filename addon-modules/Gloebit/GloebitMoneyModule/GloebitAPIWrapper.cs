@@ -135,13 +135,6 @@ namespace Gloebit.GloebitMoneyModule {
             Authorize(user, agentName);
         }
 
-        // [Confluence] Tranquillity #360: the value of a callback parameter as it may be logged. A parameter that carries a
-        // credential (the authorization code and state, or the transaction callback key) is logged as "(withheld)".
-        private static object LoggableCallbackValue(DictionaryEntry e, params string[] withheld)
-        {
-            return Array.IndexOf(withheld, e.Key as string) >= 0 ? "(withheld)" : e.Value;
-        }
-
         /// <summary>
         /// Ask this user on this app to link this agent to their Gloebit account and to authorize
         /// the app to take actions on the agent's behalf which will access that Gloebit account
@@ -164,32 +157,31 @@ namespace Gloebit.GloebitMoneyModule {
         /// <param name="requestData">response data from GloebitAPI.Authorize</param>
         public Hashtable authComplete_func(Hashtable requestData) {
             m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func");
-            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, LoggableCallbackValue(e, "code", "state")); }
+            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, e.Value); }
 
             string agentId = requestData["agentId"] as string;
             string code = requestData["code"] as string;
-            string state = requestData["state"] as string;
+            string nonce = requestData["state"] as string;
 
-            UUID parsedAgentId = UUID.Parse(agentId);
-            GloebitUser u = GloebitUser.Get(m_key, parsedAgentId);
-
-            // agentId above is caller-supplied and otherwise unauthenticated -
-            // nothing about this request proves the named agent is the one
-            // who actually clicked through Gloebit's own authorize dialog.
-            // Without this check, an attacker who completes their OWN real
-            // authorization could replay the completion against any victim's
-            // agentId and bind the attacker's payment account (and future
-            // earnings) to the victim's avatar. Refuse before ever touching
-            // ExchangeAccessToken if the one-shot state this user's own
-            // BeginAuthorization call minted doesn't match.
-            if (!u.ConsumeAuthorizationState(state)) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] authComplete_func rejected - missing or mismatched OAuth state for agent {0}", agentId);
-                Hashtable rejectResponse = new Hashtable();
-                rejectResponse["int_response_code"] = 400;
-                rejectResponse["str_response_string"] = "<html><head><title>Gloebit authorization failed</title></head><body><h2>Authorization failed</h2>This authorization request could not be verified. Please try again from OpenSim.</body></html>";
-                rejectResponse["content_type"] = "text/html";
-                return rejectResponse;
+            UUID parsedAgentId;
+            Hashtable response = new Hashtable();
+            if (String.IsNullOrEmpty(code)) {
+                // The user declined on Gloebit (it redirects back with no code or state).
+                m_log.InfoFormat("[GLOEBITMONEYMODULE] authComplete_func: authorization not completed for agent {0}", agentId);
+                response["int_response_code"] = 200;
+                response["str_response_string"] = "<html><head><title>Gloebit authorization not completed</title></head><body><h2>Gloebit authorization was not completed</h2>Your Gloebit account was not linked.  You can close this window, return to OpenSim, and start linking again at any time.</body></html>";
+                response["content_type"] = "text/html";
+                return response;
             }
+            // Only link an agent this region sent to Gloebit, once: anyone can call this endpoint with any agentId.
+            if (!UUID.TryParse(agentId, out parsedAgentId) || !m_api.RedeemAuthNonce(agentId, nonce)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] authComplete_func refused for agent {0}: missing, used or expired nonce", agentId);
+                response["int_response_code"] = 400;
+                response["str_response_string"] = "<html><head><title>Gloebit authorization link already used</title></head><body><h2>This authorization link has expired or was already used</h2>If you just linked your Gloebit account, you're all set and can close this window.  Otherwise, return to OpenSim and start linking your Gloebit account again.</body></html>";
+                response["content_type"] = "text/html";
+                return response;
+            }
+            GloebitUser u = GloebitUser.Get(m_key, parsedAgentId);
 
             // Start async flow to exchange the code for a permanent token
             m_api.ExchangeAccessToken(u, code, m_platformAccessors.GetBaseURI());
@@ -197,7 +189,6 @@ namespace Gloebit.GloebitMoneyModule {
 
             // TODO: create interface function to build this response
             Uri url = BuildPurchaseURI(m_platformAccessors.GetBaseURI(), u);
-            Hashtable response = new Hashtable();
             response["int_response_code"] = 200;
             response["str_response_string"] = String.Format("<html><head><title>Gloebit authorized</title></head><body><h2>Gloebit authorized</h2>Thank you for authorizing Gloebit.  You may now close this window and return to OpenSim.<br /><br /><br />You'll now be able spend gloebits from your Gloebit account as the agent you authorized on this OpenSim Grid.<br /><br />If you need gloebits, you can <a href=\"{0}\">purchase them here</a>.</body></html>", url);
             response["content_type"] = "text/html";
@@ -578,6 +569,14 @@ namespace Gloebit.GloebitMoneyModule {
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE].transactU2UCompleted with FAILURE reason:{0} status:{1} id:{2}", reason, status, tID);
 
+            // Gloebit won't complete this submission, so close the local transaction instead of leaving it open.
+            // Two exceptions: another submission of the same id owns it, or the processor will retry the early enact.
+            bool anotherSubmissionOwnsIt = (failure == GloebitAPI.TransactionFailure.RACE_CONDITION);
+            bool processorWillRetry = (status == "queued" && reason == "pending");
+            if (!anotherSubmissionOwnsIt && !processorWillRetry && !txn.CancelAfterRefusedSubmission()) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE].transactU2UCompleted could not close refused transaction id:{0}; it was enacted or is being processed", txn.TransactionID);
+            }
+
             // Handle errors
             switch (stage) {
                 case GloebitAPI.TransactionStage.ENACT_GLOEBIT:     /* Placed this first as it is an odd case where early-enact failed. */
@@ -715,15 +714,22 @@ namespace Gloebit.GloebitMoneyModule {
         /// </returns>
         public Hashtable transactionState_func(Hashtable requestData) {
             m_log.DebugFormat("[GLOEBITMONEYMODULE] transactionState_func **************** Got Callback");
-            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, LoggableCallbackValue(e, "key")); }
+            foreach(DictionaryEntry e in requestData) { m_log.DebugFormat("{0}: {1}", e.Key, e.Value); }
 
             // TODO: check that these exist in requestData.  If not, signal error and send response with false.
             string transactionIDstr = requestData["id"] as string;
             string stateRequested = requestData["state"] as string;
-            string callbackKey = requestData["key"] as string;
+            string signature = requestData[GloebitCallbackSignature.QueryArg] as string;
             string returnMsg = "";
+            bool success = false;
 
-            bool success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, callbackKey, m_assetCallbacks, m_transactionAlerts, out returnMsg);
+            // Only act on a url this module built: anyone can call this endpoint, and the transaction id is not secret.
+            if (!m_api.IsValidHoldCallback(transactionIDstr, stateRequested, signature)) {
+                m_log.WarnFormat("[GLOEBITMONEYMODULE] transactionState_func refused {0} for transaction {1}: missing or invalid signature", stateRequested, transactionIDstr);
+                returnMsg = "invalid signature";
+            } else {
+                success = GloebitTransaction.ProcessStateRequest(transactionIDstr, stateRequested, m_assetCallbacks, m_transactionAlerts, out returnMsg);
+            }
 
             //JsonValue[] result;
             //JsonValue[0] = JsonValue.CreateBooleanValue(success);

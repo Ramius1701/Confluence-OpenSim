@@ -1,4 +1,4 @@
-// [Confluence] Tests for Tranquillity #373 (gloebit#103): an exception while a state request is being processed must not
+// [Confluence] Tests for Gloebit upstream #103 (gloebit/opensim-moneymodule-gloebit, third-party, vendored unmodified): an exception while a state request is being processed must not
 // leave the transaction in the race-condition map, or every later callback for it answers "pending" for ever.
 // Gloebit has no tests upstream; this drives GloebitTransaction.ProcessStateRequest directly. The transaction is put in
 // the in-memory cache that Get reads first, so no database is involved.
@@ -46,7 +46,6 @@ public class GloebitStateRequestTests
         var txn = new GloebitTransaction
         {
             TransactionID = UUID.Random(),
-            CallbackKey = UUID.Random().ToString(),
         };
         var map = (Dictionary<string, GloebitTransaction>)typeof(GloebitTransaction)
             .GetField("s_transactionMap", BindingFlags.NonPublic | BindingFlags.Static)
@@ -64,12 +63,12 @@ public class GloebitStateRequestTests
         var alerts = DispatchProxy.Create<GloebitAPIWrapper.ITransactionAlert, Quiet>();
 
         Assert.ThrowsAny<InvalidOperationException>(() =>
-            GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "enact", txn.CallbackKey, assets, alerts, out _));
+            GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "enact", assets, alerts, out _));
 
         // Gloebit retries. Before the fix the retry found the leaked entry and answered "pending" without reaching the
         // enact step again; now it reaches it (and the callback throws again).
         Assert.ThrowsAny<InvalidOperationException>(() =>
-            GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "enact", txn.CallbackKey, assets, alerts, out _));
+            GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "enact", assets, alerts, out _));
         Assert.Equal(2, ((ThrowsOnEnact)(object)assets).EnactCalls);
     }
 
@@ -80,9 +79,9 @@ public class GloebitStateRequestTests
         var assets = DispatchProxy.Create<GloebitTransaction.IAssetCallback, Quiet>();
         var alerts = DispatchProxy.Create<GloebitAPIWrapper.ITransactionAlert, Quiet>();
 
-        Assert.False(GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "nonsense", txn.CallbackKey, assets, alerts, out string first));
+        Assert.False(GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "nonsense", assets, alerts, out string first));
         Assert.Equal("Unrecognized state request", first);
-        Assert.False(GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "nonsense", txn.CallbackKey, assets, alerts, out string second));
+        Assert.False(GloebitTransaction.ProcessStateRequest(txn.TransactionID.ToString(), "nonsense", assets, alerts, out string second));
         Assert.Equal("Unrecognized state request", second);
     }
 }

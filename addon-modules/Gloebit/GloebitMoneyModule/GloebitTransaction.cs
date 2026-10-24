@@ -27,8 +27,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
 using log4net;
 using OpenMetaverse;
 
@@ -64,15 +62,6 @@ namespace Gloebit.GloebitMoneyModule {
         public UUID CategoryID;     // Appears to be a folder id used when saleType is copy
         private uint? m_localID;    // Region specific ID of object.  Unclear why this is passed instead of UUID
         public int SaleType;        // object, copy, or contents
-
-        // Random, server-generated secret appended to the enact/consume/cancel
-        // callback URLs and required on every incoming callback before any
-        // state change runs - the transaction ID alone is not a secret (it's
-        // handed to Gloebit and echoed back through their own systems), so
-        // authenticating the callback with it alone lets anyone who knows or
-        // guesses a transaction ID drive the asset side of a sale (deliver or
-        // cancel it) with no other credential. See ProcessStateRequest.
-        public string CallbackKey;
 
         // Storage of submission/response from Gloebit
         public bool Submitted;
@@ -127,11 +116,6 @@ namespace Gloebit.GloebitMoneyModule {
             // Subscription info
             this.IsSubscriptionDebit = isSubscriptionDebit;
             this.SubscriptionID = subscriptionID;
-
-            // Random secret this transaction's own callbacks must present -
-            // see the field's own comment for why the transaction ID alone
-            // isn't sufficient.
-            this.CallbackKey = UUID.Random().ToString();
 
             // Storage of submission/response from Gloebit
             this.Submitted = false;
@@ -243,30 +227,28 @@ namespace Gloebit.GloebitMoneyModule {
             return transaction;
         }
 
-        public Uri BuildEnactURI(Uri baseURI) {
-            UriBuilder enact_uri = new UriBuilder(baseURI);
-            enact_uri.Path = "gloebit/transaction";
-            enact_uri.Query = String.Format("id={0}&state={1}&key={2}", this.TransactionID, "enact", Uri.EscapeDataString(this.CallbackKey));
-            return enact_uri.Uri;
+        public Uri BuildEnactURI(Uri baseURI, string secret) {
+            return BuildHoldURI(baseURI, "enact", secret);
         }
-        public Uri BuildConsumeURI(Uri baseURI) {
-            UriBuilder consume_uri = new UriBuilder(baseURI);
-            consume_uri.Path = "gloebit/transaction";
-            consume_uri.Query = String.Format("id={0}&state={1}&key={2}", this.TransactionID, "consume", Uri.EscapeDataString(this.CallbackKey));
-            return consume_uri.Uri;
+        public Uri BuildConsumeURI(Uri baseURI, string secret) {
+            return BuildHoldURI(baseURI, "consume", secret);
         }
-        public Uri BuildCancelURI(Uri baseURI) {
-            UriBuilder cancel_uri = new UriBuilder(baseURI);
-            cancel_uri.Path = "gloebit/transaction";
-            cancel_uri.Query = String.Format("id={0}&state={1}&key={2}", this.TransactionID, "cancel", Uri.EscapeDataString(this.CallbackKey));
-            return cancel_uri.Uri;
+        public Uri BuildCancelURI(Uri baseURI, string secret) {
+            return BuildHoldURI(baseURI, "cancel", secret);
+        }
+        private Uri BuildHoldURI(Uri baseURI, string state, string secret) {
+            UriBuilder hold_uri = new UriBuilder(baseURI);
+            hold_uri.Path = "gloebit/transaction";
+            string sig = GloebitCallbackSignature.Compute(secret, this.TransactionID.ToString(), state);
+            hold_uri.Query = String.Format("id={0}&state={1}&{2}={3}", this.TransactionID, state, GloebitCallbackSignature.QueryArg, sig);
+            return hold_uri.Uri;
         }
 
         /**************************************************/
         /******* ASSET STATE MACHINE **********************/
         /**************************************************/
 
-        public static bool ProcessStateRequest(string transactionIDstr, string stateRequested, string callbackKey, IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
+        public static bool ProcessStateRequest(string transactionIDstr, string stateRequested, IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
         {
             bool result = false;
 
@@ -277,17 +259,6 @@ namespace Gloebit.GloebitMoneyModule {
             // TODO: is this what we want to return?
             if (myTxn == null) {
                 returnMsg = "No matching transaction found.";
-                return false;
-            }
-
-            // The transaction ID alone is not a secret - see CallbackKey's
-            // own comment. Refuse before touching any state (or even the
-            // race-condition map below) if the caller can't present the key
-            // this specific transaction's own enact/consume/cancel URLs were
-            // built with.
-            if (!FixedTimeEquals(myTxn.CallbackKey, callbackKey)) {
-                m_log.WarnFormat("[GLOEBITMONEYMODULE] GloebitTransaction.ProcessStateRequest rejected - callback key mismatch for transaction {0}", transactionIDstr);
-                returnMsg = "Invalid callback key.";
                 return false;
             }
 
@@ -305,20 +276,21 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
 
-            // Call proper state processor.
-            // try/finally so an exception from enactHold/consumeHold/cancelHold (e.g. the
-            // grid's own asset callback throwing) can't skip the race-condition-map cleanup
-            // below -- without this, a leaked entry would make every retry of this same
-            // transaction ID hit alreadyProcessing=true above and return "pending" forever,
-            // without ever reaching this switch again.
-            string localReturnMsg = null;
+            // Always release the transaction, even if a handler throws.  Otherwise every later callback for it gets
+            // "pending" until the region restarts.  This is still true for enactHold and for
+            // processAssetConsumeHold/processAssetCancelHold themselves: a throw there still answers 500, Gloebit
+            // retries, and the retry finds the transaction already enacted/consumed/canceled and answers true.
+            // It is NOT true any more for consumeHold/cancelHold's own transactionAlerts.* calls -- those are
+            // wrapped in SafeAlert and fail closed (logged, this.consumed/this.canceled unaffected) rather than
+            // propagating, since by the time they run the real action is already determined and persisted.
             try {
+                // Call proper state processor
                 switch (stateRequested) {
                 case "enact":
-                    result = myTxn.enactHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    result = myTxn.enactHold(assetCallbacks, transactionAlerts, out returnMsg);
                     break;
                 case "consume":
-                    result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out returnMsg);
                     if (result) {
                         lock(s_transactionMap) {
                             s_transactionMap.Remove(transactionIDstr);
@@ -326,7 +298,7 @@ namespace Gloebit.GloebitMoneyModule {
                     }
                     break;
                 case "cancel":
-                    result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out returnMsg);
                     if (result) {
                         lock(s_transactionMap) {
                             s_transactionMap.Remove(transactionIDstr);
@@ -335,29 +307,52 @@ namespace Gloebit.GloebitMoneyModule {
                     break;
                 default:
                     // no recognized state request
-                    localReturnMsg = "Unrecognized state request";
+                    returnMsg = "Unrecognized state request";
                     result = false;
                     break;
                 }
             } finally {
-                // remove from race condition protection -- always, even if the switch above threw.
+                // remove from race condition protection
                 lock(s_pendingTransactionMap) {
                     s_pendingTransactionMap.Remove(transactionIDstr);
                 }
             }
-            returnMsg = localReturnMsg;
             return result;
         }
 
-        // Constant-time comparison so a mismatched key can't be brute-forced
-        // via response-timing differences. Length is compared first (which
-        // does leak length), matching CryptographicOperations.FixedTimeEquals'
-        // own documented contract - the keys here are always the same
-        // fixed-length UUID string, so this leaks nothing in practice.
-        private static bool FixedTimeEquals(string expected, string actual) {
-            byte[] expectedBytes = Encoding.UTF8.GetBytes(expected ?? string.Empty);
-            byte[] actualBytes = Encoding.UTF8.GetBytes(actual ?? string.Empty);
-            return expectedBytes.Length == actualBytes.Length && CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
+        /// <summary>
+        /// Marks this transaction canceled after Gloebit refused its submission, without alerting anyone (the
+        /// failure has already been reported).  Gloebit will never enact or consume it, and once it is canceled
+        /// a later enact or consume callback is refused.
+        /// </summary>
+        /// <returns>false if it was already enacted or consumed, or a callback for it is being processed, so it was left alone.</returns>
+        public bool CancelAfterRefusedSubmission()
+        {
+            string transactionIDstr = this.TransactionID.ToString();
+            lock(s_pendingTransactionMap) {
+                if (s_pendingTransactionMap.ContainsKey(transactionIDstr)) {
+                    return false;
+                }
+                s_pendingTransactionMap[transactionIDstr] = this;
+            }
+            try {
+                if (this.enacted || this.consumed) {
+                    return false;
+                }
+                if (!this.canceled) {
+                    this.canceled = true;
+                    this.finishedTime = DateTime.UtcNow;
+                    GloebitTransactionData.Instance.Store(this);
+                }
+                lock(s_transactionMap) {
+                    s_transactionMap.Remove(transactionIDstr);
+                }
+                return true;
+            } finally {
+                lock(s_pendingTransactionMap) {
+                    s_pendingTransactionMap.Remove(transactionIDstr);
+                }
+            }
         }
 
         /// <summary>
@@ -370,13 +365,12 @@ namespace Gloebit.GloebitMoneyModule {
         /// reported failure. There's nothing left to retry at that point; retrying
         /// would just hit the same alert bug again.
         /// </summary>
-        private void SafeAlert(Action alertCall, string description)
+        private static void SafeAlert(Action alertCall, string description)
         {
             try {
                 alertCall();
             } catch (Exception e) {
-                // [Confluence] log4net: the exception goes as the second argument so the appender records it in full.
-                m_log.Error(String.Format("[GLOEBITMONEYMODULE] {0} alert threw (swallowed) for transaction {1}", description, this.TransactionID), e);
+                m_log.ErrorFormat("[GLOEBITMONEYMODULE] {0} alert threw (swallowed): {1}", description, e.ToString());
             }
         }
 
@@ -459,7 +453,7 @@ namespace Gloebit.GloebitMoneyModule {
             // First reception of consume for asset.
             // Send alert that CONSUME_GLOEBIT has completed
             SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_GLOEBIT, String.Empty),
-                      GloebitAPI.TransactionStage.CONSUME_GLOEBIT.ToString());
+                      "CONSUME_GLOEBIT");
             // Do specific consume functionality for the Asset / local transaction part
             this.consumed = assetCallbacks.processAssetConsumeHold(this, out returnMsg);
             if (this.consumed) {
@@ -469,7 +463,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // send alert that CONSUME_ASSET has completed
                 // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
                 SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_ASSET, String.Empty),
-                          GloebitAPI.TransactionStage.CONSUME_ASSET.ToString());
+                          "CONSUME_ASSET");
                 // transaction officially complete at this point -- this.consumed is
                 // already true and persisted above; AlertTransactionSucceeded is
                 // purely a user-facing notification from here on.
@@ -499,7 +493,7 @@ namespace Gloebit.GloebitMoneyModule {
             // First reception of cancel for asset.
             // Send alert that CANCEL_GLOEBIT has completed
             SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_GLOEBIT, String.Empty),
-                      GloebitAPI.TransactionStage.CANCEL_GLOEBIT.ToString());
+                      "CANCEL_GLOEBIT");
             // Do specific cancel functionality for the Asset / local transaction part
             this.canceled = assetCallbacks.processAssetCancelHold(this, out returnMsg); // Do I need to grab the money module for this?
             if (this.canceled) {
@@ -509,7 +503,7 @@ namespace Gloebit.GloebitMoneyModule {
                 // send alert that CANCEL_ASSET has completed
                 // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
                 SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_ASSET, String.Empty),
-                          GloebitAPI.TransactionStage.CANCEL_ASSET.ToString());
+                          "CANCEL_ASSET");
             }
             return this.canceled;
         }

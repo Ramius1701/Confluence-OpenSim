@@ -262,6 +262,10 @@ checked by `Tools/data-backend-check`.)*
   opensim-master to `eb01e50a67`, Tranquillity #370 (parts), #371, #372, and open PR #373 (Gloebit fixes); #368/#369
   not applicable. Tranquillity merged its voice series on 10-22 as one commit, #365 (`df0e840132`, includes #362):
   porting it is for the owner and the Confluence-Voice session.
+- **Gloebit is third-party since 2026-10-25** (vendored unmodified from gloebit/opensim-moneymodule-gloebit; refresh
+  wholesale at each donor check). Pending: the live migration-version reset after the next deploy
+  (`Gloebit-migrations-to-upstream.sql`, local), and the owner's OK to send Gloebit the log-redaction PR (#360's
+  change, which upstream lacks).
 - **Held: the slvoice mixer feed (Tranquillity #362)** - decided 2026-10-22 with the Confluence-Voice session
   (Confluence-Voice `docs/SLVOICE-FEED.md`). The feed would bring estate/parcel bans and access lists, hidden-avatar
   parcels and parcel voice moderation into voice, but its region half is #362's feeder, matrix, sink and sender, stacked

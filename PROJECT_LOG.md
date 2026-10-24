@@ -29499,3 +29499,42 @@ Tests: the four wind files (WindUpdateRateTests, WindModuleVolumeTests, WindVolu
 log4net capture where the module logs through log4net, `[WindVolumes]` for `[Weather]`, and our command wording; all
 wind tests 236/236, #370's 28/28, Gloebit 2/2.
 Full Phlox suite after the batch: 6,593 passed, 2 skipped.
+
+## Deployed 7d0dcfffee (2026-10-25)
+
+Grid down (no Casperia Robust or OpenSim process). Fresh Release build copied to the live root by binary pattern:
+212 of 301 files, 0 failed, 301/301 md5-verified. Carries the opensim-master merge (eb01e50a67), Tranquillity
+#370 (parts), #371, #372 and the Gloebit fixes (#373). No database changes; live .ini files untouched. Live
+OpenSimDefaults.ini still lacks the new [Wind] / [WindVolumes] notes (documentation only; no setting changed).
+
+## Gloebit becomes a third-party module, vendored unmodified from upstream (2026-10-25)
+
+Owner's decision: Gloebit (`addon-modules/Gloebit`) is managed as a third party. The authority is Gloebit's own repo,
+`gloebit/opensim-moneymodule-gloebit` (remote `gloebit`); Confluence vendors its `master` unmodified and refreshes it
+wholesale at each donor check. Anything Confluence wants changed in it goes to Gloebit as an issue or PR.
+
+Until now our copy came from OpenSim-Continuum (imported 2026-08-01), with our own changes on top: a 2026-09-23 fix
+for callback forgery and OAuth CSRF (a per-transaction `CallbackKey`, an OAuth `PendingAuthState`), utf8mb4 name
+columns, Tranquillity #360's log redaction and today's #373. Replaced with gloebit/master `5b3849d2f4`, identical
+file for file (verified with `git diff gloebit/master`). Upstream already has #373's three fixes (#103, #105, #106)
+and its own, broader answer to the two vulnerabilities (#100-#102): every enact/consume/cancel callback carries an
+HMAC-SHA256 signature keyed with `GLBSecret` and is refused without it; auth_complete needs a one-time value and the
+token's `user_id_on_app` must be the agent being linked; plus a module version header and #98. `GLBSecret` is set in
+live's `Gloebit.ini` (regions report it as configured), which signed callbacks need. Upstream's `prebuild-gloebit.xml`
+says net8_0; our prebuild's `/targetframework net10_0` overrides it, so no edit was needed.
+
+Lost until Gloebit takes it: #360's redaction. Upstream logs the auth callback's `code` and one-time `state`, and a
+transaction callback's `sig`, at Debug, and `buy_func` logs the buyer's secure session id at Info. A PR for Gloebit is
+drafted (`S:\Github\Confluence-Shared\tools\gloebit-pr-keep-credentials-out-of-logs.*`, local; builds clean against
+upstream); not submitted until the owner approves.
+
+**Database (live MySQL).** Our extra migration steps left live's recorded Gloebit versions ahead of upstream's
+(Subscriptions 2 / 1, Transactions 4 / 2, Users 4 / 3), so Gloebit's own next migration would be skipped. The
+columns stay (utf8mb4 is only wider; `CallbackKey` is nullable and `PendingAuthState` defaults to '', and upstream's
+code never writes them). The fix is bookkeeping only: `S:\Github\Confluence-Shared\tools\Gloebit-migrations-to-upstream.sql`
+sets the versions to 1 / 2 / 3. It must run AFTER the upstream build is deployed (the old build would re-run its step 4
+and fail on the existing `CallbackKey` column), with the grid stopped. Not run yet.
+
+Tests: GloebitStateRequestTests (2) now test upstream's behaviour from outside (upstream checks the signature before
+`ProcessStateRequest`, which no longer takes a key); both pass.
+Full Phlox suite with upstream Gloebit: 6,593 passed, 2 skipped.

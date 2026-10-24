@@ -268,6 +268,9 @@ namespace Gloebit.GloebitMoneyModule
 
             m_log.InfoFormat("[GLOEBITMONEYMODULE] Initialised. Gloebit enabled: {0}, GLBEnvironment: {1}, GLBApiUrl: {2} GLBKeyAlias {3}, GLBKey: {4}, GLBSecret {5}",
                 m_enabled, m_environment, m_apiUrl, m_keyAlias, m_key, (m_secret == null ? "null" : "configured"));
+            if (m_enabled && String.IsNullOrEmpty(m_secret)) {
+                m_log.Error("[GLOEBITMONEYMODULE] GLBSecret is not set.  Every purchase will be refused and canceled, because purchase callbacks are signed with it.  Set GLBSecret to your app's secret from Gloebit.");
+            }
 
             // TODO: I've added GLBEnv.Custom for testing.  Remove before we ship
             if(m_environment != GLBEnv.Sandbox && m_environment != GLBEnv.Production && m_environment != GLBEnv.Custom) {
@@ -3386,8 +3389,8 @@ namespace Gloebit.GloebitMoneyModule
             // currencyBuy:viewerMinorVersion:secureSessionId:viewerBuildVersion:estimatedCost:confirm:agentId:viewerPatchVersion:viewerMajorVersion:viewerChannel:language
             if (m_Debug)
                 m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func params {0}", String.Join(":", requestData.Keys.Cast<String>()));
-            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3}",
-                agentId, confirm, currencyBuy, estimatedCost);   // [Confluence] Tranquillity #360: no secure session id
+            m_log.InfoFormat("[GLOEBITMONEYMODULE] buy_func agentId {0} confirm {1} currencyBuy {2} estimatedCost {3} secureSessionId {4}",
+                agentId, confirm, currencyBuy, estimatedCost, secureSessionId);
 
             GloebitUser u = GloebitUser.Get(m_key, agentId);
             Uri url = m_apiW.BuildPurchaseURI(BaseURI, u);
@@ -4362,8 +4365,12 @@ namespace Gloebit.GloebitMoneyModule
             }
             // If this transaction was one user paying another, if the user is online, we should let them know they received a payment
             if (txn.TransactionType == (int)TransactionType.USER_PAYS_USER) {
-                // [Confluence] Tranquillity #373 (gloebit#105): payerClient is null once the payer has left; the name was
-                // captured when the transaction was created.
+                // Use the name captured when the transaction was created, not a
+                // fresh resolveAgentName(payerClient.AgentId) lookup -- payerClient
+                // is null if the payer has since logged out or left the region,
+                // and payerClient.AgentId threw a NullReferenceException here,
+                // which escaped as an unhandled HTTP 500 to Gloebit's transaction
+                // processor on every consume for a since-departed payer.
                 string payerName = String.IsNullOrEmpty(txn.PayerName) ? "another user" : txn.PayerName;
                 string message = String.Format("You've received Gloebits from {0}.", payerName);
                 sendTxnStatusToClient(txn, payeeClient, message, true, showIDWithTxnSucceeded, txn.PayeeID);
