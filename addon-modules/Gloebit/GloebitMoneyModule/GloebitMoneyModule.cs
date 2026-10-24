@@ -4362,7 +4362,10 @@ namespace Gloebit.GloebitMoneyModule
             }
             // If this transaction was one user paying another, if the user is online, we should let them know they received a payment
             if (txn.TransactionType == (int)TransactionType.USER_PAYS_USER) {
-                string message = String.Format("You've received Gloebits from {0}.", resolveAgentName(payerClient.AgentId));
+                // [Confluence] Tranquillity #373 (gloebit#105): payerClient is null once the payer has left; the name was
+                // captured when the transaction was created.
+                string payerName = String.IsNullOrEmpty(txn.PayerName) ? "another user" : txn.PayerName;
+                string message = String.Format("You've received Gloebits from {0}.", payerName);
                 sendTxnStatusToClient(txn, payeeClient, message, true, showIDWithTxnSucceeded, txn.PayeeID);
             }
             // TODO: consider if we want to send an alert that payee earned money with transaction details for other transaction types

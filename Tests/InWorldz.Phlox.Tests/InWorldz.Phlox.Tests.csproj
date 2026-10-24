@@ -69,6 +69,8 @@
     <!-- [Confluence] Tranquillity #350 tests: the region module's parcel checks. -->
     <Reference Include="WebRtcVoiceRegionModule"><HintPath>..\..\bin\WebRtcVoiceRegionModule.dll</HintPath></Reference>
     <Reference Include="C5"><HintPath>..\..\bin\C5.dll</HintPath></Reference>
+    <!-- [Confluence] GloebitStateRequestTests (the Gloebit money module is not an OpenSim*.dll). -->
+    <Reference Include="Gloebit"><HintPath>..\..\bin\Gloebit.dll</HintPath></Reference>
     <Reference Include="XMLRPC"><HintPath>..\..\bin\XMLRPC.dll</HintPath></Reference>
     <Reference Include="log4net"><HintPath>..\..\bin\log4net.dll</HintPath></Reference>
     <Reference Include="Mono.Addins"><HintPath>..\..\bin\Mono.Addins.dll</HintPath></Reference>

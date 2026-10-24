@@ -25,6 +25,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using System;
 using OpenMetaverse;
 
 namespace OpenSim.Region.Framework.Interfaces
@@ -44,9 +45,31 @@ namespace OpenSim.Region.Framework.Interfaces
     {
 
         /// <summary>
-        /// Retrieves the current wind speed at the given Region Coordinates
+        /// Retrieves the current wind speed at the given Region Coordinates: the wind model's wind plus the wind
+        /// volumes' wind there (<see cref="WindVolumes"/>, when [WindVolumes] is enabled). The vertical part is the volumes'
+        /// alone. (Tranquillity #372)
         /// </summary>
         Vector3 WindSpeed(int x, int y, int z);
+
+        /// <summary>
+        /// The same at a position that need not lie on the integer grid, in region coordinates. The wind model sees the
+        /// true position, so its own interpolation is not stepped, and so is the weather volumes' falloff. Never waits and
+        /// allocates nothing, so a physics step may call it. A position that is not a finite number gives zero.
+        /// At a whole-number position it equals <see cref="WindSpeed(int,int,int)"/>.
+        /// A module that only knows the integer form gets this form for free, flooring the position.
+        /// </summary>
+        Vector3 WindSpeedAt(Vector3 position)
+        {
+            if (!float.IsFinite(position.X) || !float.IsFinite(position.Y) || !float.IsFinite(position.Z))
+                return Vector3.Zero;
+
+            // Far outside any region; the clamp keeps the int conversion defined.
+            const float Limit = 1e6f;
+            return WindSpeed(
+                (int)MathF.Floor(Math.Clamp(position.X, -Limit, Limit)),
+                (int)MathF.Floor(Math.Clamp(position.Y, -Limit, Limit)),
+                (int)MathF.Floor(Math.Clamp(position.Z, -Limit, Limit)));
+        }
 
         /// <summary>
         /// Set Wind Plugin Parameter
@@ -76,7 +99,8 @@ namespace OpenSim.Region.Framework.Interfaces
         /// <summary>
         /// [Confluence] Tranquillity #320. The region's wind volumes (the [WindVolumes] section), or null for a module
         /// that has none. When <see cref="IWindVolumeStore.Enabled"/> is false the store accepts no volumes and nothing
-        /// about the wind changes.
+        /// about the wind changes. A module that has a store adds it to what <see cref="WindSpeed(int,int,int)"/> and
+        /// <see cref="WindSpeedAt"/> return (Tranquillity #372).
         /// </summary>
         IWindVolumeStore WindVolumes => null;
     }

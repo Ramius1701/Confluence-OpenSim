@@ -62,6 +62,12 @@ namespace OpenSim.Region.CoreModules.World.Objects.BlockedOwners
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        // [Confluence] Tranquillity #370: a blocked owner can try as often as they like; each kind of refusal writes one
+        // line a minute and counts the rest.
+        private static readonly RateLimitedLog s_rezRefusedLog = new();
+        private static readonly RateLimitedLog s_duplicateRefusedLog = new();
+        private static readonly RateLimitedLog s_entryRefusedLog = new();
+
         private readonly object m_lock = new object();
         private readonly HashSet<UUID> m_blocked = new HashSet<UUID>();
         private Scene m_scene;
@@ -219,7 +225,7 @@ namespace OpenSim.Region.CoreModules.World.Objects.BlockedOwners
             if (!IsBlocked(owner))
                 return true;
 
-            m_log.InfoFormat(
+            s_rezRefusedLog.InfoFormat(m_log,
                 "[BLOCKED OWNERS]: Refused a rez of {0} prim(s) by blocked owner {1} in {2}",
                 objectCount, owner, m_scene != null ? m_scene.Name : string.Empty);
             return false;
@@ -231,7 +237,7 @@ namespace OpenSim.Region.CoreModules.World.Objects.BlockedOwners
             if (sp == null || !IsBlocked(sp.UUID))
                 return true;
 
-            m_log.InfoFormat(
+            s_duplicateRefusedLog.InfoFormat(m_log,
                 "[BLOCKED OWNERS]: Refused a duplicate of {0} by blocked owner {1} in {2}",
                 sog != null ? sog.UUID : UUID.Zero, sp.UUID, m_scene != null ? m_scene.Name : string.Empty);
             return false;
@@ -244,7 +250,7 @@ namespace OpenSim.Region.CoreModules.World.Objects.BlockedOwners
             if (!enteringRegion || sog == null || !IsBlocked(sog.OwnerID))
                 return true;
 
-            m_log.InfoFormat(
+            s_entryRefusedLog.InfoFormat(m_log,
                 "[BLOCKED OWNERS]: Refused entry of {0} by blocked owner {1} into {2}",
                 sog.UUID, sog.OwnerID, m_scene != null ? m_scene.Name : string.Empty);
             return false;

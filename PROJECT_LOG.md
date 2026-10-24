@@ -29450,3 +29450,52 @@ standalone (separate folder, ports the live grid does not use), the same Firesto
 single-result Find. If it stays there and vanishes on Casperia, find the Confluence difference by switching
 Confluence modules off one at a time on a test copy. Also useful: the owner's `Firestorm.log` from one Find on
 Casperia and one on OSGrid.
+
+## Donor batch 2026-10-25: opensim-master to eb01e50a67; Tranquillity #370, #371, #372, #373
+
+Fetched both. Tranquillity merged its voice work on 10-22 as one commit, **#365** (`df0e840132`, 338 files, +64,537:
+#353-#358 and #362-#366, i.e. calls, groups, conferences, moderation, the slvoice mixer feed, positions, NPC voice
+connectors and docs), plus #348 (Janus); #362 closed into it. The mixer-feed hold (2026-10-22, "port when #362 merges")
+now applies to #365. Recorded in the cross-project handoffs for Confluence-Voice; nothing ported, the owner decides.
+
+**opensim-master (merged, e6fedf4c9e).** Eight commits of 10-22: the grid service / Hypergrid linker rework
+(`GridService`, `GridServiceBase`, `HypergridLinker`, `GridInfo` now equal upstream apart from Confluence's #302
+viewer-address clean-up and `SetRegionFlags`), SQLite profile picks, an HG picks null reference (mantis 9255), and
+intelligentwolf's PR #69 for `WebRtcVoiceRegionModule` (never invent a P2P session id; fail conference fast) - the same
+change Confluence ported from that branch on 2026-09-28, so ours was kept in the four conflicts (comments and layout
+only).
+
+**#371: wind update rate.** `[Wind] wind_update_rate` below 1 (a divide by zero in `WindUpdate`) falls back to 150 with
+one warning, and the console refuses it (`WindModule.SetUpdateRate`). Defaults and example ini say so.
+
+**#372: wind volumes count in the region's wind.** `WindModule.WindSpeed` (and the new `WindSpeedAt` for non-integer
+positions, which physics may call) adds the volumes' wind to the model's; llWind gets their horizontal part, iwWind all
+three; a volume ends when the object that made it leaves the region. Console commands: Tranquillity calls them
+"weather volumes" and "weather clear"; **here they are "wind volumes" and "wind volumes clear"**, because "weather ..."
+belongs to the OpenSimWeather addon (its chat commands, where "weather clear" clears the weather) and the volumes are
+`[WindVolumes]` here. Phlox `iwWind` gets a null-host guard. Our `OpenSim.ini.example` has no wind-volume section, so
+that hunk was not applied.
+
+**#370 (the parts that apply): rate-limited log lines.** `OpenSim.Framework.RateLimitedLog` (one line a minute per call
+site, the rest counted and summarised on the next line; with log4net overloads added for Confluence's modules) on the
+blocked-owner refusals (rez, duplicate, entry) and Phlox's script-triggered lines (the scheduler and LSLSystemAPI).
+Not taken: Trusted Hypergrid's verifier and its "grid is Blocked" refusal (Confluence has no Trusted Hypergrid), and
+the two Phlox lines in the per-avatar environment stubs, which are real functions here since 2026-10-21.
+
+**#373 (open PR): Gloebit, three fixes from gloebit/opensim-moneymodule-gloebit (#103, #105, #106).** Hand-ported onto
+our Gloebit (log4net, block namespace): `ProcessStateRequest` releases the race-condition entry in a `finally`, so an
+exception during enact/consume/cancel no longer leaves the transaction answering "pending" for ever; the "You've
+received Gloebits" message uses the payer name stored with the transaction, so a payer who has left no longer throws;
+every alert in consume/cancel goes through `SafeAlert`, so a notification error cannot turn a completed payment into a
+failure. New: GloebitStateRequestTests (2), the first Gloebit tests here; the stuck-transaction test fails against the
+old code and passes against the new.
+
+Not applicable: **#369** (Tranquillity's DTLNSL copy; ours only acts when `[Economy]` names it and logs nothing when
+off), **#368** (AIS v3 and server-side baking, which Confluence does not have), **#367** (Tranquillity's logging
+console).
+
+Tests: the four wind files (WindUpdateRateTests, WindModuleVolumeTests, WindVolumeConsoleTests, LSL_ApiWindTests) and
+#370's (RateLimitedLogTests, BlockedOwnerLogRateTests, ScriptLogRateTests) moved into Tests/InWorldz.Phlox.Tests, with
+log4net capture where the module logs through log4net, `[WindVolumes]` for `[Weather]`, and our command wording; all
+wind tests 236/236, #370's 28/28, Gloebit 2/2.
+Full Phlox suite after the batch: 6,593 passed, 2 skipped.

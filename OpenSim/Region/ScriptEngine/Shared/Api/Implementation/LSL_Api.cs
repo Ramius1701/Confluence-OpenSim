@@ -1737,7 +1737,8 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                 int z = (int)(pos.Z + offset.z);
 
                 // [Confluence] Tranquillity #315: the height matters to a wind model that has layers (a current under
-                // the water, the wind aloft)
+                // the water, the wind aloft), and (#372) to a wind volume's reach. The volumes' horizontal wind is in this
+                // sample; llWind never returns a vertical part.
                 Vector3 windSpeed = module.WindSpeed(x, y, z);
 
                 wind.x = windSpeed.X;

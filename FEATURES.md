@@ -641,7 +641,11 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
   terrain-shaped surface wind, wind aloft and underwater currents on 16 m
   cells, `[Wind] wind_plugin = ZephyrWind`; Phlox `iwSetWind`; `llWind` reads
   the wind at the object's height; non-finite wind values refused. Script wind
-  volumes (#320, `[WindVolumes]`, off by default) are stored but not yet used.
+  volumes (#320, `[WindVolumes]`, off by default): since 2026-10-22's #372 their
+  wind is part of the wind the region reports at a point (llWind's horizontal
+  part, iwWind all three), a volume ends when the object that made it leaves,
+  and the console lists and clears them ("wind volumes", "wind volumes clear").
+  A `wind_update_rate` below 1 falls back to the default (#371).
 - Physical objects drag and turn as on Second Life (Tranquillity #283,
   #288, #297): a mouse drag steers the object with its move-to-target, so
   it can be lifted and stops at the cursor, and a Ctrl-Shift turn steers it

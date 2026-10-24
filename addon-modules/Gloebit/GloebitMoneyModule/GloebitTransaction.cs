@@ -305,38 +305,47 @@ namespace Gloebit.GloebitMoneyModule {
                 return false;
             }
 
-            // Call proper state processor
-            switch (stateRequested) {
-            case "enact":
-                result = myTxn.enactHold(assetCallbacks, transactionAlerts, out returnMsg);
-                break;
-            case "consume":
-                result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out returnMsg);
-                if (result) {
-                    lock(s_transactionMap) {
-                        s_transactionMap.Remove(transactionIDstr);
+            // Call proper state processor.
+            // try/finally so an exception from enactHold/consumeHold/cancelHold (e.g. the
+            // grid's own asset callback throwing) can't skip the race-condition-map cleanup
+            // below -- without this, a leaked entry would make every retry of this same
+            // transaction ID hit alreadyProcessing=true above and return "pending" forever,
+            // without ever reaching this switch again.
+            string localReturnMsg = null;
+            try {
+                switch (stateRequested) {
+                case "enact":
+                    result = myTxn.enactHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    break;
+                case "consume":
+                    result = myTxn.consumeHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    if (result) {
+                        lock(s_transactionMap) {
+                            s_transactionMap.Remove(transactionIDstr);
+                        }
                     }
-                }
-                break;
-            case "cancel":
-                result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out returnMsg);
-                if (result) {
-                    lock(s_transactionMap) {
-                        s_transactionMap.Remove(transactionIDstr);
+                    break;
+                case "cancel":
+                    result = myTxn.cancelHold(assetCallbacks, transactionAlerts, out localReturnMsg);
+                    if (result) {
+                        lock(s_transactionMap) {
+                            s_transactionMap.Remove(transactionIDstr);
+                        }
                     }
+                    break;
+                default:
+                    // no recognized state request
+                    localReturnMsg = "Unrecognized state request";
+                    result = false;
+                    break;
                 }
-                break;
-            default:
-                // no recognized state request
-                returnMsg = "Unrecognized state request";
-                result = false;
-                break;
+            } finally {
+                // remove from race condition protection -- always, even if the switch above threw.
+                lock(s_pendingTransactionMap) {
+                    s_pendingTransactionMap.Remove(transactionIDstr);
+                }
             }
-
-            // remove from race condition protection
-            lock(s_pendingTransactionMap) {
-                s_pendingTransactionMap.Remove(transactionIDstr);
-            }
+            returnMsg = localReturnMsg;
             return result;
         }
 
@@ -349,6 +358,26 @@ namespace Gloebit.GloebitMoneyModule {
             byte[] expectedBytes = Encoding.UTF8.GetBytes(expected ?? string.Empty);
             byte[] actualBytes = Encoding.UTF8.GetBytes(actual ?? string.Empty);
             return expectedBytes.Length == actualBytes.Length && CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes);
+        }
+
+        /// <summary>
+        /// Runs a transactionAlerts.* call (messaging/notification, not the financial
+        /// action itself) and swallows any exception it throws, logging instead.
+        /// consumeHold/cancelHold already determine and persist this.consumed /
+        /// this.canceled before some of these alerts fire -- a bug in alert code
+        /// (e.g. a stale client reference for a user who's since logged out) must
+        /// never turn an already-completed, already-persisted action into a
+        /// reported failure. There's nothing left to retry at that point; retrying
+        /// would just hit the same alert bug again.
+        /// </summary>
+        private void SafeAlert(Action alertCall, string description)
+        {
+            try {
+                alertCall();
+            } catch (Exception e) {
+                // [Confluence] log4net: the exception goes as the second argument so the appender records it in full.
+                m_log.Error(String.Format("[GLOEBITMONEYMODULE] {0} alert threw (swallowed) for transaction {1}", description, this.TransactionID), e);
+            }
         }
 
         private bool enactHold(IAssetCallback assetCallbacks, GloebitAPIWrapper.ITransactionAlert transactionAlerts, out string returnMsg)
@@ -429,7 +458,8 @@ namespace Gloebit.GloebitMoneyModule {
 
             // First reception of consume for asset.
             // Send alert that CONSUME_GLOEBIT has completed
-            transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_GLOEBIT, String.Empty);
+            SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_GLOEBIT, String.Empty),
+                      GloebitAPI.TransactionStage.CONSUME_GLOEBIT.ToString());
             // Do specific consume functionality for the Asset / local transaction part
             this.consumed = assetCallbacks.processAssetConsumeHold(this, out returnMsg);
             if (this.consumed) {
@@ -438,9 +468,12 @@ namespace Gloebit.GloebitMoneyModule {
 
                 // send alert that CONSUME_ASSET has completed
                 // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
-                transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_ASSET, String.Empty);
-                // transaction officially complete at this point
-                transactionAlerts.AlertTransactionSucceeded(this);
+                SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CONSUME_ASSET, String.Empty),
+                          GloebitAPI.TransactionStage.CONSUME_ASSET.ToString());
+                // transaction officially complete at this point -- this.consumed is
+                // already true and persisted above; AlertTransactionSucceeded is
+                // purely a user-facing notification from here on.
+                SafeAlert(() => transactionAlerts.AlertTransactionSucceeded(this), "AlertTransactionSucceeded");
             }
             return this.consumed;
         }
@@ -465,7 +498,8 @@ namespace Gloebit.GloebitMoneyModule {
             }
             // First reception of cancel for asset.
             // Send alert that CANCEL_GLOEBIT has completed
-            transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_GLOEBIT, String.Empty);
+            SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_GLOEBIT, String.Empty),
+                      GloebitAPI.TransactionStage.CANCEL_GLOEBIT.ToString());
             // Do specific cancel functionality for the Asset / local transaction part
             this.canceled = assetCallbacks.processAssetCancelHold(this, out returnMsg); // Do I need to grab the money module for this?
             if (this.canceled) {
@@ -474,7 +508,8 @@ namespace Gloebit.GloebitMoneyModule {
 
                 // send alert that CANCEL_ASSET has completed
                 // TODO: should we pass the returnMsg instead of String.Empty, or is this always empty on success? -- investigate
-                transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_ASSET, String.Empty);
+                SafeAlert(() => transactionAlerts.AlertTransactionStageCompleted(this, GloebitAPI.TransactionStage.CANCEL_ASSET, String.Empty),
+                          GloebitAPI.TransactionStage.CANCEL_ASSET.ToString());
             }
             return this.canceled;
         }

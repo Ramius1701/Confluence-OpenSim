@@ -258,7 +258,10 @@ checked by `Tools/data-backend-check`.)*
   mesher shape data, #328, #330-#333) - Jolt is synced to develop `7c74cb6bed` and still off live; #304 (saved state
   picks the engine for an unheaded script, `[InWorldz.Phlox] ScriptEnginesPath`). Done 2026-10-22: opensim-master to
   `d55ce0d17e`, Tranquillity #351/#359/#360 (#361, #367 not applicable). Open there now: the voice PRs #353-#358 and
-  #362-#366 (stacked, about 69,000 lines; for the Confluence-Voice session) and #347-#349.
+  #362-#366 (stacked, about 69,000 lines; for the Confluence-Voice session) and #347-#349. Done 2026-10-25:
+  opensim-master to `eb01e50a67`, Tranquillity #370 (parts), #371, #372, and open PR #373 (Gloebit fixes); #368/#369
+  not applicable. Tranquillity merged its voice series on 10-22 as one commit, #365 (`df0e840132`, includes #362):
+  porting it is for the owner and the Confluence-Voice session.
 - **Held: the slvoice mixer feed (Tranquillity #362)** - decided 2026-10-22 with the Confluence-Voice session
   (Confluence-Voice `docs/SLVOICE-FEED.md`). The feed would bring estate/parcel bans and access lists, hidden-avatar
   parcels and parcel voice moderation into voice, but its region half is #362's feeder, matrix, sink and sender, stacked
