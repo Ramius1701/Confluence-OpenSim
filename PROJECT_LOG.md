@@ -29544,3 +29544,16 @@ Full Phlox suite with upstream Gloebit: 6,593 passed, 2 skipped.
 Grid down. 212 of 301 files copied, 0 failed, 301/301 md5-verified. Live Gloebit.dll checked as the upstream build
 (GloebitCallbackSignature present, our old callback-key text absent). Still to do before the grid starts: the
 migration-version reset (S:\Github\Confluence-Shared\tools\Gloebit-migrations-to-upstream.sql), run by the owner.
+
+## Housekeeping 2026-10-25: test warnings, certificate reload, closed items
+
+- **Phlox test project builds with 0 warnings** (was 69): `#nullable enable annotations` in the 8 files ported from
+  Tranquillity with nullable annotations (CS8632, 51), `new` on two test recorders that hide NullPhysicsActor's
+  Force/Torque (CS0108, 4), and a scoped `#pragma warning disable xUnit1031` in 4 files whose concurrency tests block
+  on tasks on purpose (14). Test-only; the 14 changed classes pass (297).
+- **Public certificate renewal:** the win-acme install script (outside the repo) failed after copying on the 10-11
+  renewals ("FAILED: Syntax OK": Apache's config test output treated as an error), so Apache was not reloaded.
+  Fixed and verified end to end: SUCCESS, graceful reload, both sites serving their certificates (valid to
+  2027-01-09, next renewal after 2026-12-05).
+- **Region scripts needing manual resets (one region):** the owner reports a full grid reset cleared it; closed.
+- **Map Find at 128,128:** kept as an open bug (ROADMAP, TESTING 12.1, 2026-10-24 entries).

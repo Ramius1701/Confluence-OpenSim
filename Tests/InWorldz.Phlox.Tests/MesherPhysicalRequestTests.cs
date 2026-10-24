@@ -5,6 +5,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+// [Confluence] Written with nullable annotations (from Tranquillity); this project has nullable off.
+#nullable enable annotations
+
 using System.Reflection;
 using OpenMetaverse;
 using OpenSim.Framework;

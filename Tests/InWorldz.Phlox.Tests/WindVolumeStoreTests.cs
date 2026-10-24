@@ -6,6 +6,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+// [Confluence] The concurrency tests here block on tasks on purpose: several threads drive one object at once.
+#pragma warning disable xUnit1031
+
 using System.Linq;
 using Nini.Config;
 using OpenMetaverse;

@@ -7,6 +7,9 @@
 
 // [Confluence] From OpenSim-Tranquillity #302/#327 (Tests/OpenSim.Framework.Tests/ViewerAddressDnsServerTests.cs), moved into the Phlox test project.
 
+// [Confluence] Written with nullable annotations (from Tranquillity); this project has nullable off.
+#nullable enable annotations
+
 using System;
 using System.Collections.Generic;
 using System.Linq;

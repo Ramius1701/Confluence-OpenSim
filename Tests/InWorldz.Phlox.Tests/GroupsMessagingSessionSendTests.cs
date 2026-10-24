@@ -28,6 +28,9 @@
 
 // [Confluence] From OpenSim-Tranquillity PR #346, moved into the Phlox test project.
 
+// [Confluence] Written with nullable annotations (from Tranquillity); this project has nullable off.
+#nullable enable annotations
+
 using System.Collections.Generic;
 using System;
 using System.Reflection;

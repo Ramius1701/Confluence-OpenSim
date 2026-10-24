@@ -35,7 +35,7 @@ public class LocalForceFlagTests
 
     private sealed class Recorder : NullPhysicsActor
     {
-        public Vector3 Force, Torque;
+        public new Vector3 Force, Torque;
         public bool ForceLocal, TorqueLocal;
         public int ForceCalls, TorqueCalls;
         public override bool IsPhysical { get => true; set { } }

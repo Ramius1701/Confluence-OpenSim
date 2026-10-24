@@ -8,6 +8,9 @@
  * with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+// [Confluence] The concurrency tests here block on tasks on purpose: several threads drive one object at once.
+#pragma warning disable xUnit1031
+
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Xunit;

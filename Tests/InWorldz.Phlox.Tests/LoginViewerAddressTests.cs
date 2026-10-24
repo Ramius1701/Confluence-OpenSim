@@ -1,3 +1,6 @@
+// [Confluence] Written with nullable annotations (from Tranquillity); this project has nullable off.
+#nullable enable annotations
+
 using OpenSim.Framework.Tests;
 using log4net;
 /*
