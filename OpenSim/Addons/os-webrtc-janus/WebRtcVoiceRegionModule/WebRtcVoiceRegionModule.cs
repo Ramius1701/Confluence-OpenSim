@@ -69,6 +69,7 @@ namespace osWebRtcVoice
         private static readonly string LogHeader = "[REGION WEBRTC VOICE]";
 
         private static byte[] llsdUndefAnswerBytes = Util.UTF8.GetBytes("<llsd><undef /></llsd>");
+        private static byte[] llsdEmpyAnswerBytes = Util.UTF8.GetBytes("<llsd><array /></llsd>");
         private bool _MessageDetails = false;
 
         // Control info
