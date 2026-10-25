@@ -29589,3 +29589,10 @@ left alone. Against the old behaviour the two state tests fail. Related CarriedS
 Scripts already reset cannot be restored (the nightly backup covers the database, not the YEngine state folder).
 Not deployed. Until it is, live can avoid more resets with `[SimProtection] AllowDisableScripts = false` (owner's
 call; takes effect at each region's next restart).
+
+## Deployed 0bafa43bd3: SimProtection suspends scripts (2026-10-25)
+
+Only `OpenSim.Region.CoreModules.dll`/`.pdb` changed in shipped code since cb33600bfb (the rest is tests and docs),
+and Robust does not load it, so only that assembly was copied: to the grid root and, with the grid stopped, into all
+15 region folders; md5-verified against the build. The old copy is kept in the grid's Backups folder. A full
+shutdown is not needed for a change confined to one region-side assembly built from otherwise identical sources.
