@@ -206,6 +206,11 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       - If one hangs or fails, note the time and region; the region log's `[GLOEBITMONEYMODULE]` lines for that
         transaction show whether a callback was refused (signature) or a step failed.
 
+- [ ] 9.9 SimProtection keeps scripts' state (2026-10-25). After the next real low-FPS dip, the region log shows
+      "[SIM PROTECTION]: ... suspended N scripts" and, a minute or so later, "resumed N scripts" (no longer
+      "Stopping all Scripts in Scene"), and configured teleporters, lifts and doors in that region still work
+      without being set up again.
+
 - [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
       see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,
       the same; with it not listed, everything comes from the proxy's address.

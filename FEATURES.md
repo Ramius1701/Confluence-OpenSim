@@ -875,6 +875,13 @@ Sim FPS auto-mitigation and stuck-region auto-restart (`SimProtection`)
 is enabled on the live grid. Physics inputs are sanitized against
 NaN/Infinity before being applied.
 
+- **SimProtection pauses scripts instead of restarting them** (2026-10-25). During a low-FPS dip it suspends
+  the region's scripts and resumes them `SecondsBeforeReenable` later (at least one check interval): each keeps
+  its globals, state and listens, and events sent meanwhile run on resume. It used to switch the region's
+  scripting off and on (as the Estate Debug tab's "Disable Scripts" does), which removes every script and
+  recreates it, so each dip restarted every script from `state_entry`: teleporters, lifts, doors and radars
+  lost their setup. Scripts an admin has disabled are left alone. Tested with YEngine and Phlox scripts.
+
 - **A region whose physics engine did not load refuses to start** (2026-10-21), with one fatal line naming
   what `[Startup] physics` asked for: a name in the wrong case is shown with the real one (`ubode` ->
   `ubODE`), an unknown name with the list of engines, a known engine that failed with a pointer to its own

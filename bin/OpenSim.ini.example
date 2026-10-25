@@ -1851,31 +1851,35 @@
     ;; down to near water height at the borders), "island" masks the edges underwater.
 
 [SimProtection]
-    ;; Watches region FPS and progressively disables scripts, then physics, if it drops too
-    ;; far below the configured baseline for too long, restoring them once FPS recovers.
-    ;; Disabled by default.
+    ;; Watches region FPS once per CheckIntervalSeconds. Below the threshold it SUSPENDS the region's scripts
+    ;; (each keeps its globals, state and listens; events sent meanwhile run on resume) and resumes them
+    ;; SecondsBeforeReenable later; it also switches physics off and on the same way. Scripts an admin
+    ;; disabled are left alone. A region stuck near 0 FPS is restarted. Nothing it does is saved to the
+    ;; region settings. Disabled by default.
+    ;; (Before 2026-10-25 it removed and recreated the scripts instead, restarting every script in the
+    ;; region from state_entry - use a build from that date or later before enabling it.)
     ; Enabled = false
 
-    ;; What "normal" FPS looks like for this region. Percent thresholds below are relative to this.
+    ;; What "normal" FPS looks like for this region; the threshold below is a percent of it.
     ; BaseRateFramesPerSecond = 45
 
-    ;; Below this percent of baseline FPS, scripts are disabled.
-    ; ShutdownScriptsPercent = 20
+    ;; Below this percent of BaseRateFramesPerSecond, scripts are suspended and physics is switched off.
+    ; PercentToBeginShutDownOfServices = 50
 
-    ;; Below this percent of baseline FPS, physics is also disabled.
-    ; ShutdownPhysicsPercent = 10
+    ;; How long after suspending scripts (or switching physics off) they are brought back. Checked once per
+    ;; CheckIntervalSeconds, so the pause lasts at least one interval.
+    ; SecondsBeforeReenable = 20
 
-    ;; Above this percent of baseline FPS, scripts/physics are re-enabled.
-    ; RecoverPercent = 60
+    ;; Whether scripts may be suspended, and physics switched off.
+    ; AllowDisableScripts = true
+    ; AllowDisablePhysics = true
+
+    ;; Restart the region if it stays at ~0 FPS for MinutesBeforeZeroFPSRestart.
+    ; RestartSimIfZeroFPS = true
+    ; MinutesBeforeZeroFPSRestart = 1
 
     ;; How often to check FPS.
-    ; CheckIntervalSeconds = 15
-
-    ;; If FPS stays near zero for this many seconds, schedule a region restart. Set to 0 to disable.
-    ; KillTimerSeconds = 300
-
-    ;; Warning time given to any connected users before the auto-restart happens.
-    ; RestartWarningSeconds = 30
+    ; CheckIntervalSeconds = 60
 
 [LandManagement]
     ;; set this to false to not display parcel ban lines

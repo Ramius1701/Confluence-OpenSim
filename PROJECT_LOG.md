@@ -29557,3 +29557,35 @@ migration-version reset (S:\Github\Confluence-Shared\tools\Gloebit-migrations-to
   2027-01-09, next renewal after 2026-12-05).
 - **Region scripts needing manual resets (one region):** the owner reports a full grid reset cleared it; closed.
 - **Map Find at 128,128:** kept as an open bug (ROADMAP, TESTING 12.1, 2026-10-24 entries).
+
+## SimProtection reset every script in a region on each low-FPS dip; it now suspends them (2026-10-25)
+
+Report: residents (and the owner, on several regions) found configured scripts back at their defaults after a
+restart: teleporters wanting to be renamed and switched back on, lifts with one stop, doors, radars. Earlier Region D
+reports of "having to reset all my scripts" were the same thing.
+
+Not YEngine and not #304. Cause: `SimProtectionModule` (added 2026-08-02 as part of the automatic-recovery work,
+enabled on 15 live regions at the 2026-08-29/30 config cutover). Below its FPS threshold (22.5) it set the
+region's "scripting" debug option off and, a minute later, on again. In OpenSim that removes every script instance
+and recreates it (`Scene.ScriptsEnabled`, the same path as the Estate Debug tab's "Disable Scripts"); YEngine
+deletes a removed script's `.state` file, so every script restarted from `state_entry` with its globals lost.
+
+Evidence (live logs and YEngine state-file creation times): Region D "disabling scripts" 10-25 00:49, 1,597 state
+files created 00:55; Regions A and I 00:59, 1,360 and 428 files at 01:06; Region B 10-24 04:36, 396 files at 04:45.
+Also fired: Regions G, K2, O (10-25), E (09-28), F (10-04, 10-10), D (10-04, 10-21 twice, 10-22). Regions it did not fire on kept state files from September across every restart. The
+10-25 trigger was a stall seen on several regions at once between 00:22 and 00:59 (cause not yet known). Region F's
+10-24 21:31 state recreation is not a SimProtection event and is not explained yet.
+
+Fix: SimProtection now suspends each script through its engine (`IScriptModule.SuspendScript`, YEngine and Phlox),
+remembers which ones, and resumes only those (`ResumeScript`) `SecondsBeforeReenable` later. Nothing is removed;
+globals, state and listens survive and events sent meanwhile run on resume. `RegionSettings.DisableScripts` is no
+longer touched, and scripts an admin disabled are left alone. Physics handling unchanged. `OpenSim.ini.example`'s
+section listed setting names the module never read; it now lists the real ones.
+
+Tests: `SimProtectionSuspendTests` (3): a YEngine and a Phlox script each keep their global and state through a
+cycle (state_entry does not run again; a touch sent while paused runs after resume), and admin-disabled scripts are
+left alone. Against the old behaviour the two state tests fail. Related CarriedState/EngineSwitchState tests pass (40).
+
+Scripts already reset cannot be restored (the nightly backup covers the database, not the YEngine state folder).
+Not deployed. Until it is, live can avoid more resets with `[SimProtection] AllowDisableScripts = false` (owner's
+call; takes effect at each region's next restart).

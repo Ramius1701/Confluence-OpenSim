@@ -32,6 +32,7 @@ using System.Timers;
 using log4net;
 using Mono.Addins;
 using Nini.Config;
+using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
 using OpenSim.Region.Framework.Interfaces;
@@ -55,6 +56,15 @@ namespace OpenSim.Region.CoreModules.World.Region
     // automatic responses to a performance dip, and a restart should come
     // back up with scripts/physics enabled regardless of what SimProtection
     // last did, not frozen in whatever state a performance blip left behind.
+    //
+    // [Confluence] (2026-10-25) Scripts are SUSPENDED and resumed, never
+    // removed. This used to switch the region's "scripting" debug option off
+    // and on, the same as the Estate Debug tab's "Disable Scripts": that
+    // removes every script instance (YEngine deletes a removed script's saved
+    // state) and creates them again, so each low-FPS dip restarted every
+    // script in the region from state_entry - transporters, lifts, doors and
+    // radars lost their setup. Each engine's SuspendScript keeps the script,
+    // its globals, state and listens, and its queued events run on resume.
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "SimProtectionModule")]
     public class SimProtectionModule : INonSharedRegionModule
     {
@@ -76,6 +86,10 @@ namespace OpenSim.Region.CoreModules.World.Region
         private DateTime m_disabledPhysicsSince = DateTime.MinValue;
         private DateTime m_zeroFPSSince = DateTime.MinValue;
         private Timer m_checkTimer;
+
+        // The scripts this module suspended, so that only they are resumed.
+        private readonly HashSet<UUID> m_suspendedScripts = new HashSet<UUID>();
+        private bool m_scriptsSuspended;
 
         public string Name { get { return "SimProtectionModule"; } }
 
@@ -141,7 +155,7 @@ namespace OpenSim.Region.CoreModules.World.Region
             try
             {
                 CheckZeroFPS();
-                CheckScripts();
+                CheckScripts(m_scene.StatsReporter.LastReportedSimFPS, DateTime.Now);
                 CheckPhysics();
             }
             catch (Exception ex)
@@ -177,29 +191,87 @@ namespace OpenSim.Region.CoreModules.World.Region
             }
         }
 
-        private void CheckScripts()
+        /// <summary>
+        /// One scripts check at this sim FPS and time: below the threshold the region's scripts are suspended, and
+        /// SecondsBeforeReenable after that they are resumed. Scripts an admin has disabled are left alone.
+        /// Public for the tests, which drive it without the timer.
+        /// </summary>
+        public void CheckScripts(float fps, DateTime now)
         {
             if (!m_allowDisableScripts)
                 return;
 
-            float fps = m_scene.StatsReporter.LastReportedSimFPS;
             float threshold = m_baseRateFPS * (m_percentToBeginShutdown / 100f);
 
-            if (fps > 0 && fps < threshold && !m_scene.RegionInfo.RegionSettings.DisableScripts)
+            if (!m_scriptsSuspended)
             {
-                m_log.WarnFormat("[SIM PROTECTION]: {0} FPS ({1:0.0}) below threshold ({2:0.0}) - disabling scripts",
-                        m_scene.Name, fps, threshold);
-                SetDebug(true, m_scene.RegionInfo.RegionSettings.DisableCollisions, m_scene.RegionInfo.RegionSettings.DisablePhysics);
-                m_disabledScriptsSince = DateTime.Now;
+                if (fps > 0 && fps < threshold && m_scene.ScriptsEnabled
+                        && !m_scene.RegionInfo.RegionSettings.DisableScripts)
+                {
+                    int n = SuspendScripts();
+                    m_log.WarnFormat("[SIM PROTECTION]: {0} FPS ({1:0.0}) below threshold ({2:0.0}) - suspended {3} scripts",
+                            m_scene.Name, fps, threshold, n);
+                    m_scriptsSuspended = true;
+                    m_disabledScriptsSince = now;
+                }
             }
-            else if (m_scene.RegionInfo.RegionSettings.DisableScripts
-                    && m_disabledScriptsSince != DateTime.MinValue
-                    && DateTime.Now > m_disabledScriptsSince.AddSeconds(m_secondsBeforeReenable))
+            else if (now > m_disabledScriptsSince.AddSeconds(m_secondsBeforeReenable))
             {
-                m_log.InfoFormat("[SIM PROTECTION]: {0} re-enabling scripts", m_scene.Name);
-                SetDebug(false, m_scene.RegionInfo.RegionSettings.DisableCollisions, m_scene.RegionInfo.RegionSettings.DisablePhysics);
+                int n = ResumeScripts();
+                m_log.InfoFormat("[SIM PROTECTION]: {0} resumed {1} scripts", m_scene.Name, n);
+                m_scriptsSuspended = false;
                 m_disabledScriptsSince = DateTime.MinValue;
             }
+        }
+
+        // Each script is offered to the engines in turn; the engine that runs it answers true.
+        private int SuspendScripts()
+        {
+            IScriptModule[] engines = m_scene.RequestModuleInterfaces<IScriptModule>();
+            lock (m_suspendedScripts)
+            {
+                foreach (SceneObjectGroup sog in m_scene.GetSceneObjectGroups())
+                {
+                    foreach (SceneObjectPart part in sog.Parts)
+                    {
+                        foreach (TaskInventoryItem item in part.Inventory.GetInventoryItems(InventoryType.LSL))
+                        {
+                            foreach (IScriptModule engine in engines)
+                            {
+                                if (engine.SuspendScript(item.ItemID))
+                                {
+                                    m_suspendedScripts.Add(item.ItemID);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                return m_suspendedScripts.Count;
+            }
+        }
+
+        // A script deleted while suspended is simply not found by any engine.
+        private int ResumeScripts()
+        {
+            IScriptModule[] engines = m_scene.RequestModuleInterfaces<IScriptModule>();
+            int resumed = 0;
+            lock (m_suspendedScripts)
+            {
+                foreach (UUID itemID in m_suspendedScripts)
+                {
+                    foreach (IScriptModule engine in engines)
+                    {
+                        if (engine.ResumeScript(itemID))
+                        {
+                            resumed++;
+                            break;
+                        }
+                    }
+                }
+                m_suspendedScripts.Clear();
+            }
+            return resumed;
         }
 
         private void CheckPhysics()
