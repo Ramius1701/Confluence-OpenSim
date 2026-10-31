@@ -881,6 +881,11 @@ NaN/Infinity before being applied.
   scripting off and on (as the Estate Debug tab's "Disable Scripts" does), which removes every script and
   recreates it, so each dip restarted every script from `state_entry`: teleporters, lifts, doors and radars
   lost their setup. Scripts an admin has disabled are left alone. Tested with YEngine and Phlox scripts.
+- **SimProtection's stuck-region shutdown waits until the region has started** (2026-10-29). A region still
+  loading its objects and scripts reads 0 FPS; the check used to count that, so regions slow to start (the
+  whole grid starting at once) were shut down before they came up. Only a region that has finished starting
+  and then stays at ~0 FPS for `MinutesBeforeZeroFPSRestart` is shut down now, and the log says "shutting
+  down" (it used to say "restarting", but the simulator only exits).
 
 - **A region whose physics engine did not load refuses to start** (2026-10-21), with one fatal line naming
   what `[Startup] physics` asked for: a name in the wrong case is shown with the real one (`ubode` ->

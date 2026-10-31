@@ -1854,7 +1854,8 @@
     ;; Watches region FPS once per CheckIntervalSeconds. Below the threshold it SUSPENDS the region's scripts
     ;; (each keeps its globals, state and listens; events sent meanwhile run on resume) and resumes them
     ;; SecondsBeforeReenable later; it also switches physics off and on the same way. Scripts an admin
-    ;; disabled are left alone. A region stuck near 0 FPS is restarted. Nothing it does is saved to the
+    ;; disabled are left alone. A region that has finished starting and then stays near 0 FPS is shut down
+    ;; (the console "shutdown"; whatever launched it may start it again). Nothing it does is saved to the
     ;; region settings. Disabled by default.
     ;; (Before 2026-10-25 it removed and recreated the scripts instead, restarting every script in the
     ;; region from state_entry - use a build from that date or later before enabling it.)
@@ -1874,7 +1875,9 @@
     ; AllowDisableScripts = true
     ; AllowDisablePhysics = true
 
-    ;; Restart the region if it stays at ~0 FPS for MinutesBeforeZeroFPSRestart.
+    ;; Shut the simulator down if the region, once started, stays at ~0 FPS for MinutesBeforeZeroFPSRestart.
+    ;; (Before 2026-10-29 this also counted while the region was still loading, and shut down regions that
+    ;; were slow to start.)
     ; RestartSimIfZeroFPS = true
     ; MinutesBeforeZeroFPSRestart = 1
 

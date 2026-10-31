@@ -29596,3 +29596,28 @@ Only `OpenSim.Region.CoreModules.dll`/`.pdb` changed in shipped code since cb336
 and Robust does not load it, so only that assembly was copied: to the grid root and, with the grid stopped, into all
 15 region folders; md5-verified against the build. The old copy is kept in the grid's Backups folder. A full
 shutdown is not needed for a change confined to one region-side assembly built from otherwise identical sources.
+
+## SimProtection shut regions down while they were still starting; it now waits until they have (2026-10-29)
+
+Report: some regions did not come up after a whole-grid start. Cause: SimProtection's stuck-region check (shut down
+after `MinutesBeforeZeroFPSRestart` at ~0 FPS) counted from module load. A region still loading its objects and
+scripts reads 0 FPS, and with every region starting within two minutes the bigger ones took longer than the grace
+period. 2026-10-29 15:38-15:45: Regions H, E and I were shut down 2-3 minutes after registering and stayed down;
+Region A's shutdown hung, leaving a half-closed process. The same happened at the 10-28 start (Regions H, E, K1, A;
+Region F 20 s after its "Startup complete") and to Region E on 10-22. The log said "restarting", but the console
+`shutdown` only exits the simulator.
+
+Live, owner-approved: `RestartSimIfZeroFPS = false` in all 15 region `OpenSim.ini` files (backups `.bak-20261029`)
+until this build is deployed.
+
+Fix: `CheckZeroFPS` judges only a region that has finished starting (`Scene.Ready`, set at the main loop's 20th
+frame); before that the count is reset. The minute counts from when the started region is first seen at ~0 FPS; a
+recovery resets it. The log says "will shut down" / "shutting down". The shutdown action is a settable delegate for
+the tests.
+
+Tests: `SimProtectionZeroFpsTests` (4): a region still starting is never shut down; the minute starts when the
+started region is first seen stuck; recovery resets it; switched off it never acts. Without the start-up gate the
+first two fail. All 7 SimProtection tests pass.
+
+Also in these logs: two of Region A's YEngine `.state` files are zero-filled (an earlier hard kill); YEngine discards
+them and those two scripts start fresh. Region I logged a MySQL "fatal error" storing a 146-prim object at 04:18.

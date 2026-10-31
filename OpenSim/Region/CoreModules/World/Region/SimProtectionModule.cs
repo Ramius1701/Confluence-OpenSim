@@ -154,7 +154,7 @@ namespace OpenSim.Region.CoreModules.World.Region
         {
             try
             {
-                CheckZeroFPS();
+                CheckZeroFPS(m_scene.StatsReporter.LastReportedSimFPS, DateTime.Now);
                 CheckScripts(m_scene.StatsReporter.LastReportedSimFPS, DateTime.Now);
                 CheckPhysics();
             }
@@ -164,30 +164,43 @@ namespace OpenSim.Region.CoreModules.World.Region
             }
         }
 
-        private void CheckZeroFPS()
+        /// <summary>
+        /// What a region stuck at ~0 FPS does: shut the simulator down (whatever launched it may start it again).
+        /// Settable for the tests.
+        /// </summary>
+        public Action ShutdownSimulator = () => MainConsole.Instance.RunCommand("shutdown");
+
+        /// <summary>
+        /// One stuck-region check at this sim FPS and time. Only a region that has finished starting (Scene.Ready) is
+        /// judged: until then its frame rate reads 0 because its main loop is not running yet.
+        /// Public for the tests, which drive it without the timer.
+        /// </summary>
+        // [Confluence] (2026-10-29) It used to count from module load, so a region still loading its objects and
+        // scripts - slow when the whole grid starts at once - read ~0 FPS for over a minute and was shut down
+        // (live: four regions in one start). The log also said "restarting"; the console shutdown only exits.
+        public void CheckZeroFPS(float fps, DateTime now)
         {
             if (!m_restartSimOnZeroFPS)
                 return;
 
-            float fps = m_scene.StatsReporter.LastReportedSimFPS;
-            if (fps <= 0.5f)
-            {
-                if (m_zeroFPSSince == DateTime.MinValue)
-                {
-                    m_zeroFPSSince = DateTime.Now;
-                    m_log.WarnFormat("[SIM PROTECTION]: {0} reporting ~0 FPS - will restart in {1} minute(s) if this persists",
-                            m_scene.Name, m_minutesBeforeZeroFPSRestart);
-                }
-                else if (DateTime.Now > m_zeroFPSSince.AddMinutes(m_minutesBeforeZeroFPSRestart))
-                {
-                    m_log.ErrorFormat("[SIM PROTECTION]: {0} has been at ~0 FPS for over {1} minute(s) - restarting",
-                            m_scene.Name, m_minutesBeforeZeroFPSRestart);
-                    MainConsole.Instance.RunCommand("shutdown");
-                }
-            }
-            else
+            if (!m_scene.Ready || fps > 0.5f)
             {
                 m_zeroFPSSince = DateTime.MinValue;
+                return;
+            }
+
+            if (m_zeroFPSSince == DateTime.MinValue)
+            {
+                m_zeroFPSSince = now;
+                m_log.WarnFormat("[SIM PROTECTION]: {0} reporting ~0 FPS - will shut down in {1} minute(s) if this persists",
+                        m_scene.Name, m_minutesBeforeZeroFPSRestart);
+            }
+            else if (now > m_zeroFPSSince.AddMinutes(m_minutesBeforeZeroFPSRestart))
+            {
+                m_log.ErrorFormat("[SIM PROTECTION]: {0} has been at ~0 FPS for over {1} minute(s) - shutting down",
+                        m_scene.Name, m_minutesBeforeZeroFPSRestart);
+                m_zeroFPSSince = DateTime.MinValue;
+                ShutdownSimulator();
             }
         }
 

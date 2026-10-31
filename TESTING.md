@@ -211,6 +211,10 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       "Stopping all Scripts in Scene"), and configured teleporters, lifts and doors in that region still work
       without being set up again.
 
+- [ ] 9.10 Whole-grid start with SimProtection's stuck-region check on (2026-10-29; live has
+      `RestartSimIfZeroFPS = false` until this build is deployed, then set it back to true): every region reaches
+      "Startup complete" and none logs "[SIM PROTECTION]: ... ~0 FPS" while starting.
+
 - [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
       see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,
       the same; with it not listed, everything comes from the proxy's address.
