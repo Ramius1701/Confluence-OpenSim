@@ -29630,3 +29630,11 @@ and Firestorm credited per file. Beta (v0.9.x, first commit 2026-10-08). It supp
 get_grid_info, the Hypergrid (hop:// links, My Suitcase), large regions, local avatar baking and inventory without
 AIS. Its WebRTC voice keys on SimulatorFeatures VoiceServerType "webrtc", which our os-webrtc-janus region module
 sends. Needs a Vulkan graphics driver. The clone for reference is at the owner's Github folder (Aurora-Viewer).
+
+## Deployed a0643afdbf: SimProtection start-up gate and the Aurora viewer entry (2026-11-08)
+
+Full Phlox suite first: 6,600 passed, 2 skipped. Shipped code since the last deploy changed in two assemblies only
+(`OpenSim.Region.CoreModules.dll`, `OpenSim.Server.Handlers.dll`); with the grid stopped, both and their `.pdb` were
+copied to the grid root and all 15 region folders, md5-verified (64 files, 0 mismatches). Old copies in the grid's
+Backups folder. Still to do: set `[SimProtection] RestartSimIfZeroFPS` back to true in the region inis, then
+TESTING 9.10 at a whole-grid start.
