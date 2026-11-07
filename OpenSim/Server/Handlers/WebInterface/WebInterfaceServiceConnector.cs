@@ -2208,6 +2208,9 @@ namespace OpenSim.Server.Handlers.WebInterface
             ("Firestorm (Linux)", "https://www.firestormviewer.org/linux-for-open-simulator/", "OpenSim-specific build"),
             ("AyaneStorm", "https://github.com/AyaneStorm/ayanestorm/releases", "Firestorm fork for photographers - Windows/macOS/Linux"),
             ("Cool VL Viewer", "https://sldev.free.fr/", "Long-running, OpenSim-compatible"),
+            // [Confluence] (2026-11-08) Aurora: a new Rust/Vulkan viewer (GPLv3) with an OpenSim grid manager and
+            // Hypergrid support; beta, Vulkan graphics required.
+            ("Aurora Viewer", "https://github.com/Aurora-Viewer/Aurora-Viewer/releases/latest", "New Vulkan viewer, beta - Windows/Linux, macOS experimental"),
         };
 
         private static readonly (string Name, string Url, string Note)[] MobileViewers =

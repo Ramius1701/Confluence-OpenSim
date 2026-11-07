@@ -29621,3 +29621,12 @@ first two fail. All 7 SimProtection tests pass.
 
 Also in these logs: two of Region A's YEngine `.state` files are zero-filled (an earlier hard kill); YEngine discards
 them and those two scripts start fresh. Region I logged a MySQL "fatal error" storing a 146-prim object at 04:18.
+
+## WebUI viewer list: Aurora Viewer added (2026-11-08)
+
+Owner's request: Aurora Viewer (github.com/Aurora-Viewer/Aurora-Viewer, GPLv3) on the /viewers page, linked to its
+latest release. A new Rust viewer (wgpu on Vulkan; Metal on macOS), not a fork, with ports of the Second Life viewer
+and Firestorm credited per file. Beta (v0.9.x, first commit 2026-10-08). It supports OpenSim: a grid manager and
+get_grid_info, the Hypergrid (hop:// links, My Suitcase), large regions, local avatar baking and inventory without
+AIS. Its WebRTC voice keys on SimulatorFeatures VoiceServerType "webrtc", which our os-webrtc-janus region module
+sends. Needs a Vulkan graphics driver. The clone for reference is at the owner's Github folder (Aurora-Viewer).
