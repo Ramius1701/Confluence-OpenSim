@@ -233,6 +233,7 @@ namespace OpenSim.Data.PGSQL
                             parceluuid = :ParcelId, parentestate = :ParentEstate, snapshotuuid = :SnapshotId,
                             simname = :SimName, posglobal = :GlobalPos, parcelname = :ParcelName, classifiedflags = :Flags,
                             priceforlisting = :ListingPrice
+                        WHERE classifieduuid = :ClassifiedId    
                         RETURNING * )
                       INSERT INTO classifieds (classifieduuid,creatoruuid,creationdate,expirationdate,category,name,
                             description,parceluuid,parentestate,snapshotuuid,simname,posglobal,parcelname,classifiedflags,
@@ -506,6 +507,7 @@ namespace OpenSim.Data.PGSQL
                             name = :Name, description = :Desc, snapshotuuid = :SnapshotId, ""user"" = :User,
                             originalname = :Original, simname = :SimName, posglobal = :GlobalPos,
                             sortorder = :SortOrder, enabled = :Enabled
+                        WHERE pickuuid = :PickId
                         RETURNING * )
                       INSERT INTO userpicks (pickuuid,creatoruuid,toppick,parceluuid,name,description,
                             snapshotuuid,""user"",originalname,simname,posglobal,sortorder,enabled)
@@ -542,7 +544,7 @@ namespace OpenSim.Data.PGSQL
             }
             catch (Exception e)
             {
-                m_log.Error("[PROFILES_DATA]: UpdateAvatarNotes exception ", e);
+                m_log.Error("[PROFILES_DATA]: UpdatePicksRecord exception ", e);
                 return false;
             }
 
@@ -686,12 +688,14 @@ namespace OpenSim.Data.PGSQL
                 remove = false;
 
                 query = @"WITH upsert AS (
-                          UPDATE usernotes SET notes = :Notes, useruuid = :UserId, targetuuid = :TargetId RETURNING * )
-                          INSERT INTO usernotes (notes,useruuid,targetuuid)
-                          SELECT :Notes,:UserId,:TargetId
-                            WHERE NOT EXISTS (
-                              SELECT * FROM upsert
-                            )";
+                UPDATE usernotes SET notes = :Notes
+                WHERE useruuid = :UserId AND targetuuid = :TargetId
+                RETURNING * )
+                INSERT INTO usernotes (notes,useruuid,targetuuid)
+                SELECT :Notes,:UserId,:TargetId
+                    WHERE NOT EXISTS (
+                    SELECT * FROM upsert
+                    )";
             }
 
             try
@@ -1055,6 +1059,8 @@ namespace OpenSim.Data.PGSQL
                 using (NpgsqlConnection dbcon = new NpgsqlConnection(ConnectionString))
                 {
                     dbcon.Open();
+                    bool needInsert = false;
+
                     using (NpgsqlCommand cmd = new NpgsqlCommand(query, dbcon))
                     {
                         cmd.Parameters.Add(m_database.CreateParameter("Id", pref.UserId));
@@ -1068,18 +1074,20 @@ namespace OpenSim.Data.PGSQL
                                 bool.TryParse((string)reader["visible"], out pref.Visible);
                                 pref.EMail = (string)reader["email"];
                             }
-                            else
+
+                            else { needInsert = true;}
+                        }
+
+                        if (needInsert)
                             {
-                                using (NpgsqlCommand put = new NpgsqlCommand(query, dbcon))
+                                string insQuery = "INSERT  INTO usersettings (useruuid, imviaemail, visible, email) VALUES (:Id,'false','false', '') ON CONFLICT (useruuid) DO NOTHING;";
+
+                                using (NpgsqlCommand put = new NpgsqlCommand(insQuery, dbcon))
                                 {
                                     put.Parameters.Add(m_database.CreateParameter("Id", pref.UserId));
-                                    query = "INSERT INTO usersettings VALUES ";
-                                    query += "(:Id,'false','false', '')";
-
                                     put.ExecuteNonQuery();
                                 }
                             }
-                        }
                     }
                 }
             }
@@ -1132,71 +1140,60 @@ namespace OpenSim.Data.PGSQL
 
         #region Integration
 
-        public bool GetUserAppData(ref UserAppData props, ref string result)
+public bool GetUserAppData(ref UserAppData props, ref string result)
+{
+    string query = "SELECT * FROM userdata WHERE \"UserId\" = :Id AND \"TagId\" = :TagId";
+    bool found = false;
+
+    try
+    {
+        using (NpgsqlConnection dbcon = new NpgsqlConnection(ConnectionString))
         {
-            string query = string.Empty;
+            dbcon.Open();
 
-            query += "SELECT * FROM userdata WHERE ";
-            query += "\"UserId\" = :Id AND ";
-            query += "\"TagId\" = :TagId";
-
-            try
+            using (NpgsqlCommand cmd = new NpgsqlCommand(query, dbcon))
             {
-                using (NpgsqlConnection dbcon = new NpgsqlConnection(ConnectionString))
+                cmd.Parameters.Add(m_database.CreateParameter("Id", props.UserId));
+                cmd.Parameters.Add(m_database.CreateParameter("TagId", props.TagId));
+
+                using (NpgsqlDataReader reader = cmd.ExecuteReader(CommandBehavior.SingleRow))
                 {
-                    dbcon.Open();
-                    using (NpgsqlCommand cmd = new NpgsqlCommand(query, dbcon))
+                    if (reader.HasRows)
                     {
-                        cmd.Parameters.Add(m_database.CreateParameter("Id", props.UserId));
-                        cmd.Parameters.Add(m_database.CreateParameter("TagId", props.TagId));
-
-                        // The insert-on-missing branch used to (a) run a
-                        // second command on this same connection from inside
-                        // the reader's using block, which Npgsql rejects
-                        // while the reader is still open, and (b) append the
-                        // INSERT text onto the already-executed SELECT
-                        // `query` string instead of using its own - between
-                        // the two, a first-ever Get for a given
-                        // UserId+TagId always failed and never created the
-                        // row. Reading the flag out, disposing the reader,
-                        // and building a fresh INSERT string fixes both.
-                        bool hasRow;
-                        using (NpgsqlDataReader reader = cmd.ExecuteReader(CommandBehavior.SingleRow))
-                        {
-                            hasRow = reader.HasRows;
-                            if (hasRow)
-                            {
-                                reader.Read();
-                                props.DataKey = (string)reader["DataKey"];
-                                props.DataVal = (string)reader["DataVal"];
-                            }
-                        }
-
-                        if (!hasRow)
-                        {
-                            string insertQuery = "INSERT INTO userdata VALUES (:UserId, :TagId, :DataKey, :DataVal)";
-                            using (NpgsqlCommand put = new NpgsqlCommand(insertQuery, dbcon))
-                            {
-                                put.Parameters.Add(m_database.CreateParameter("UserId", props.UserId));
-                                put.Parameters.Add(m_database.CreateParameter("TagId", props.TagId));
-                                put.Parameters.Add(m_database.CreateParameter("DataKey", props.DataKey.ToString()));
-                                put.Parameters.Add(m_database.CreateParameter("DataVal", props.DataVal.ToString()));
-
-                                put.ExecuteNonQuery();
-                            }
-                        }
+                        reader.Read();
+                        props.DataKey = (string)reader["DataKey"];
+                        props.DataVal = (string)reader["DataVal"];
+                        found = true;
                     }
+                }   // reader is closed here, so the connection is free again
+            }
+
+            if (!found)
+            {
+                string insert = "INSERT INTO userdata (\"UserId\", \"TagId\", \"DataKey\", \"DataVal\") " +
+                                "VALUES (:UserId, :TagId, :DataKey, :DataVal)";
+
+                using (NpgsqlCommand put = new NpgsqlCommand(insert, dbcon))
+                {
+                    put.Parameters.Add(m_database.CreateParameter("UserId", props.UserId));
+                    put.Parameters.Add(m_database.CreateParameter("TagId", props.TagId));
+                    put.Parameters.Add(m_database.CreateParameter("DataKey", props.DataKey ?? string.Empty));
+                    put.Parameters.Add(m_database.CreateParameter("DataVal", props.DataVal ?? string.Empty));
+
+                    put.ExecuteNonQuery();
                 }
             }
-            catch (Exception e)
-            {
-                m_log.Error("[PROFILES_DATA]: GetUserAppData exception ", e);
-                result = e.Message;
-                return false;
-            }
-
-            return true;
         }
+    }
+    catch (Exception e)
+    {
+        m_log.Error("[PROFILES_DATA]: GetUserAppData exception ", e);
+        result = e.Message;
+        return false;
+    }
+
+    return true;
+}
 
         public bool SetUserAppData(UserAppData props, ref string result)
         {

@@ -204,21 +204,19 @@ namespace OpenSim.Framework
             Action<string, int> onHostName = null)
         {
             // Parse blacklist
+            // [Confluence] (2026-11-08) TrimEntries: upstream 7a5950df3e dropped the per-entry Trim() and wrote
+            // RemoveEmptyEntries twice, so "a/8 | b/16" stopped parsing its second entry.
             string[] configBlacklistEntries
-                = fullConfigEntry.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
-
-            configBlacklistEntries = configBlacklistEntries.Select(e => e.Trim()).ToArray();
+                = fullConfigEntry.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             networks = new List<IPNetwork>();
             endPoints = new List<IPEndPoint>();
 
             foreach (string configEntry in configBlacklistEntries)
             {
-                if (configEntry.Contains("/"))
+                if (configEntry.Contains('/'))
                 {
-                    IPNetwork network;
-
-                    if (!IPNetwork.TryParse(configEntry, out network))
+                    if (!IPNetwork.TryParse(configEntry, out IPNetwork network))
                     {
                         m_log.ErrorFormat(
                             "[OUTBOUND URL FILTER]: Entry [{0}] is invalid network for {1}", configEntry, filterName);

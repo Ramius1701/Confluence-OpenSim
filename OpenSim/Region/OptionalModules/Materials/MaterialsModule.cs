@@ -1047,8 +1047,7 @@ namespace OpenSim.Region.OptionalModules.Materials
                 return false;
 
             int indx = 0;
-            while (entries[indx].te_index != side && indx < entries.Length)
-                indx++;
+            while (entries[indx].te_index != side && ++indx < entries.Length);
 
             if (indx >= entries.Length)
                 return false;
@@ -1101,29 +1100,29 @@ namespace OpenSim.Region.OptionalModules.Materials
             {
                 if (extmap.TryGetValue("KHR_texture_transform", out tmposd) && tmposd is OSDMap trmap)
                 {
+                    // store only what differs from the default (offset 0/0, scale 1/1, rotation 0), like the LL viewer
+                    // does in LLGLTFMaterial::getOverrideLLSD; full transforms made the override echo exceed one UDP packet
                     OSDMap tmpmap = new OSDMap();
                     if (trmap.TryGetValue("offset", out tmposd) && tmposd is OSDArray offset)
                     {
-                        tmpmap["o"] = new OSDArray()
-                                    {
-                                        Math.Round((double) offset[0], 3),
-                                        Math.Round((double) offset[1], 3)
-                                    };
+                        double ou = Math.Round((double) offset[0], 3), ov = Math.Round((double) offset[1], 3);
+                        if (ou != 0 || ov != 0)
+                            tmpmap["o"] = new OSDArray() { ou, ov };
                     }
                     if (trmap.TryGetValue("rotation", out tmposd) && tmposd is OSDReal rotation)
                     {
-                        tmpmap["r"] = Math.Round((double)rotation, 6);
+                        double r = Math.Round((double)rotation, 6);
+                        if (r != 0)
+                            tmpmap["r"] = r;
                     }
                     if (trmap.TryGetValue("scale", out tmposd) && tmposd is OSDArray scale)
                     {
-                        tmpmap["s"] = new OSDArray()
-                            {
-                                Math.Round((double) scale[0], 3),
-                                Math.Round((double) scale[1], 3)
-                            };
+                        double su = Math.Round((double) scale[0], 3), sv = Math.Round((double) scale[1], 3);
+                        if (su != 1 || sv != 1)
+                            tmpmap["s"] = new OSDArray() { su, sv };
                     }
                     outmap = tmpmap;
-                    return true;
+                    return tmpmap.Count > 0;
                 }
             }
             outmap = null;
@@ -1191,7 +1190,7 @@ namespace OpenSim.Region.OptionalModules.Materials
                         if (hasTexURIS && pmrMapbct.TryGetValue("index", out tmposd) && tmposd is OSDInteger pmrMapbcti)
                         {
                             int v = pmrMapbcti.value;
-                            if (v < texturesURIs.Length)
+                            if (v < texturesURIs.Length && texturesURIs[v].IsNotZero()) // a null id is no override
                             {
                                 textureIDs[0] = texturesURIs[v];
                                 textureIDchanged[0] = true;
@@ -1208,7 +1207,7 @@ namespace OpenSim.Region.OptionalModules.Materials
                         if (hasTexURIS && pmrMapmrt.TryGetValue("index", out tmposd) && tmposd is OSDInteger pmrMapbcti)
                         {
                             int v = pmrMapbcti.value;
-                            if (v < texturesURIs.Length)
+                            if (v < texturesURIs.Length && texturesURIs[v].IsNotZero()) // a null id is no override
                             {
                                 textureIDs[2] = texturesURIs[v];
                                 textureIDchanged[2] = true;
@@ -1247,7 +1246,7 @@ namespace OpenSim.Region.OptionalModules.Materials
                     if (hasTexURIS && ntMap.TryGetValue("index", out tmposd) && tmposd is OSDInteger ntMapi)
                     {
                         int v = ntMapi.value;
-                        if (v < texturesURIs.Length)
+                        if (v < texturesURIs.Length && texturesURIs[v].IsNotZero()) // a null id is no override
                         {
                             textureIDs[1] = texturesURIs[v];
                             textureIDchanged[1] = true;
@@ -1272,7 +1271,7 @@ namespace OpenSim.Region.OptionalModules.Materials
                     if (hasTexURIS && otMap.TryGetValue("index", out tmposd) && tmposd is OSDInteger otMapi)
                     {
                         int v = otMapi.value;
-                        if (v < texturesURIs.Length)
+                        if (v < texturesURIs.Length && texturesURIs[v].IsNotZero()) // a null id is no override
                         {
                             textureIDs[2] = texturesURIs[v];
                             textureIDchanged[2] = true;
@@ -1297,7 +1296,7 @@ namespace OpenSim.Region.OptionalModules.Materials
                     if (hasTexURIS && etMap.TryGetValue("index", out tmposd) && tmposd is OSDInteger etMapi)
                     {
                         int v = etMapi.value;
-                        if (v < texturesURIs.Length)
+                        if (v < texturesURIs.Length && texturesURIs[v].IsNotZero()) // a null id is no override
                         {
                             textureIDs[3] = texturesURIs[v];
                             textureIDchanged[3] = true;
@@ -1362,8 +1361,10 @@ namespace OpenSim.Region.OptionalModules.Materials
                 if(ti.Count > 0)
                     outosd["ti"] = ti;
 
+                // nothing differs from the default any more: drop the override (otherwise the old one stayed,
+                // e.g. when a repeat was set back to 1 x 1)
                 if (outosd.Count == 0)
-                    return false;
+                    return RemoveMaterialOverride(ref overrides, side);
 
                 data = OSDParser.SerializeLLSDNotation(outosd);
 

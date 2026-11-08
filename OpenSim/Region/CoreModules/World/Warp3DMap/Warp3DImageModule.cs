@@ -1425,7 +1425,7 @@ namespace OpenSim.Region.CoreModules.World.Warp3DMap
             }
 
             byte[] data = GetMapAssetData(id);
-            if (data is not null && data.Length > 0)
+            if (data is not null && data.Length > 2)
             {
                 m_textureAssetDecodesThisPass++;
                 try
@@ -1475,7 +1475,7 @@ namespace OpenSim.Region.CoreModules.World.Warp3DMap
 
             MapSpriteTexture sprite = null;
             byte[] data = GetMapAssetData(id);
-            if (data is not null && data.Length > 0)
+            if (data is not null && data.Length > 2)
             {
                 m_spriteTextureDecodesThisPass++;
                 try

@@ -349,63 +349,65 @@ namespace OpenSim.Data.PGSQL
 
         private void SaveBanList(EstateSettings es)
         {
-            //Delete first
             using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
             {
                 conn.Open();
-                using (NpgsqlCommand cmd = conn.CreateCommand())
+                using (NpgsqlTransaction tx = conn.BeginTransaction())
                 {
-                    cmd.CommandText = "delete from estateban where \"EstateID\" = :EstateID";
-                    cmd.Parameters.AddWithValue("EstateID", (int)es.EstateID);
-                    cmd.ExecuteNonQuery();
-
-                    //Insert after
-                    cmd.CommandText = "insert into estateban (\"EstateID\", \"bannedUUID\",\"bannedIp\", \"bannedIpHostMask\", \"bannedNameMask\", \"banningUUID\",\"banTime\" ) values ( :EstateID, :bannedUUID, '','','', :banningUUID, :banTime )";
-                    // Parameters are added ONCE, before the loop, then only their .Value is updated per
-                    // row - clearing them inside the loop (as this used to) left "EstateID" undefined on
-                    // the very next iteration's lookup, throwing before any ban could ever be saved.
-                    // EstateID comes from the estate being SAVED (es.EstateID), not the loaded ban's own
-                    // EstateID (b.EstateID) - a loaded ban never has that set, so it defaults to 1, and
-                    // saving a loaded estate again filed its bans under estate 1 instead of its own.
-                    cmd.Parameters.Clear();
-                    cmd.Parameters.AddWithValue("EstateID", (int)es.EstateID);
-                    cmd.Parameters.AddWithValue("bannedUUID", Guid.Empty);
-                    cmd.Parameters.AddWithValue("banningUUID", Guid.Empty);
-                    cmd.Parameters.AddWithValue("banTime", 0);
-                    foreach (EstateBan b in es.EstateBans)
+                    using (NpgsqlCommand cmd = conn.CreateCommand())
                     {
-                        cmd.Parameters["EstateID"].Value = (int)es.EstateID;
-                        cmd.Parameters["bannedUUID"].Value = _Database.CreateParameter("bannedUUID", b.BannedUserID).Value;
-                        cmd.Parameters["banningUUID"].Value = _Database.CreateParameter("banningUUID", b.BanningUserID).Value;
-                        cmd.Parameters["banTime"].Value = b.BanTime;
+                        cmd.Transaction = tx;
 
+                        //Delete first
+                        cmd.CommandText = "delete from estateban where \"EstateID\" = :EstateID";
+                        cmd.Parameters.Add(_Database.CreateParameter("EstateID", (int)es.EstateID));
                         cmd.ExecuteNonQuery();
+
+                        //Insert after
+                        cmd.CommandText = "insert into estateban (\"EstateID\", \"bannedUUID\",\"bannedIp\", \"bannedIpHostMask\", \"bannedNameMask\", \"banningUUID\",\"banTime\" ) values ( :EstateID, :bannedUUID, '','','', :banningUUID, :banTime )";
+                        foreach (EstateBan b in es.EstateBans)
+                        {
+                            cmd.Parameters.Clear();
+                            cmd.Parameters.Add(_Database.CreateParameter("EstateID", (int)es.EstateID));
+                            cmd.Parameters.Add(_Database.CreateParameter("bannedUUID", b.BannedUserID));
+                            cmd.Parameters.Add(_Database.CreateParameter("banningUUID", b.BanningUserID));
+                            cmd.Parameters.Add(_Database.CreateParameter("banTime", b.BanTime));
+                            cmd.ExecuteNonQuery();
+                        }
                     }
+                    tx.Commit();
                 }
             }
         }
-
         private void SaveUUIDList(uint estateID, string table, UUID[] data)
         {
             using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
             {
                 conn.Open();
-                using (NpgsqlCommand cmd = conn.CreateCommand())
+                using (NpgsqlTransaction tx = conn.BeginTransaction())
                 {
-                    cmd.Parameters.AddWithValue("EstateID", (int)estateID);
-                    cmd.CommandText = string.Format("delete from {0} where \"EstateID\" = :EstateID", table);
-                    cmd.ExecuteNonQuery();
-
-                    cmd.CommandText = string.Format("insert into {0} (\"EstateID\", uuid) values ( :EstateID, :uuid )", table);
-                    foreach (UUID uuid in data)
+                    using (NpgsqlCommand cmd = conn.CreateCommand())
                     {
-                        cmd.Parameters.Clear();
-                        cmd.Parameters.Add(_Database.CreateParameter("uuid", uuid));
+                        cmd.Transaction = tx;
+
+                        cmd.Parameters.Add(_Database.CreateParameter("EstateID", (int)estateID));
+                        cmd.CommandText = string.Format("delete from {0} where \"EstateID\" = :EstateID", table);
                         cmd.ExecuteNonQuery();
+
+                        cmd.CommandText = string.Format("insert into {0} (\"EstateID\", uuid) values ( :EstateID, :uuid )", table);
+                        foreach (UUID uuid in data)
+                        {
+                            cmd.Parameters.Clear();
+                            cmd.Parameters.Add(_Database.CreateParameter("EstateID", (int)estateID));
+                            cmd.Parameters.Add(_Database.CreateParameter("uuid", uuid));
+                            cmd.ExecuteNonQuery();
+                        }
                     }
+                    tx.Commit();
                 }
             }
         }
+
 
         public EstateSettings LoadEstateSettings(int estateID)
         {
