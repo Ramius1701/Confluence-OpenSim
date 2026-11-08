@@ -29638,3 +29638,22 @@ Full Phlox suite first: 6,600 passed, 2 skipped. Shipped code since the last dep
 copied to the grid root and all 15 region folders, md5-verified (64 files, 0 mismatches). Old copies in the grid's
 Backups folder. Still to do: set `[SimProtection] RestartSimIfZeroFPS` back to true in the region inis, then
 TESTING 9.10 at a whole-grid start.
+
+## Grid status for viewers: GridStatus set, and a status feed (2026-11-08)
+
+Reported by the viewer project: no viewer showed Casperia's grid status (Aurora: "This grid does not publish its
+status"; never worked in Firestorm either). Viewers read `GridStatus` (a page) and `GridStatusRSS` (a feed) from
+SimulatorFeatures OpenSimExtras, which `GridService` fills from `[GridInfoService]`; in the live Robust ini both
+lines were commented out.
+
+Live ini (owner's go-ahead): `GridStatus = ${Const|BaseURL}/gridstatus`, the WebUI's own status page (backup
+`Robust.HG.ini.bak-20261108-gridstatus`). Regions read it when they start, so it takes effect after Robust and then
+each region restart.
+
+New: `/gridstatus/feed`, an Atom feed (Firestorm reads only Atom: each entry's `id` and `updated`; Aurora reads Atom
+or RSS). Entries: Robust starting, a public region going offline or coming back, grid services failing or recovering,
+and the five latest news posts. A minute-by-minute monitor reads the background region checks the pages already run;
+a change counts once two checks in a row agree, dated from the first. Services are checked every fifth minute (the
+same checks as /gridstatus). Hidden regions never appear. Kept in memory for seven days; a Robust restart starts it
+again with its own entry. `GridStatusFeedTests` (7). Still to do: `GridStatusRSS = ${Const|BaseURL}/gridstatus/feed`
+in the live ini, deploying `OpenSim.Server.Handlers.dll` at the next Robust restart, and TESTING 8.10.

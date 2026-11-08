@@ -421,6 +421,9 @@ namespace OpenSim.Server.Handlers.WebInterface
                 m_recurringBillingTimer.Enabled = true;
             }
 
+            // [Confluence] (2026-11-08) the grid status feed viewers show (StatusFeed.cs)
+            StartGridStatusFeed();
+
             // Native DirectDelivery marketplace - listing metadata/stock
             // (MarketplaceListingsService) and delivery idempotency
             // (IDeliveryLedger) both come from the same [MarketplaceService]
@@ -881,6 +884,9 @@ namespace OpenSim.Server.Handlers.WebInterface
                         break;
                     case BasePath + "/gridstatus":
                         HandleGridStatus(request, response);
+                        break;
+                    case BasePath + "/gridstatus/feed":
+                        HandleGridStatusFeed(request, response);
                         break;
                     case BasePath + "/economy":
                         HandleEconomy(request, response);

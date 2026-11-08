@@ -862,6 +862,11 @@
     ;GridStatus = ${Const|BaseURL}:${Const|PublicPort}/GridStatus
     ; a RSS page for grid status
     ;GridStatusRSS = ${Const|BaseURL}:${Const|PublicPort}/GridStatusRSS
+    ; [Confluence] With the native web portal ([WebInterface]) these are its status page and its Atom feed of region
+    ; outages, recoveries, grid service problems and news; viewers show them (Firestorm's and Aurora's Grid Status).
+    ; Regions pick them up when they start.
+    ;GridStatus = ${Const|BaseURL}:${Const|PublicPort}/gridstatus
+    ;GridStatusRSS = ${Const|BaseURL}:${Const|PublicPort}/gridstatus/feed
 
     ; optional web page for profiles
     ;[AGENT_NAME] will be converted to Firstname.LastName by viewers
