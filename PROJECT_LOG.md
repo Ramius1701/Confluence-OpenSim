@@ -29696,3 +29696,13 @@ package; we ship libomv from bin). No open PRs. Ported:
 Not applicable: #377 (server-side baking, not ported), #379 (their test project's MySqlConnector), 42efbfb7ce
 (their NUnit-to-xUnit test move; ours are xUnit already). Gloebit master unchanged at `5b3849d2f4`.
 Next review starts from origin/master `9d00a55552`, tranquillity/develop `42efbfb7ce`, open PRs after #379.
+
+## Deployed bd1890030b: opensim-master merge and Tranquillity #374-#378 (2026-11-08)
+
+Full Phlox suite before the push: 6666 passed, 1 failed (`EstateAccessTests.QueryCanManageAnswersSilentlyForAnyone`,
+27 s, a scripted call timing out under suite load; its class passes 17/17 run alone; nothing in this batch touches
+estate access). Pushed `9ce259b1b0..bd1890030b`. Every binary differed from live (rebuild plus the new libomv), so
+the whole build tree went out by pattern: with Robust and six regions running, each old file was moved aside into the
+grid's Backups folder (`dll-20261108-donor`) and the new one copied to the grid root and all 15 region folders, 224
+files each, md5-verified 301/301 in all 16 (0 problems). Running processes keep the old code until they restart:
+Robust, then a rolling region restart, should follow soon so old and new assemblies are not mixed for long.
