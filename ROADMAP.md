@@ -242,6 +242,19 @@ checked by `Tools/data-backend-check`.)*
 
 ## Planned, not started
 
+- **A session on the name the viewer logged in with (fallback hostname)** (owner, 2026-11-08). Since 2026-11-07
+  `casperia-prime.net` is the primary name and `casperia.ddns.net` the fallback, but the fallback only covers login and
+  hypergrid identity (`GatekeeperURIAlias` / `HomeURIAlias`): every address handed out after login (seed capability,
+  event queue, uploads, IM sessions, teleports) is built from the region's `ExternalHostName`. A resident whose network
+  filter does not yet trust the new, uncategorized domain could log in, then lost the event queue after a few minutes;
+  Firestorm then forces a disconnect (its `lleventpoll.cpp`: a stalled main-region event poll means "IMs, teleports,
+  about land ... will all fail"), so the "automatic logout" in the region log is a viewer logout request. Plan: when a
+  viewer logs in through one of the grid's own alias names, build its seed capability and every capability after it on
+  that name (login response, `BunchOfCaps` host, the event-queue and uploader URLs, teleport and crossing
+  destinations); everyone else keeps the primary name. The primary name stays what the grid advertises. Open questions
+  before building: where the login hostname is carried to the region (agent circuit data), child agents and HG
+  arrivals, and SSL caps. Meanwhile: submit `casperia-prime.net` for categorization with the main web-filter vendors.
+
 - **From the 2026-10-16 donor fetch** (triage in `PROJECT_LOG.md`): Tranquillity #318 (YEngine keeps llTarget /
   llRotTarget across a state change), #316 (parcel access and ban list edits stored), #317 (a teleport request during
   a border crossing answered), #300, #299 (sitters stood up inside the region before an edge-flagged object goes);
