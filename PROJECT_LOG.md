@@ -29659,3 +29659,12 @@ a change counts once two checks in a row agree, dated from the first. Services a
 same checks as /gridstatus). Hidden regions never appear. Kept in memory for seven days; a Robust restart starts it
 again with its own entry. `GridStatusFeedTests` (9). Still to do: `GridStatusRSS = ${Const|BaseURL}/gridstatus/feed`
 in the live ini, deploying `OpenSim.Server.Handlers.dll` at the next Robust restart, and TESTING 8.10.
+
+## Deployed 2b710e120b: grid status feed (2026-11-08)
+
+Only `OpenSim.Server.Handlers.dll` changed since the last deploy (eb4c4dbf57). With Robust and six regions running,
+each old copy (and its `.pdb`) was moved aside into the grid's Backups folder (`dll-20261108-feed`; Windows lets a
+loaded DLL be moved, not overwritten) and the new one copied to the grid root and all 15 region folders,
+md5-verified (32 files, 0 problems). Running processes keep the old code until they restart; the feed goes live at
+the next Robust restart. Still to do: `GridStatusRSS` in the live Robust ini, then Robust and a rolling region
+restart (both `GridStatus` lines reach viewers through the regions), then TESTING 8.10.
