@@ -28,6 +28,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.SQLite;
 using System.Reflection;
 using System.Threading;
 using log4net;
@@ -58,7 +59,12 @@ namespace OpenSim.Data.SQLite
 
         public GridUserData[] GetAll(string userID)
         {
-            return base.Get(String.Format("UserID LIKE '{0}%'", userID));
+        using (SQLiteCommand cmd = new SQLiteCommand("select * from " + m_Realm + " where UserID LIKE :userID"))
+        {
+            cmd.Parameters.Add(new SQLiteParameter(":userID", userID + "%"));
+
+            return DoQuery(cmd);
+        }
         }
 
     }

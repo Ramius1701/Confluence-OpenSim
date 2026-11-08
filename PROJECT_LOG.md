@@ -29668,3 +29668,31 @@ loaded DLL be moved, not overwritten) and the new one copied to the grid root an
 md5-verified (32 files, 0 problems). Running processes keep the old code until they restart; the feed goes live at
 the next Robust restart. Still to do: `GridStatusRSS` in the live Robust ini, then Robust and a rolling region
 restart (both `GridStatus` lines reach viewers through the regions), then TESTING 8.10.
+
+**Live (later 2026-11-08):** the owner approved; `GridStatusRSS = ${Const|BaseURL}/gridstatus/feed` added to the
+live Robust ini, Robust and the six running regions restarted. `get_grid_info` now lists both addresses; the feed
+answers on the public address (Atom, "6 regions online.", one "grid services started" entry). TESTING 8.10 in the
+viewers is the owner's.
+
+## Donor check 2026-11-08: opensim-master merged, Tranquillity #374-#379
+
+**opensim-master** `eb01e50a67..9d00a55552` merged (`dc04647e48`): Vivox answers OK only when Vivox is up, libomv
+update, mantis 9257-9261, PGSQL fixes (#70 abstime, #71 UserProfiles upserts, estate saves in a transaction), Warp3D
+skips empty texture data, case-insensitive grid name in UserAgentService. Six conflicts, all PGSQL or code we had
+changed too; details in the merge commit. Two things upstream got wrong, kept ours or fixed: the PGSQL group notices
+clean-up (their `TMStamp < now() - INTERVAL` is still wrong for the notices table, whose TMStamp is an integer), and
+`OutboundUrlFilter` lost its per-entry trim in 7a5950df3e (`RemoveEmptyEntries` written twice; we use `TrimEntries`).
+Both are upstream report candidates. Open upstream PRs unchanged (#58, #61, #63, #65, #66, #67: reviewed before).
+
+**Tranquillity** develop `485721d881..42efbfb7ce`, release/v1.1 `584bc952de` (tag v1.1, libopenmetaverse 1.2.9
+package; we ship libomv from bin). No open PRs. Ported:
+- #374 a one-sided prim keeps its look when face 0 becomes the default face (`SceneObjectPart.UpdateTextureEntry`).
+- #375 Phlox PRIM_FULLBRIGHT / PRIM_BUMP_SHINY / PRIM_TEXGEN writes take effect on every shape (fullbright on a
+  sphere could be turned on but never off).
+- #376 SQLite stores use query parameters (auth SetDataItem checks the column name; tokens, grid user and account
+  search); the auth handler refuses a TOKEN that is not a UUID.
+- #378 Jolt never cooks a mesh or sculpt part as a native box, sphere or cylinder. Its sculpt test is left out (it
+  needs SkiaSharp, which this tree does not build).
+Not applicable: #377 (server-side baking, not ported), #379 (their test project's MySqlConnector), 42efbfb7ce
+(their NUnit-to-xUnit test move; ours are xUnit already). Gloebit master unchanged at `5b3849d2f4`.
+Next review starts from origin/master `9d00a55552`, tranquillity/develop `42efbfb7ce`, open PRs after #379.

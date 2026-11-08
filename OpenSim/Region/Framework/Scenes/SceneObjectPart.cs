@@ -5666,8 +5666,10 @@ namespace OpenSim.Region.Framework.Scenes
             // we do need better compacter do just the trivial case
             if(nsides == 1 && newTex.FaceTextures[0] != null)
             {
-                newTex.DefaultTexture = newTex.GetFace(0);
-                newTex.FaceTextures[0] = null;
+                // [Confluence] Tranquillity #374: face 0 becomes the default face, built from face 0's effective
+                // values. Using the face object itself stored its unset fields as zero (a fullbright write on a
+                // textured sphere lost the texture, glow, repeats, offsets and rotation).
+                newTex = new Primitive.TextureEntry(newTex.GetFace(0));
             }
             m_shape.TextureEntry = newTex.GetBytes(nsides);
             TriggerScriptChangedEvent(changeFlags);

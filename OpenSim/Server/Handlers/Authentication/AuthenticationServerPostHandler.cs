@@ -155,7 +155,10 @@ namespace OpenSim.Server.Handlers.Authentication
                     if (!request.ContainsKey("TOKEN"))
                         return FailureResult();
 
-                    if (m_AuthenticationService.Verify(principalID, request["TOKEN"].ToString(), lifetime))
+                if (!UUID.TryParse(request["TOKEN"].ToString(), out UUID verifyToken))
+                    return FailureResult();
+
+                if (m_AuthenticationService.Verify(principalID, verifyToken.ToString(), lifetime))
                         return SuccessResult();
 
                     return FailureResult();
@@ -164,7 +167,10 @@ namespace OpenSim.Server.Handlers.Authentication
                     if (!request.ContainsKey("TOKEN"))
                         return FailureResult();
 
-                    if (m_AuthenticationService.Release(principalID, request["TOKEN"].ToString()))
+                if (!UUID.TryParse(request["TOKEN"].ToString(), out UUID releaseToken))
+                    return FailureResult();
+
+                if (m_AuthenticationService.Release(principalID, releaseToken.ToString()))
                         return SuccessResult();
 
                     return FailureResult();
