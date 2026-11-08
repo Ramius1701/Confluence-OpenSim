@@ -41,8 +41,9 @@ alongside the existing support-ticket system.
 - Grid status feed for viewers (2026-11-08): `/gridstatus/feed` is an Atom feed of what changed on the grid - Robust
   starting, a public region going offline or coming back, grid services failing or recovering - plus the latest news
   posts. Point `[GridInfoService] GridStatusRSS` at it (and `GridStatus` at `/gridstatus`) and viewers show it in
-  their Grid Status window; Aurora also flashes its toolbar button on a new entry. A change is reported once two
-  checks a minute apart agree, so one slow answer is not an outage. Hidden regions never appear. The history is kept
+  their Grid Status window; Aurora also flashes its toolbar button on a new entry. An outage is one entry in Second
+  Life's status-page form: "Investigating" when it starts, "Resolved" added when it ends (Aurora shows it as ongoing,
+  then over). A change is reported once two checks a minute apart agree, so one slow answer is not an outage. Hidden regions never appear. The history is kept
   in memory for seven days and starts again when Robust restarts.
 - Home/splash, ordered as a real pitch (stats/activity → the pitch →
   trust, backing up what the pitch just claimed → proof of activity →

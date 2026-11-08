@@ -183,8 +183,9 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       raised platform it falls to the platform. Report your viewer's particle setting if it looks thin.
 - [ ] 8.10 Grid status in viewers (2026-11-08): after Robust and the regions restart with `GridStatus` and
       `GridStatusRSS` set, Firestorm's and Aurora's Grid Status windows show entries ("grid
-      services started", news). Stopping a region shows "Region ... is offline" within about two minutes, and
-      starting it again "is online"; Aurora flashes its toolbar button on each.
+      services started", news). Stopping a region shows a "Region ... outage" entry within about two minutes
+      (Aurora: ongoing, Investigating), and starting it again adds Resolved to the same entry (Aurora: over); the
+      toolbar button flashes on each.
 
 ## 9. Land, money and admin
 

@@ -29652,8 +29652,10 @@ each region restart.
 
 New: `/gridstatus/feed`, an Atom feed (Firestorm reads only Atom: each entry's `id` and `updated`; Aurora reads Atom
 or RSS). Entries: Robust starting, a public region going offline or coming back, grid services failing or recovering,
-and the five latest news posts. A minute-by-minute monitor reads the background region checks the pages already run;
+and the five latest news posts. Each entry's content is Second Life's status-page HTML, which Aurora reads an entry's
+state from: an outage is one entry, "Investigating" when it starts and "Resolved" added on top when it ends (same id,
+later `updated`, so both viewers flash their button). A minute-by-minute monitor reads the background region checks the pages already run;
 a change counts once two checks in a row agree, dated from the first. Services are checked every fifth minute (the
 same checks as /gridstatus). Hidden regions never appear. Kept in memory for seven days; a Robust restart starts it
-again with its own entry. `GridStatusFeedTests` (7). Still to do: `GridStatusRSS = ${Const|BaseURL}/gridstatus/feed`
+again with its own entry. `GridStatusFeedTests` (9). Still to do: `GridStatusRSS = ${Const|BaseURL}/gridstatus/feed`
 in the live ini, deploying `OpenSim.Server.Handlers.dll` at the next Robust restart, and TESTING 8.10.

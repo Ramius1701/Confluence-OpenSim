@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Xml;
 using OpenMetaverse;
@@ -13,13 +14,18 @@ using GridRegion = OpenSim.Services.Interfaces.GridRegion;
 namespace OpenSim.Server.Handlers.WebInterface
 {
     // [Confluence] (2026-11-08) The grid status feed viewers show (GridStatusRSS in [GridInfoService], passed to them
-    // in SimulatorFeatures OpenSimExtras). Firestorm reads only Atom (each <entry>'s <id> and <updated>); Aurora reads
-    // Atom or RSS and flashes its toolbar button on a new or changed entry. So: an Atom feed at /gridstatus/feed of
-    // what changed - Robust starting, a public region going offline or coming back, grid services failing or
-    // recovering - plus the grid's news posts. A minute-by-minute monitor watches for the changes, using the region
-    // checks the pages already run (RegionStatus.cs); a change counts once it is seen on two checks in a row, so one
-    // slow answer is not reported as an outage. Hidden regions never appear. The history is kept in memory for seven
-    // days and starts again when Robust restarts (which is itself the first entry).
+    // in SimulatorFeatures OpenSimExtras). Firestorm reads only Atom (each <entry>'s <id> and <updated>: a new id or a
+    // changed updated flashes its button); Aurora reads Atom or RSS, flashes its button the same way, and takes an
+    // entry's state from Second Life's status-page HTML in <content>: one <p> per update, newest first,
+    // "<small>WHEN</small><br><strong>STATUS</strong> - text", Investigating meaning ongoing and Resolved over.
+    //
+    // So /gridstatus/feed is an Atom feed in that form. An outage - a public region offline, or grid services failing -
+    // is one entry: "Investigating" when it starts, and "Resolved" added on top (same id, later updated) when it ends.
+    // Robust starting, a region coming online that was not in an outage, and the news posts are plain notices. A
+    // minute-by-minute monitor watches for the changes, using the region checks the pages already run
+    // (RegionStatus.cs); a change counts once it is seen on two checks in a row, so one slow answer is not an outage.
+    // Hidden regions never appear. The history is kept in memory for seven days and starts again when Robust restarts
+    // (which is itself the first entry).
     public partial class WebInterfaceServiceConnector
     {
         private const int StatusFeedMonitorMs = 60_000;
@@ -89,17 +95,18 @@ namespace OpenSim.Server.Handlers.WebInterface
         {
             string site = m_publicBaseUrl + BasePath;
             DateTime now = DateTime.UtcNow;
-            var entries = new List<GridStatusFeedEntry>();
-            foreach (GridStatusFeedEvent ev in m_statusFeed.Events(now))
-                entries.Add(new GridStatusFeedEntry("urn:uuid:" + ev.Id, ev.Title, ev.Text, ev.When, site + "/gridstatus"));
+            List<GridStatusFeedEntry> entries = m_statusFeed.Entries(now, site + "/gridstatus");
 
             if (m_NewsService != null)
             {
                 try
                 {
                     foreach (NewsItem item in m_NewsService.GetNews(0, StatusFeedNewsCount))
-                        entries.Add(new GridStatusFeedEntry("urn:uuid:" + item.ID, item.Title, item.Body,
-                                DateTime.SpecifyKind(item.Date, DateTimeKind.Utc), site + "/"));
+                    {
+                        DateTime when = DateTime.SpecifyKind(item.Date, DateTimeKind.Utc);
+                        entries.Add(new GridStatusFeedEntry("urn:uuid:" + item.ID, item.Title, site + "/",
+                                new[] { new GridStatusFeedUpdate(when, string.Empty, item.Body) }));
+                    }
                 }
                 catch (Exception e)
                 {
@@ -117,39 +124,59 @@ namespace OpenSim.Server.Handlers.WebInterface
         }
     }
 
-    public sealed class GridStatusFeedEvent
+    /// <summary>One step of an entry: when, a status-page status (empty for a plain notice), and the text.</summary>
+    public sealed class GridStatusFeedUpdate
     {
-        public Guid Id = Guid.NewGuid();
-        public DateTime When;
-        public string Title;
-        public string Text;
-    }
+        public readonly DateTime When;
+        public readonly string Status, Text;
 
-    public sealed class GridStatusFeedEntry
-    {
-        public readonly string Id, Title, Text, Link;
-        public readonly DateTime Updated;
-
-        public GridStatusFeedEntry(string id, string title, string text, DateTime updated, string link)
+        public GridStatusFeedUpdate(DateTime when, string status, string text)
         {
-            Id = id;
-            Title = title ?? string.Empty;
+            When = when;
+            Status = status ?? string.Empty;
             Text = text ?? string.Empty;
-            Updated = updated;
-            Link = link;
         }
     }
 
+    /// <summary>A feed entry; its updates newest first, and it was last updated by the newest.</summary>
+    public sealed class GridStatusFeedEntry
+    {
+        public readonly string Id, Title, Link;
+        public readonly List<GridStatusFeedUpdate> Updates;
+
+        public GridStatusFeedEntry(string id, string title, string link, IEnumerable<GridStatusFeedUpdate> updates)
+        {
+            Id = id;
+            Title = title ?? string.Empty;
+            Link = link;
+            Updates = updates.OrderByDescending(u => u.When).ToList();
+        }
+
+        public DateTime Updated => Updates.Count > 0 ? Updates[0].When : DateTime.MinValue;
+    }
+
     /// <summary>
-    /// What the grid status feed reports: changes seen on two checks in a row, newest first, for seven days.
+    /// What the grid status feed reports: outages (seen on two checks in a row) and notices, for seven days.
     /// </summary>
     public sealed class GridStatusFeedTracker
     {
-        public const int MaxEvents = 50;
+        public const int MaxItems = 50;
+        public const string Investigating = "Investigating", Resolved = "Resolved";
         public static readonly TimeSpan Keep = TimeSpan.FromDays(7);
 
+        private sealed class Item
+        {
+            public readonly Guid Id = Guid.NewGuid();
+            public string Title;
+            public readonly List<GridStatusFeedUpdate> Updates = new List<GridStatusFeedUpdate>();
+            public DateTime Updated => Updates.Max(u => u.When);
+        }
+
+        private const string ServicesKey = "services";
+
         private readonly object m_lock = new object();
-        private readonly List<GridStatusFeedEvent> m_events = new List<GridStatusFeedEvent>();
+        private readonly List<Item> m_items = new List<Item>();
+        private readonly Dictionary<string, Item> m_open = new Dictionary<string, Item>();   // ongoing outages
         private Dictionary<UUID, string> m_online;                          // null until the first full check
         private readonly Dictionary<UUID, (string Name, DateTime Since)> m_comingUp = new Dictionary<UUID, (string, DateTime)>();
         private readonly Dictionary<UUID, DateTime> m_goingDown = new Dictionary<UUID, DateTime>();
@@ -158,8 +185,9 @@ namespace OpenSim.Server.Handlers.WebInterface
 
         public void Started(string gridName, DateTime now)
         {
-            Add(now, gridName + " grid services started",
-                    "The grid's central services (logins, inventory, assets, search) have started. Regions come online over the next few minutes.");
+            lock (m_lock)
+                Notice(now, gridName + " grid services started",
+                        "The grid's central services (logins, inventory, assets, search) have started. Regions come online over the next few minutes.");
         }
 
         /// <summary>The public regions answering right now. The first call only records them.</summary>
@@ -185,7 +213,11 @@ namespace OpenSim.Server.Handlers.WebInterface
                     {
                         m_comingUp.Remove(kv.Key);
                         m_online[kv.Key] = kv.Value;
-                        Add(pending.Since, "Region " + kv.Value + " is online", "The region " + kv.Value + " is up and accepting visitors.");
+                        if (m_open.Remove(kv.Key.ToString(), out Item outage))
+                            outage.Updates.Add(new GridStatusFeedUpdate(pending.Since, Resolved,
+                                    "The region " + kv.Value + " is back online."));
+                        else
+                            Notice(pending.Since, "Region " + kv.Value + " is online", "The region " + kv.Value + " is up and accepting visitors.");
                     }
                     else
                     {
@@ -202,7 +234,8 @@ namespace OpenSim.Server.Handlers.WebInterface
                         string name = m_online[id];
                         m_goingDown.Remove(id);
                         m_online.Remove(id);
-                        Add(since, "Region " + name + " is offline", "The region " + name + " is not answering. Teleports to it will fail until it is back.");
+                        Outage(id.ToString(), since, "Region " + name + " outage",
+                                "The region " + name + " is offline. Teleports to it will fail until it is back.");
                     }
                     else
                     {
@@ -221,7 +254,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 {
                     m_servicesOk = ok;
                     if (!ok)
-                        Add(now, "Some grid services are not answering", ServicesText(failing));
+                        Outage(ServicesKey, now, "Grid services outage", ServicesText(failing));
                     return;
                 }
                 if (ok == m_servicesOk.Value)
@@ -237,10 +270,10 @@ namespace OpenSim.Server.Handlers.WebInterface
                 DateTime since = m_servicesChangingSince.Value;
                 m_servicesChangingSince = null;
                 m_servicesOk = ok;
-                if (ok)
-                    Add(since, "All grid services are answering again", "Every grid service is answering normally again.");
-                else
-                    Add(since, "Some grid services are not answering", ServicesText(failing));
+                if (!ok)
+                    Outage(ServicesKey, since, "Grid services outage", ServicesText(failing));
+                else if (m_open.Remove(ServicesKey, out Item outage))
+                    outage.Updates.Add(new GridStatusFeedUpdate(since, Resolved, "Every grid service is answering normally again."));
             }
         }
 
@@ -262,35 +295,61 @@ namespace OpenSim.Server.Handlers.WebInterface
             }
         }
 
-        /// <summary>The changes of the last seven days, newest first.</summary>
-        public List<GridStatusFeedEvent> Events(DateTime now)
+        /// <summary>The entries updated in the last seven days, newest first; outages still going on are always kept.</summary>
+        public List<GridStatusFeedEntry> Entries(DateTime now, string link)
         {
             lock (m_lock)
             {
-                m_events.RemoveAll(e => now - e.When > Keep);
-                return m_events.OrderByDescending(e => e.When).ToList();
+                m_items.RemoveAll(i => now - i.Updated > Keep && !m_open.ContainsValue(i));
+                return m_items.OrderByDescending(i => i.Updated)
+                        .Select(i => new GridStatusFeedEntry("urn:uuid:" + i.Id, i.Title, link, i.Updates))
+                        .ToList();
             }
         }
 
-        private void Add(DateTime when, string title, string text)
+        private void Notice(DateTime when, string title, string text)
         {
-            lock (m_lock)
-            {
-                m_events.Add(new GridStatusFeedEvent { When = when, Title = title, Text = text });
-                if (m_events.Count > MaxEvents)
-                    m_events.RemoveRange(0, m_events.Count - MaxEvents);   // oldest first: Add is called in time order
-            }
+            var item = new Item { Title = title };
+            item.Updates.Add(new GridStatusFeedUpdate(when, string.Empty, text));
+            AddItem(item);
         }
 
-        /// <summary>An Atom 1.0 document of the newest <paramref name="max"/> entries.</summary>
+        private void Outage(string key, DateTime when, string title, string text)
+        {
+            if (m_open.TryGetValue(key, out Item open))      // already open (cannot normally happen): add to it
+            {
+                open.Updates.Add(new GridStatusFeedUpdate(when, Investigating, text));
+                return;
+            }
+            var item = new Item { Title = title };
+            item.Updates.Add(new GridStatusFeedUpdate(when, Investigating, text));
+            m_open[key] = item;
+            AddItem(item);
+        }
+
+        private void AddItem(Item item)
+        {
+            m_items.Add(item);
+            if (m_items.Count <= MaxItems)
+                return;
+            Item oldest = m_items.Where(i => !m_open.ContainsValue(i)).OrderBy(i => i.Updated).FirstOrDefault();
+            if (oldest != null)
+                m_items.Remove(oldest);
+        }
+
+        /// <summary>
+        /// An Atom 1.0 document of the newest <paramref name="max"/> entries. Each entry's content is Second Life's
+        /// status-page HTML (what Aurora reads an entry's state from); the summary is its newest update as text.
+        /// </summary>
         public static string BuildAtom(string title, string selfUrl, string pageUrl, string subtitle,
                 IEnumerable<GridStatusFeedEntry> entries, int max, DateTime now)
         {
-            List<GridStatusFeedEntry> list = entries.OrderByDescending(e => e.Updated).Take(max).ToList();
+            List<GridStatusFeedEntry> list = entries.Where(e => e.Updates.Count > 0)
+                    .OrderByDescending(e => e.Updated).Take(max).ToList();
             DateTime updated = list.Count > 0 ? list[0].Updated : now;
 
             var sb = new StringBuilder();
-            var settings = new XmlWriterSettings { Indent = true, Encoding = new UTF8Encoding(false), OmitXmlDeclaration = false };
+            var settings = new XmlWriterSettings { Indent = true, Encoding = new UTF8Encoding(false) };
             using (var sw = new Utf8StringWriter(sb))
             using (XmlWriter w = XmlWriter.Create(sw, settings))
             {
@@ -311,10 +370,18 @@ namespace OpenSim.Server.Handlers.WebInterface
                     w.WriteElementString("updated", ns, AtomDate(e.Updated));
                     if (!string.IsNullOrEmpty(e.Link))
                         Link(w, ns, "alternate", e.Link);
+
+                    GridStatusFeedUpdate newest = e.Updates[0];
                     w.WriteStartElement("summary", ns);
                     w.WriteAttributeString("type", "text");
-                    w.WriteString(Clean(e.Text));
+                    w.WriteString(Clean(newest.Status.Length > 0 ? newest.Status + " - " + newest.Text : newest.Text));
                     w.WriteEndElement();
+
+                    w.WriteStartElement("content", ns);
+                    w.WriteAttributeString("type", "html");
+                    w.WriteString(UpdatesHtml(e.Updates));
+                    w.WriteEndElement();
+
                     w.WriteStartElement("author", ns);
                     w.WriteElementString("name", ns, title);
                     w.WriteEndElement();
@@ -322,6 +389,22 @@ namespace OpenSim.Server.Handlers.WebInterface
                 }
                 w.WriteEndElement();
                 w.WriteEndDocument();
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>"&lt;p&gt;&lt;small&gt;WHEN&lt;/small&gt;&lt;br&gt;&lt;strong&gt;STATUS&lt;/strong&gt; - text&lt;/p&gt;" per update, newest first.</summary>
+        public static string UpdatesHtml(IEnumerable<GridStatusFeedUpdate> updates)
+        {
+            var sb = new StringBuilder();
+            foreach (GridStatusFeedUpdate u in updates.OrderByDescending(u => u.When))
+            {
+                sb.Append("<p><small>")
+                  .Append(u.When.ToUniversalTime().ToString("MMM d, yyyy HH:mm 'UTC'", CultureInfo.InvariantCulture))
+                  .Append("</small><br>");
+                if (u.Status.Length > 0)
+                    sb.Append("<strong>").Append(WebUtility.HtmlEncode(u.Status)).Append("</strong> - ");
+                sb.Append(WebUtility.HtmlEncode(Clean(u.Text)).Replace("\n", "<br>")).Append("</p>");
             }
             return sb.ToString();
         }
