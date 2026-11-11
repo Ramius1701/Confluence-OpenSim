@@ -29706,3 +29706,13 @@ the whole build tree went out by pattern: with Robust and six regions running, e
 grid's Backups folder (`dll-20261108-donor`) and the new one copied to the grid root and all 15 region folders, 224
 files each, md5-verified 301/301 in all 16 (0 problems). Running processes keep the old code until they restart:
 Robust, then a rolling region restart, should follow soon so old and new assemblies are not mixed for long.
+
+## Donor check 2026-11-12: Tranquillity #382
+
+opensim-master: nothing new since `9d00a55552`. New open upstream PR #72 (BulletS: free mesh/hull collision shapes
+at taint time; the redo of #66, which we skipped) - left until upstream merges it. #58, #61, #63, #65, #67 unchanged.
+Tranquillity develop `f48757701b`: ported #382 - PollServiceRequestManager calls the optional Drop callback with
+`?.Invoke`; RemoteConsole passes null for it, so every stalled REST-console long-poll threw NullReferenceException
+("Exception in poll service thread"). One line, no test upstream (the path needs a live HTTP context); project builds
+clean. Skipped `5494835893` (moves their joltc README into Docs; our layout differs). No open Tranquillity PRs. Next
+review starts from origin/master `9d00a55552`, tranquillity/develop `f48757701b`, PRs after #382.

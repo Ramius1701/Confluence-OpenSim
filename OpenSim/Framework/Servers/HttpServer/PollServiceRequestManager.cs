@@ -130,7 +130,9 @@ namespace OpenSim.Framework.Servers.HttpServer
             {
                 if (!req.Request.Context.CanSend())
                 {
-                    req.PollServiceArgs.Drop(req.RequestID, req.PollServiceArgs.Id);
+                    // [Confluence] Tranquillity #382: Drop is optional (RemoteConsole passes null), so a stalled
+                    // REST-console long-poll threw NullReferenceException here.
+                    req.PollServiceArgs.Drop?.Invoke(req.RequestID, req.PollServiceArgs.Id);
                     return;
                 }
 
