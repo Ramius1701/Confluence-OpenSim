@@ -822,6 +822,8 @@ hardcoded default:
   with its invert or mirror flag is built as the viewer shows it, and its cache key tells the flags apart.
 - **`llCastRay`** returns up to 256 hits (SL's limit; upstream stopped at 16), and the script's own prim or linkset
   no longer takes places among the hits asked for (Tranquillity #294, both script engines).
+- **Jolt never cooks a mesh or sculpt part as a native box, sphere or cylinder** (Tranquillity #378,
+  2026-11-08): a mesh or sculpt whose prim shape happens to look like a box keeps its real shape.
 
 ### Concierge (region greeter)
 
@@ -921,6 +923,12 @@ NaN/Infinity before being applied.
   `OutboundDisallowForUserScriptsExcept` are looked up again every
   `OutboundDisallowForUserScriptsExceptRefreshMinutes` (default 30), so an excepted host on dynamic
   DNS keeps working (Tranquillity #336).
+- **Small fixes from the 2026-11-08 and 11-12 donor batches:** a one-sided prim whose texture entry is set from
+  a script keeps its look when face 0 becomes the default face (Tranquillity #374); the SQLite stores take
+  their values as query parameters, and the authentication handler accepts only a UUID as a token (#376); a
+  stalled REST-console long-poll no longer throws in the poll service thread (#382). An entry with spaces
+  around the `|` in `OutboundDisallowForUserScripts` and its sibling lists is read again (opensim-master
+  7a5950df3e had dropped the trim, so the second and later entries were ignored; fixed here 2026-11-08).
 
 ## Database
 

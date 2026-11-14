@@ -206,6 +206,18 @@ OutboundDisallowForUserScripts`/`OutboundDisallowForUserScriptsExcept` keys alre
 now. Replace the binaries and restart (scripts using these three paths get the same "disallowed by
 filter" error `llHTTPRequest` already gives for a blocked destination).
 
+Later (2026-11-08): OpenSimulator master commit 7a5950df3e stopped trimming the entries of these lists, so an
+entry written with spaces around the `|` (`10.0.0.0/8 | 192.168.0.0/16`) no longer matched, and every range after
+the first was let through. Confluence trims them again (a test covers it). If you run upstream OpenSimulator from
+after that commit, write the lists without spaces until it is fixed there.
+
+## SQLite stores and authentication tokens
+
+From Tranquillity #376 (2026-11-08): the SQLite authentication, grid-user and user-account stores built some of
+their SQL from the values they were given; they now pass them as query parameters. The authentication handler
+accepts a token only if it is a UUID, so a crafted token string never reaches a store. Only grids on SQLite were
+exposed; nothing in the configuration changes.
+
 ## Deployment checklist
 
 1. Back up the database (Gloebit migrations).

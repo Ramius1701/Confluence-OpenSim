@@ -75,6 +75,8 @@ that has `on_damage`, `final_damage` and `on_death` handlers.
 - [ ] 2.13 ZephyrWind (`[Wind] wind_plugin = ZephyrWind` on a test region): the wind (viewer's wind display, a
       sailboat or a flag script using `llWind`) is stronger aloft than at the ground, follows the terrain, and changes
       through the region's day; a Phlox `iwSetWind` by an estate manager holds a cell's wind until reset.
+- [ ] 2.14 A one-sided prim (e.g. a plane-like mesh or a single-face prim) given a texture, colour or glow from a
+      script keeps that look after the change and after a region restart (Tranquillity #374, 2026-11-08).
 
 ## 3. Returning objects
 
@@ -246,6 +248,10 @@ Try these on a test region first.
 - [ ] 11.5 The functions added to Phlox 2026-10-14 behave as in YEngine: partnering from a ceremony object, avatar
       freeze and fly/walk flags, `osGiveLinkInventory[List]` to an avatar, NPC tags/follow/say-to/look-at,
       `osReplaceRegionEnvironment` / `osReplaceParcelEnvironment` / `osResetEnvironment`, `osReturnObject[s]`.
+- [ ] 11.6 Phlox `PRIM_FULLBRIGHT`, `PRIM_BUMP_SHINY` and `PRIM_TEXGEN` (Tranquillity #375, 2026-11-08): set on a
+      sphere and on a box, on one face and on `ALL_SIDES`, then turned off again; the viewer shows each change.
+- [ ] 11.7 Jolt with a mesh or sculpt object shaped like a box or sphere (Tranquillity #378): it collides with its
+      real shape, not a native box or sphere.
 
 ## 12. Open bugs that need a live reproduction
 
