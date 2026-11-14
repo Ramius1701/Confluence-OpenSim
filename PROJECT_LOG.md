@@ -29746,3 +29746,24 @@ Confluence grid setup today.
 replaced that code, so they don't apply, but they are reference material if the weather work resumes.
 
 Nothing found that is a missed bug fix. Every Gunthar commit stays readable through the `gunthar` remote.
+
+## Disk review: donor clones on S: (2026-11-15)
+
+S: (200 GB) was 87% full. Reviewed, not removed. The separate donor clones in `S:\Github` total about 3 GB, and
+every one whose history matters is already in this repo as a git remote, so none of them holds donor history we
+would lose: opensim-master (`origin`), OpenSim-Tranquillity (`tranquillity`), opensim-vanilla (`gunthar`),
+WhiteCore-Dev, halcyon, Legion-Grid-Code, phlox (`phlox-core`), mobius-master (`mobius`), os-webrtc-janus and
+wolf-os-webrtc-janus. Kept on purpose: Codex still works from these clones. `opensim-lickx` is also the URL of our
+`opensim-lickx` remote, so repoint that remote before ever moving it. opensim-master holds only test-run leftovers
+in its `bin` folder.
+
+Clones that hold work found nowhere else (commit or archive before any cleanup): OpenSim-Continuum (257 uncommitted
+files plus one unpushed commit), opensim-enhanced (53 uncommitted changes; its origin branch is gone), wolfvoice (an
+unpushed Windows build fix and an untracked folder). JoltPhysics, ayanestorm and wolfviewer are on GitHub but not in
+our remotes.
+
+The space is elsewhere: the Rust `target` build folders of the viewer and silvermere projects (~25 GB, regenerable,
+theirs to clear), an old 2025 Tranquillity grid install under `S:\Opensim` (13.8 GB, mostly fsassets), old
+AutoBackup sets (the owner cleared the unneeded ones) and a Continuum test grid (1.5 GB). Removed with the owner's
+go-ahead: `S:\tmp\phlox-eval` (8.1 GB, a Tranquillity evaluation build whose HEAD is in our `tranquillity` remote).
+With that and the owner's AutoBackup cleanup, S: went from 28 GB to 52 GB free.
