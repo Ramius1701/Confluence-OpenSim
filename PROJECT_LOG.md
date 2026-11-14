@@ -29716,3 +29716,33 @@ Tranquillity develop `f48757701b`: ported #382 - PollServiceRequestManager calls
 ("Exception in poll service thread"). One line, no test upstream (the path needs a live HTTP context); project builds
 clean. Skipped `5494835893` (moves their joltc README into Docs; our layout differs). No open Tranquillity PRs. Next
 review starts from origin/master `9d00a55552`, tranquillity/develop `f48757701b`, PRs after #382.
+
+## Gunthar review: all 195 unmatched commits (2026-11-15)
+
+Closes the ROADMAP's "per-commit check still owed" note. `git cherry HEAD gunthar/master` lists 195 commits
+(2026-05-24 to 06-12) with no matching patch here. His commits stack, so 182 no longer apply on their own; instead each
+commit's added code lines were looked up in our version of the same file (RegionWeb, Weather and GroupAutoInvite in
+their addon folders): 68 have 80-100% of their code here, 39 have 40-79%, 67 under 40%, 21 are docs/config only.
+
+**In (80-100%):** attachment transfer during crossing/logout races (`6327b8a4a2`, 13/14 lines), stale Hypergrid
+identity IP (`b72694a29b`), repair of stored HG user service URLs (`4c0d5e1e58`), HomeURI repair (`9d492061ab`),
+YEngine crash on orphaned resumed events (`af16af08b6`), default appearance fallback, map-tile water depth shading,
+scripted-only sit flags, group auto-invite, weather forecasts and wind, the LSL Compatibility Center. The ubODE
+realism and buoyancy series is complete: in every ubODE file he touched, his final version has nothing ours lacks.
+The partial percentages there are lines his own later commits replaced.
+
+**Not taken, by choice:** TextBuild's OpenAI/cartography terrain generator (~20 commits, calls an external AI
+service); the local-currency ledger, wallet and RegionWeb money admin (we run C$ and Gloebit); MultiGrid
+registrations and attachments, standalone-HG profile switchers, Vanilla Sim branding and first-run wizard;
+Experience-Lite (a file-based stand-in - we run the real Experience service); his YEngine LSL refinements
+(llGetEnergy, visual params, object detail costs, parcel prim counts, money/inventory transfer, memory diagnostics),
+because YEngine stays upstream and Phlox carries its own (Phlox already has llSetGroundTexture with the
+estate-manager check, llTransferOwnership, llGiveAgentInventory, llSetAgentRot, llOpenFloater,
+llGetAttachedListFiltered, llFindNotecardTextSync). SQLite Groups/Offline IM for standalone HG: not used by any
+Confluence grid setup today.
+
+**Replaced, worth reading later:** the weather particle commits (`d36de37c82` viewer-visible particles,
+`b792b6c664` skip emitters over covered areas, and the rain/snow colour and timing ones) - our module's rethink
+replaced that code, so they don't apply, but they are reference material if the weather work resumes.
+
+Nothing found that is a missed bug fix. Every Gunthar commit stays readable through the `gunthar` remote.

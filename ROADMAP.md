@@ -504,13 +504,14 @@ checked by `Tools/data-backend-check`.)*
   brought to feature parity," "Real Jolt physics bugs found and fixed:
   run speed, unsit-to-ground," and "Jolt systematic sweep, walking-lag
   diagnosis, and reversion" entries (all 2026-09-09 through 09-11).
-- Gunthar's own ~15-commit attachment-transfer/region-crossing-race
-  hardening cluster, plus later map-tile/weather refinements, remain
-  genuinely unverified against this codebase - a real per-commit check
-  is still owed there (found while confirming, separately, that
-  gunthar's buoyancy/water/rubber-bounce/rolling-resistance/avatar-
-  avatar-social-physics/boat-wave cluster IS already live in both
-  ubODE and BulletSim, byte-identical - see `PROJECT_LOG.md`).
+- Gunthar's remaining commits were checked one by one on 2026-11-15 (PROJECT_LOG "Gunthar review: all 195
+  unmatched commits"). The attachment-transfer/crossing-race hardening, the Hypergrid identity fixes, the
+  YEngine orphaned-event crash fix and the map-tile water shading are all in. Not taken, by choice: the
+  OpenAI/cartography terrain generator in TextBuild, the local-currency wallet and ledger, MultiGrid, the
+  Vanilla Sim branding and setup wizard, Experience-Lite (we run real Experiences) and LSL readback
+  refinements in YEngine (YEngine stays upstream; Phlox carries its own). Weather particle tuning was
+  replaced by our own rethink - two of his commits (covered-area skip, viewer-visible particles) are worth
+  reading if weather resumes.
 - Legion-Grid-Code's terrain-gen tooling and a genuinely new inbound-
   email-IMAP capability were flagged during the (now-closed)
   `slua-tier2-tables` fork review as real but out of scope for a
