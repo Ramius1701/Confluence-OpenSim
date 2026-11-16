@@ -72,9 +72,10 @@ namespace OpenSim.Services.HypergridService
 
         protected static string m_GridName;
         protected static string m_HomeURI;
-        // [Confluence] Tranquillity #301/#319: the grid's public address for the NAT fallback in VerifyClient, looked
+        // [Confluence] Tranquillity #301/#319/#387: the grid's public address for the NAT fallback in VerifyClient, looked
         // up again every [UserAgentService] ExternalIPRefreshMinutes (dynamic DNS heals without a restart);
-        // [UserAgentService] PublicAddress can name it when this machine resolves its own gatekeeper name privately.
+        // [UserAgentService] PublicAddress can name it when this machine resolves its own gatekeeper name privately;
+        // #387: [UserAgentService] DnsServers has that name asked of those DNS servers first, so the hosts file does not decide.
         protected static ExternalIPResolver m_ExternalIPResolver;
         protected static string m_MyExternalIP => m_ExternalIPResolver?.CurrentIP ?? string.Empty;
 
