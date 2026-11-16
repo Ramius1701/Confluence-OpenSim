@@ -29804,4 +29804,4 @@ Release build of `c21104789a` (0 warnings, 0 errors); 212 binaries differed from
 folder. Copied by pattern with the move-aside script (old files in `Backups\dll-20261117-donor`): 3392 files,
 md5-verified 301/301 in the grid root and all 15 region folders, 0 problems. Robust must be relaunched (it holds the
 #382 and #387 code in its old process) before the regions start. The deploy script now lives at
-`S:\ClaudeBackup	ools\Deploy-Casperia-MoveAside.ps1`; the 2026-10-25 copy in `Confluence-Shared	ools` is gone.
+`S:\ClaudeBackup\tools\Deploy-Casperia-MoveAside.ps1`; the 2026-10-25 copy in `Confluence-Shared\tools` is gone.
