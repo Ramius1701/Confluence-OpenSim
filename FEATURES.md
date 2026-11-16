@@ -769,6 +769,11 @@ not scientifically simulated weather.
   changed - a restart or crash can't leave a storm sky behind (it used to, until someone typed `weather clear`).
   Sunny gives the normal sky back (it used to keep the storm's). Parcels with their own environment, and avatars
   given one by a script, are left alone.
+- **Aurora Viewer draws the weather** (0.7.0, 2026-11-17): each weather sky also carries what Aurora Viewer draws for
+  it (rain or snow, how hard, wind, thunder), in Aurora's own format. Aurora users who tick "Let regions set the
+  weather" get its rain and snow (kept out from under roofs), puddles, lying snow, footprints, lightning and their
+  sounds, fading with the module's sky; every other viewer sees what it did before. Settings in
+  `[Weather.Sky.<Weather>]` (`AuroraAmount`, `AuroraThunder`, ...), off with `[Weather] AuroraWeather = false`.
 - A region-wide `"WEATHER|<Kind>"` broadcast on a configurable channel
   lets independent scripted objects (fireplaces, seasonal clothing,
   umbrellas) react to weather without being part of the module.

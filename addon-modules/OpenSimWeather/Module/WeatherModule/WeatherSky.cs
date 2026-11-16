@@ -53,6 +53,8 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         public float DistanceScale = 1f;
         /// <summary>How much of the stars the clouds hide, 0..1.</summary>
         public float StarDim;
+        /// <summary>[Confluence] What Aurora Viewer draws for this weather (<see cref="AuroraWeather"/>); null: nothing.</summary>
+        public AuroraWeather? Aurora;
 
         /// <summary>An effect that changes nothing.</summary>
         public static SkyEffect Neutral => new SkyEffect();
@@ -85,6 +87,7 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                 DensityScale = L(a.DensityScale, b.DensityScale, t),
                 DistanceScale = L(a.DistanceScale, b.DistanceScale, t),
                 StarDim = L(a.StarDim, b.StarDim, t),
+                Aurora = AuroraWeather.Lerp(a.Aurora, b.Aurora, t),
             };
 
             // The cloud shape of a neutral effect is no shape at all: take the other's, not a blend toward a default.
@@ -141,6 +144,9 @@ namespace OpenSim.Region.OptionalModules.World.Weather
             sky.distance_multiplier *= DistanceScale;
 
             sky.star_brightness *= 1f - Math.Clamp(StarDim, 0f, 1f);
+
+            // last, so that nothing changes the marked numbers after it
+            Aurora?.WriteTo(sky);
         }
 
         /// <summary>A colour <paramref name="amount"/> of the way to the grey of the same brightness.</summary>
@@ -156,8 +162,13 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         public static SkyEffect For(string weather, IConfig overrides = null)
         {
             SkyEffect e = DefaultFor(weather);
-            if (e == null || overrides == null)
+            if (e == null)
                 return e;
+            e.Aurora = AuroraWeather.DefaultFor(weather);
+            if (overrides == null)
+                return e;
+            if (e.Aurora.HasValue)
+                e.Aurora = AuroraWeather.Override(e.Aurora.Value, overrides);
 
             e.CloudCover = Math.Clamp(overrides.GetFloat("CloudCover", e.CloudCover), 0f, 1f);
             e.CloudScale = Math.Max(0f, overrides.GetFloat("CloudScale", e.CloudScale));
@@ -230,5 +241,260 @@ namespace OpenSim.Region.OptionalModules.World.Weather
                     return null;
             }
         }
+    }
+
+    /// <summary>
+    /// [Confluence] Aurora Viewer's weather (Aurora Weather), as a region sets it: rain or snow, how hard, wind, thunder.
+    /// </summary>
+    /// <remarks>
+    /// Aurora Viewer draws its own rain, snow, puddles, lying snow, lightning and northern lights. With its "Let regions
+    /// set the weather" ticked, it takes them from the region's EEP skies: a code carried in the lowest 12 bits of five
+    /// of each sky's numbers (a change of about a thousandth of the value; no viewer shows a difference). Each sky the
+    /// weather module sends is marked here, so an Aurora user sees the module's weather drawn by the viewer itself, and
+    /// every other viewer sees what it saw before.
+    ///
+    /// The format is Aurora's (crates/aurora-viewer/src/weather/region.rs, SkyWeather::bits, and sky_mark.rs, at
+    /// github.com/Aurora-Viewer/Aurora-Viewer). This is an implementation of that format written from its description,
+    /// not a copy of its code; WeatherReworkTests holds codes Aurora's own encoder produced, so a change on either side
+    /// shows as a failed test. Only the sky's numbers are marked: the server sends a day's skies without their names,
+    /// so a code on a name would not reach the viewer.
+    /// </remarks>
+    public struct AuroraWeather
+    {
+        /// <summary>Snow; rain otherwise.</summary>
+        public bool Snow;
+        /// <summary>The chance it falls in one of Aurora's periods, 0..1. The module sets 1: it decides when itself.</summary>
+        public float Chance;
+        /// <summary>How hard it falls, 0..1: Aurora picks between these each period (equal: exactly this).</summary>
+        public float AmountLow, AmountHigh;
+        /// <summary>The wind's lulls and gusts, 0..1.</summary>
+        public float WindLow, WindHigh;
+        /// <summary>Where the wind comes from (degrees); null: the region's own wind.</summary>
+        public float? WindFrom;
+        /// <summary>Thunder and lightning (Aurora needs rain of 0.4 or more).</summary>
+        public bool Thunder;
+        /// <summary>How often lightning strikes, 0 seldom .. 1 often (in thirds).</summary>
+        public float Strikes;
+
+        private const string Alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford's base 32
+        private const int SkyDataBits = 32;  // a sky's code without northern lights
+        private const ulong SkyVersion = 2;
+        private const int MarkData = 45;     // what a mark holds before its check
+        private const int MarkPart = 12;     // bits in each of five numbers
+        private const int MarkFields = 5;
+        private const int MarkCheck = MarkFields * MarkPart - MarkData;
+        private const ulong MarkSalt = 0x5EED_A0B0_7A11_0C0D;
+        private const ulong Golden = 0x9E37_79B9_7F4A_7C15;
+        private const uint PartMask = (1u << MarkPart) - 1;
+        // a number this small (zero, subnormals) carries no part of a mark
+        private const uint Smallest = 0x0080_0000 + (2u << MarkPart);
+
+        /// <summary>The code's 32 bits, low bits first, as Aurora lays them out.</summary>
+        public ulong Bits()
+        {
+            ulong v = 0;
+            int at = 0;
+            void Put(ulong value, int width) { v |= (value & ((1UL << width) - 1)) << at; at += width; }
+
+            Put(SkyVersion, 2);
+            Put(Snow ? 1UL : 0UL, 1);
+            Put(Level(Chance, 31), 5);
+            Put(Level(Math.Min(AmountLow, AmountHigh), 15), 4);
+            Put(Level(Math.Max(AmountLow, AmountHigh), 15), 4);
+            Put(Level(Math.Min(WindLow, WindHigh), 15), 4);
+            Put(Level(Math.Max(WindLow, WindHigh), 15), 4);
+            ulong from = WindFrom.HasValue
+                ? 1 + ((ulong)MathF.Round(Euclid(WindFrom.Value, 360f) / 22.5f, MidpointRounding.AwayFromZero) % 16)
+                : 0;
+            Put(from, 5);
+            Put(Thunder ? 1UL : 0UL, 1);
+            Put(Level(Strikes, 3), 2);
+            return v;
+        }
+
+        /// <summary>The nine letters Aurora shows after a sky name's "~" (for the log and the tests).</summary>
+        public string Code()
+        {
+            const int len = 9;
+            ulong data = Bits();
+            ulong all = data | (Check(data, len * 5 - SkyDataBits) << SkyDataBits);
+            var c = new char[len];
+            for (int i = 0; i < len; i++)
+                c[i] = Alphabet[(int)((all >> ((len - 1 - i) * 5)) & 31)];
+            return new string(c);
+        }
+
+        /// <summary>
+        /// Mark <paramref name="sky"/>'s numbers with this weather. False when the sky has too few numbers to carry it
+        /// (Aurora then sees no weather in it).
+        /// </summary>
+        public bool WriteTo(SkyData sky)
+        {
+            if (sky == null)
+                return false;
+            ulong data = Bits();
+            ulong all = data | (MarkCheckOf(data) << MarkData);
+            return Carry(sky, all);
+        }
+
+        /// <summary>The weather marked in <paramref name="sky"/>, if any (for the tests and the log).</summary>
+        public static AuroraWeather? ReadFrom(SkyData sky)
+        {
+            if (sky == null)
+                return null;
+            float[] values = CarrierValues(sky, out int[] which);
+            if (which == null)
+                return null;
+            ulong all = 0;
+            for (int i = 0; i < MarkFields; i++)
+                all |= (ulong)(BitConverter.SingleToUInt32Bits(values[which[i]]) & PartMask) << (i * MarkPart);
+            ulong data = all & ((1UL << MarkData) - 1);
+            if (all >> MarkData != MarkCheckOf(data))
+                return null;
+            if ((data & 3) != SkyVersion || data >> SkyDataBits != 0)
+                return null;
+            int at = 2;
+            ulong Take(int width) { ulong o = (data >> at) & ((1UL << width) - 1); at += width; return o; }
+            var w = new AuroraWeather { Snow = Take(1) == 1, Chance = Take(5) / 31f };
+            w.AmountLow = Take(4) / 15f;
+            w.AmountHigh = Take(4) / 15f;
+            w.WindLow = Take(4) / 15f;
+            w.WindHigh = Take(4) / 15f;
+            ulong from = Take(5);
+            w.WindFrom = from >= 1 && from <= 16 ? (from - 1) * 22.5f : null;
+            w.Thunder = Take(1) == 1;
+            w.Strikes = Take(2) / 3f;
+            return w;
+        }
+
+        // The numbers that may carry a mark, in Aurora's order (sky_mark.rs FIELDS): the first five that are not
+        // tiny take a part each. The last is sent only when the sky has a reflection probe ambiance.
+        private static float[] CarrierValues(SkyData sky, out int[] which)
+        {
+            float[] v =
+            {
+                sky.cloud_scale, sky.cloud_shadow, sky.dome_offset, sky.gamma, sky.max_y, sky.moon_scale,
+                sky.sun_arc_radians, sky.sun_scale, sky.reflectionProbeAmbiance,
+            };
+            var picked = new int[MarkFields];
+            int n = 0;
+            for (int i = 0; i < v.Length && n < MarkFields; i++)
+            {
+                if (i == 8 && !sky.HasRefProbe)
+                    continue;
+                if (float.IsFinite(v[i]) && (BitConverter.SingleToUInt32Bits(v[i]) & 0x7FFF_FFFF) >= Smallest)
+                    picked[n++] = i;
+            }
+            which = n == MarkFields ? picked : null;
+            return v;
+        }
+
+        private static bool Carry(SkyData sky, ulong all)
+        {
+            float[] v = CarrierValues(sky, out int[] which);
+            if (which == null)
+                return false;
+            for (int i = 0; i < MarkFields; i++)
+            {
+                float m = Marked(v[which[i]], (uint)(all >> (i * MarkPart)) & PartMask);
+                switch (which[i])
+                {
+                    case 0: sky.cloud_scale = m; break;
+                    case 1: sky.cloud_shadow = m; break;
+                    case 2: sky.dome_offset = m; break;
+                    case 3: sky.gamma = m; break;
+                    case 4: sky.max_y = m; break;
+                    case 5: sky.moon_scale = m; break;
+                    case 6: sky.sun_arc_radians = m; break;
+                    case 7: sky.sun_scale = m; break;
+                    case 8: sky.reflectionProbeAmbiance = m; break;
+                }
+            }
+            return true;
+        }
+
+        // v with part in its low bits, its size never above v's (a value at a maximum stays within it).
+        private static float Marked(float v, uint part)
+        {
+            uint bits = BitConverter.SingleToUInt32Bits(v);
+            uint sign = bits & 0x8000_0000;
+            uint mag = bits & 0x7FFF_FFFF;
+            uint baseBits = mag & ~PartMask;
+            if ((baseBits | part) > mag)
+                baseBits -= 1u << MarkPart;
+            return BitConverter.UInt32BitsToSingle(sign | baseBits | part);
+        }
+
+        private static ulong MarkCheckOf(ulong data) => unchecked((data ^ MarkSalt) * Golden) >> (64 - MarkCheck);
+
+        private static ulong Check(ulong data, int width) => unchecked(data * Golden) >> (64 - width);
+
+        private static ulong Level(float v, ulong steps)
+            => (ulong)MathF.Round(Math.Clamp(v, 0f, 1f) * steps, MidpointRounding.AwayFromZero);
+
+        private static float Euclid(float a, float m)
+        {
+            float r = a % m;
+            return r < 0 ? r + m : r;
+        }
+
+        /// <summary>The weather <paramref name="t"/> of the way from <paramref name="a"/> to <paramref name="b"/> (null: nothing falling).</summary>
+        public static AuroraWeather? Lerp(AuroraWeather? a, AuroraWeather? b, float t)
+        {
+            if (a == null && b == null)
+                return null;
+            t = Math.Clamp(t, 0f, 1f);
+            // a side with no weather is the other's kind, with nothing falling and no wind
+            AuroraWeather x = a ?? Calm(b.Value), y = b ?? Calm(a.Value);
+            AuroraWeather near = t < 0.5f ? x : y;
+            return new AuroraWeather
+            {
+                Snow = near.Snow,
+                Chance = Math.Max(x.Chance, y.Chance),
+                AmountLow = x.AmountLow + (y.AmountLow - x.AmountLow) * t,
+                AmountHigh = x.AmountHigh + (y.AmountHigh - x.AmountHigh) * t,
+                WindLow = x.WindLow + (y.WindLow - x.WindLow) * t,
+                WindHigh = x.WindHigh + (y.WindHigh - x.WindHigh) * t,
+                WindFrom = near.WindFrom,
+                Thunder = near.Thunder,
+                Strikes = near.Strikes,
+            };
+        }
+
+        private static AuroraWeather Calm(AuroraWeather w)
+            => new AuroraWeather { Snow = w.Snow, Chance = w.Chance, WindFrom = w.WindFrom, Strikes = w.Strikes };
+
+        /// <summary>The built-in Aurora weather of one of the module's weathers; null for one with nothing falling.</summary>
+        public static AuroraWeather? DefaultFor(string weather)
+        {
+            switch ((weather ?? string.Empty).ToLowerInvariant())
+            {
+                case "rain": return Fixed(false, 0.55f, 0.15f, 0.4f, false);
+                case "storm": return Fixed(false, 0.9f, 0.45f, 0.9f, true);
+                case "snow": return Fixed(true, 0.5f, 0.1f, 0.3f, false);
+                case "blizzard": return Fixed(true, 0.95f, 0.7f, 1f, false);
+                default: return null;
+            }
+        }
+
+        /// <summary><paramref name="w"/> with any Aurora keys an ini section sets over it.</summary>
+        public static AuroraWeather Override(AuroraWeather w, IConfig c)
+        {
+            if (c == null)
+                return w;
+            float amount = Math.Clamp(c.GetFloat("AuroraAmount", w.AmountHigh), 0f, 1f);
+            w.AmountLow = w.AmountHigh = amount;
+            w.WindLow = Math.Clamp(c.GetFloat("AuroraWindLow", w.WindLow), 0f, 1f);
+            w.WindHigh = Math.Clamp(c.GetFloat("AuroraWindHigh", w.WindHigh), 0f, 1f);
+            w.Thunder = c.GetBoolean("AuroraThunder", w.Thunder);
+            w.Strikes = Math.Clamp(c.GetFloat("AuroraStrikes", w.Strikes), 0f, 1f);
+            return w;
+        }
+
+        private static AuroraWeather Fixed(bool snow, float amount, float windLow, float windHigh, bool thunder) => new AuroraWeather
+        {
+            Snow = snow, Chance = 1f, AmountLow = amount, AmountHigh = amount,
+            WindLow = windLow, WindHigh = windHigh, WindFrom = null, Thunder = thunder, Strikes = 2f / 3f,
+        };
     }
 }

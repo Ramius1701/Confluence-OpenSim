@@ -183,6 +183,10 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       you are in it - flakes or drops fall past you and reach the ground all around, on a 1024 m region too; walking
       or flying a distance, it keeps up within a few seconds; under a roof or indoors there is none; standing on a
       raised platform it falls to the platform. Report your viewer's particle setting if it looks thin.
+- [ ] 8.11 Aurora weather (0.7.0, 2026-11-17), on Sandbox: in Aurora Viewer tick "Let regions set the weather", then
+      `weather rain`, `weather storm`, `weather snow`, `weather blizzard`, `weather sunny` in turn. Aurora draws each
+      (storm: thunder and lightning; snow: lying snow), fading in and out with the sky over about two minutes, and
+      a second Aurora user there sees the same. In Firestorm the sky looks as it did before 0.7.0.
 - [ ] 8.10 Grid status in viewers (2026-11-08): after Robust and the regions restart with `GridStatus` and
       `GridStatusRSS` set, Firestorm's and Aurora's Grid Status windows show entries ("grid
       services started", news). Stopping a region shows a "Region ... outage" entry within about two minutes

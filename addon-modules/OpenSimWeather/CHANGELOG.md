@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 - Confluence: Aurora Viewer draws the weather (2026-11-17)
+
+- Each weather sky now also carries what Aurora Viewer draws for it (`AuroraWeather`, in WeatherSky.cs): rain or snow,
+  how hard, the wind's lulls and gusts, thunder and how often lightning strikes. Aurora users who tick "Let regions
+  set the weather" get Aurora's own rain and snow (kept out from under roofs), puddles and wet ground, lying snow,
+  footprints, lightning and their sounds, at the module's weather and fading with its sky. Every other viewer sees
+  what it saw before.
+- It rides in the lowest 12 bits of five of each sky's numbers (Aurora's format; the server sends skies without
+  their names). A number moves by a thousandth of itself at most and never grows.
+- Built in: rain 0.55, storm 0.9 with thunder, snow 0.5, blizzard 0.95; the wind's direction is the region's.
+  `[Weather.Sky.<Weather>]` takes `AuroraAmount`, `AuroraWindLow`, `AuroraWindHigh`, `AuroraThunder` and
+  `AuroraStrikes`; `[Weather] AuroraWeather = false` turns it off. Needs `AdjustEnvironment = true` (the weather sky).
+- Aurora users also still see the module's particles, flashes and thunder, which every viewer sees.
+
 ## 0.6.2 - Confluence: rain and snow fall down (2026-10-19)
 
 - 0.6.0 and 0.6.1 sent the particles up: the cone was given as angles near pi round the emitter's upright +Z, meant as

@@ -480,4 +480,93 @@ public class WeatherReworkTests
         Assert.Equal("", RegionWeatherKeys.NormalizeHours("soon"));
         Assert.Equal("0.25", RegionWeatherKeys.NormalizeHours("0.1"));
     }
+
+    // [Confluence] Aurora Weather (2026-11-17). Each weather sky also carries what Aurora Viewer draws for it, in the
+    // lowest bits of five of its numbers. The codes below were made by Aurora's own encoder (its SkyWeather::code, at
+    // Aurora-Viewer origin/main 8998e9b9, 2026-11-17) for the same weathers: a change on either side fails here.
+
+    [Theory]
+    [InlineData("rain", "ADY06527T")]
+    [InlineData("storm", "VD2GEFVQT")]
+    [InlineData("snow", "63205527Y")]
+    [InlineData("blizzard", "MTY0FQVQY")]
+    public void EachWeathersAuroraCodeIsTheOneAurorasOwnEncoderMakes(string weather, string aurora)
+    {
+        Assert.Equal(aurora, AuroraWeather.DefaultFor(weather).Value.Code());
+        Assert.Equal(aurora, SkyEffect.For(weather).Aurora.Value.Code());
+    }
+
+    [Fact]
+    public void AuroraCodesMatchAurorasEncoderAtTheEdgesToo()
+    {
+        static AuroraWeather W(bool snow, float lo, float hi, float wl, float wh, float? from, bool thunder, float strikes, float chance)
+            => new() { Snow = snow, Chance = chance, AmountLow = lo, AmountHigh = hi, WindLow = wl, WindHigh = wh, WindFrom = from, Thunder = thunder, Strikes = strikes };
+
+        // ranges given backwards, a direction below zero, values half a step apart
+        Assert.Equal("C76RE7CM2", W(false, 0.1f, 0.7f, 0.9f, 0.2f, -33.75f, true, 0.5f, 0.5f).Code());
+        Assert.Equal("4BG6G1W06", W(true, 0f, 1f, 0f, 0f, 270f, false, 0f, 0f).Code());
+        Assert.Equal("1RB1E1002", W(false, 0f, 0.5333334f, 0.0333f, 0.9666f, 11.25f, false, 1f, 0.0161f).Code());
+    }
+
+    [Theory]
+    [InlineData("rain")]
+    [InlineData("storm")]
+    [InlineData("snow")]
+    [InlineData("blizzard")]
+    public void AWeatherSkyReachesTheViewerMarkedWithItsAuroraWeather(string weather)
+    {
+        // the module's path: the region's environment, the weather applied to each sky, stored, loaded back, sent
+        ViewerEnvironment env = RecordingEnvironment.NormalSky().Clone();
+        foreach (SkyData sky in env.SkyFrames)
+            SkyEffect.For(weather).ApplyTo(sky);
+        ViewerEnvironment loaded = ViewerEnvironment.FromOSDString(ViewerEnvironment.ToOSDString(env));
+        var sent = (OSDMap)OSDParser.DeserializeLLSDXml(loaded.ToCapBytes(UUID.Random(), -1));
+        OSDMap frames = (OSDMap)((OSDMap)((OSDMap)sent["environment"])["day_cycle"])["frames"];
+
+        int skies = 0;
+        foreach (OSD frame in frames.Values)
+        {
+            var map = (OSDMap)frame;
+            if (map["type"].AsString() != "sky")
+                continue;
+            var sky = new SkyData();
+            sky.FromOSD("sent", map);
+            AuroraWeather? read = AuroraWeather.ReadFrom(sky);
+            Assert.True(read.HasValue, weather + ": the sky the viewer gets carries no Aurora weather");
+            Assert.Equal(AuroraWeather.DefaultFor(weather).Value.Code(), read.Value.Code());
+            skies++;
+        }
+        Assert.True(skies > 0);
+    }
+
+    [Fact]
+    public void AuroraWeatherFadesWithTheSkyAndTheMarkChangesTheNumbersByAThousandthAtMost()
+    {
+        SkyEffect half = SkyEffect.Lerp(null, SkyEffect.For("storm"), 0.5f);
+        AuroraWeather storm = AuroraWeather.DefaultFor("storm").Value;
+        Assert.Equal(storm.AmountHigh * 0.5f, half.Aurora.Value.AmountHigh, 3);
+        Assert.True(half.Aurora.Value.Thunder);                       // the nearer side's: the storm, at one half
+        Assert.Null(SkyEffect.Lerp(null, null, 0.5f).Aurora);
+
+        SkyData plain = new SkyData(), marked = new SkyData();
+        Assert.True(storm.WriteTo(marked));
+        foreach ((float a, float b) in new[] { (plain.cloud_scale, marked.cloud_scale), (plain.cloud_shadow, marked.cloud_shadow),
+                     (plain.dome_offset, marked.dome_offset), (plain.gamma, marked.gamma), (plain.max_y, marked.max_y) })
+        {
+            Assert.True(b <= a, "a mark made a number larger");
+            Assert.True(a - b <= Math.Abs(a) * 0.001f, $"a mark moved {a} to {b}");
+        }
+    }
+
+    [Fact]
+    public void AuroraKeysInASkySectionChangeItsAuroraWeather()
+    {
+        var source = new IniConfigSource();
+        IConfig storm = source.AddConfig("Weather.Sky.Storm");
+        storm.Set("AuroraAmount", "0.6");
+        storm.Set("AuroraThunder", "false");
+        AuroraWeather w = SkyEffect.For("storm", storm).Aurora.Value;
+        Assert.Equal(0.6f, w.AmountHigh);
+        Assert.False(w.Thunder);
+    }
 }

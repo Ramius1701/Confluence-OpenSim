@@ -29805,3 +29805,27 @@ folder. Copied by pattern with the move-aside script (old files in `Backups\dll-
 md5-verified 301/301 in the grid root and all 15 region folders, 0 problems. Robust must be relaunched (it holds the
 #382 and #387 code in its old process) before the regions start. The deploy script now lives at
 `S:\ClaudeBackup\tools\Deploy-Casperia-MoveAside.ps1`; the 2026-10-25 copy in `Confluence-Shared\tools` is gone.
+
+## OpenSimWeather 0.7.0: Aurora Viewer draws the weather (2026-11-17)
+
+Aurora Viewer (0.9.11-beta) draws its own rain, snow, puddles, lying snow, footprints, lightning and northern lights
+since 2026-11-13 (its #2410). With "Let regions set the weather" ticked (off by default) it reads a region's weather
+from the EEP skies: a 32-bit code (rain/snow, chance, amount range, wind lulls/gusts, wind direction, thunder,
+strikes) with a 15-bit check, carried in the lowest 12 bits of the first five usable sky numbers in its order
+(cloud_scale, cloud_shadow, dome_offset, gamma, max_y, moon_scale, sun_arc_radians, sun_scale,
+reflection_probe_ambiance), and also as `~` + nine letters on a sky's name. Our server sends a day's skies without
+their names, so only the numbers carry it here.
+
+The module now marks each weather sky it gives avatars (`AuroraWeather` in WeatherSky.cs, the last step of
+`SkyEffect.ApplyTo`, faded with the sky in `SkyEffect.Lerp`): rain 0.55, storm 0.9 with thunder, snow 0.5, blizzard
+0.95, the region's wind direction, chance 1 (the module decides when). Written from the format, not copied (Aurora is
+GPLv3). Aurora refetches the environment on RegionInfo, which the module's refresh already sends, and the
+ExtEnvironment answer is the avatar's weather override, so no server change was needed.
+
+Checked against Aurora's own code (its region.rs and sky_mark.rs at origin/main 8998e9b9, built standalone in the
+scratchpad): seven codes, the four built-in weathers and three edge cases, match letter for letter; module skies sent
+through store, load and ToCapBytes decode in Aurora's reader as the weather put in, mid-fade too. WeatherReworkTests
+holds those codes and the round trip (14 new cases; 54 weather tests pass). Full Phlox suite 6715 passed, 0 failed,
+2 skipped. Live has `AdjustEnvironment = true`, so the marks reach Aurora users wherever weather is on. Not deployed:
+the owner checks it in Aurora on Sandbox first (TESTING 8.11). Aurora users still also see the module's particles,
+flashes and thunder.
