@@ -29796,3 +29796,12 @@ dataserver tests at 10-30 s; rerun alone, clean). All Jolt projects pass (Jolt.T
 Prim 996, Vehicle 878, Vehicles 820, Backend 86, Diagnostics 18). Not deployed; #382 is also still undeployed. Next
 review starts from origin/master `9d00a55552`, tranquillity/develop `1f93669fc8`; watch #386-#392 for changes before
 they merge (re-check the ported ones against what lands).
+
+## Deployed c21104789a: Tranquillity #382 and #387-#391 (2026-11-17)
+
+The six running regions had been stopped cleanly at 03:24 (Robust still up, on its 2026-11-14 process). Fresh
+Release build of `c21104789a` (0 warnings, 0 errors); 212 binaries differed from live in the root and every region
+folder. Copied by pattern with the move-aside script (old files in `Backups\dll-20261117-donor`): 3392 files,
+md5-verified 301/301 in the grid root and all 15 region folders, 0 problems. Robust must be relaunched (it holds the
+#382 and #387 code in its old process) before the regions start. The deploy script now lives at
+`S:\ClaudeBackup	ools\Deploy-Casperia-MoveAside.ps1`; the 2026-10-25 copy in `Confluence-Shared	ools` is gone.
