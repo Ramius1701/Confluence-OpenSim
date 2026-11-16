@@ -29767,3 +29767,32 @@ theirs to clear), an old 2025 Tranquillity grid install under `S:\Opensim` (13.8
 AutoBackup sets (the owner cleared the unneeded ones) and a Continuum test grid (1.5 GB). Removed with the owner's
 go-ahead: `S:\tmp\phlox-eval` (8.1 GB, a Tranquillity evaluation build whose HEAD is in our `tranquillity` remote).
 With that and the owner's AutoBackup cleanup, S: went from 28 GB to 52 GB free.
+
+## Donor check 2026-11-16: Tranquillity #387-#391 ported from open PRs
+
+opensim-master: nothing new since `9d00a55552`; open PRs unchanged (#72 still waits). Tranquillity develop
+`1f93669fc8`: merged #384 (login bake reads the Current Outfit) and #383 (the #377 backport to release/v1.1) - both
+change their ServerSideBaking module, which we never took (as with #377), so nothing to port.
+
+Ported at the owner's request from open PRs, ahead of their merge:
+- #388-#391 (Jolt), cherry-picked with `-x`: link/unlink while a linkset rebuilds; the viewer camera's collision ray
+  answered as ubODE does (`[Jolt] CameraRayBudgetMs`, default 30); sitting on a part with no sit target seats on the
+  clicked surface (`[Jolt] PhysicsSit`, default true); `llGetAccel` for physical prims; slow physics steps logged at
+  once (not a region's first ten); a physical body kept parked while its object waits past a void edge. One conflict
+  in JoltScene.cs (both sides added members; kept both). The new JoltSitAvatar.cs needs no prebuild (Jolt globs).
+- #387 as one adapted commit `cea9206d64`: `[UserAgentService] DnsServers` asks named DNS servers for the
+  gatekeeper's public name first; a PublicAddress IP literal is used with no lookup; Robust warns at start when the
+  address it settles on is private, loopback or link-local. Converted to log4net (a small LogWarning/LogInformation
+  shim in ExternalIPResolver.cs); `DnsAddressQuery.ParseServerList` now serves `[ViewerAddress] DnsServers` too.
+  Their new tests are in `ExternalIPResolverDnsServerTests.cs`; our older resolver tests kept as they were. The
+  ini note is in `bin/Robust.HG.ini.example`. If Casperia's Robust resolves its own gatekeeper name to a LAN address,
+  expect the new private-address warning at start; it is informational.
+
+Not taken: #386 (RemoteAdmin restart loops over restartList - ours already does; the bug is only in their copy),
+#392 (their AIS module, which we do not have).
+
+Tests: full Phlox suite 6704 passed, 0 failed, 2 skipped (a first run alongside the live grid timed out 15+ bot and
+dataserver tests at 10-30 s; rerun alone, clean). All Jolt projects pass (Jolt.Tests 1200, Harness 804, Avatar 904,
+Prim 996, Vehicle 878, Vehicles 820, Backend 86, Diagnostics 18). Not deployed; #382 is also still undeployed. Next
+review starts from origin/master `9d00a55552`, tranquillity/develop `1f93669fc8`; watch #386-#392 for changes before
+they merge (re-check the ported ones against what lands).

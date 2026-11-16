@@ -252,6 +252,10 @@ Try these on a test region first.
       sphere and on a box, on one face and on `ALL_SIDES`, then turned off again; the viewer shows each change.
 - [ ] 11.7 Jolt with a mesh or sculpt object shaped like a box or sphere (Tranquillity #378): it collides with its
       real shape, not a native box or sphere.
+- [ ] 11.8 Jolt and Tranquillity #388-#391 (2026-11-16): the camera stops at a wall instead of passing through;
+      sit on a prim with no sit target and land on the clicked surface; `llGetAccel` in a falling physical prim
+      is not zero; push a physical ball off a region edge with no neighbour and it waits there, then comes back
+      when moved; link and unlink a moving physical linkset several times without errors in the log.
 
 ## 12. Open bugs that need a live reproduction
 

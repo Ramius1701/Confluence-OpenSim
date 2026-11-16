@@ -681,7 +681,10 @@ Movement and events behave as InWorldz/Halcyon's did (ported from Tranquillity, 
   ExternalIPRefreshMinutes` (default 30), so a dynamic DNS change heals
   without restarting Robust, and `[UserAgentService] PublicAddress` names
   it when the host resolves its own gatekeeper name to a LAN address. A
-  failed lookup warns instead of stopping Robust.
+  failed lookup warns instead of stopping Robust. `[UserAgentService]
+  DnsServers` (Tranquillity #387) asks named DNS servers for that name
+  first, so a hosts-file LAN entry and dynamic DNS can live together; Robust
+  warns at start when the address it settles on is private.
 - Avatar baking/"cloud avatar" recovery is active on Hypergrid arrivals
   as well as local logins (previously local-only).
 - A teleport (landmark, map click, or scripted `llTeleportAgent`)
@@ -824,6 +827,12 @@ hardcoded default:
   no longer takes places among the hits asked for (Tranquillity #294, both script engines).
 - **Jolt never cooks a mesh or sculpt part as a native box, sphere or cylinder** (Tranquillity #378,
   2026-11-08): a mesh or sculpt whose prim shape happens to look like a box keeps its real shape.
+- **Jolt matches ubODE in more places** (Tranquillity #388-#391, 2026-11-16): the viewer camera's collision ray
+  is answered, so the camera no longer passes through walls; sitting on a part with no sit target seats the avatar
+  on the clicked surface (`[Jolt] PhysicsSit`, default on); `llGetAccel` reports a physical prim's acceleration;
+  a physical object waiting past a region edge with no neighbour keeps its body parked instead of losing it; linking
+  or unlinking while a linkset rebuilds no longer races; a slow physics step is logged at once with what the region
+  held, skipping a region's first ten steps.
 
 ### Concierge (region greeter)
 
