@@ -29829,3 +29829,13 @@ holds those codes and the round trip (14 new cases; 54 weather tests pass). Full
 2 skipped. Live has `AdjustEnvironment = true`, so the marks reach Aurora users wherever weather is on. Not deployed:
 the owner checks it in Aurora on Sandbox first (TESTING 8.11). Aurora users still also see the module's particles,
 flashes and thunder.
+
+## Deployed 18b06d51ab: OpenSimWeather 0.7.0, Aurora weather (2026-11-17)
+
+Pushed e7fbc8a04f..18b06d51ab. The grid was down (it did not come back after the host's unclean shutdown at 12:25
+and the reboot at 14:25), so the deploy went out with nothing running: a fresh Release build, 212 binaries
+differing (non-deterministic rebuild output plus the weather DLL), copied by pattern with the move-aside script
+(old files in Backups/dll-20261117-deploy), 3393 files. Verify: 301/301 in the grid root and 14 regions; Sol_Sector
+first read 300/301 (OpenSim.Data.PGSQL.dll, a read during a slow write), identical on a second check. The copy ran
+much slower than on 2026-11-08. OpenSimWeather.Module.dll 0.7.0 is in every folder. Waiting on the owner: start the
+grid, then TESTING 8.11 in Aurora on Sandbox.
