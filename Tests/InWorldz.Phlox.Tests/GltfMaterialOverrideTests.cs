@@ -25,10 +25,18 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// [Confluence] From OpenSim-Tranquillity #402 (cfb213d044), moved into the Phlox test project.
+
 using OpenMetaverse.StructuredData;
 using OpenSim.Tests.Common;
 
-namespace OpenSim.Region.Framework.Scenes.Tests
+using Xunit;
+using OpenSim.Region.Framework.Scenes;
+
+using OpenMetaverse;
+using OpenSim.Framework;
+using System.Collections.Generic;
+namespace InWorldz.Phlox.Tests
 {
     /// <summary>
     /// GltfMaterialOverride: the per-face glTF override store both script engines write through. The stored data must
@@ -78,28 +86,28 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             var map = (OSDMap)OSDParser.DeserializeLLSDNotation(ovr.ToData());
 
             var tex = (OSDArray)map["tex"];
-            tex.Count.Should().Be(2);
-            tex[0].Type.Should().Be(OSDType.Unknown);
-            tex[1].AsUUID().Should().Be(Normal);
+            Assert.Equal(2, tex.Count);
+            Assert.Equal(OSDType.Unknown, tex[0].Type);
+            Assert.Equal(Normal, tex[1].AsUUID());
 
             var ti = (OSDMap)((OSDArray)map["ti"])[0];
-            ((OSDArray)ti["s"])[0].AsReal().Should().Be(2);
-            ((OSDArray)ti["s"])[1].AsReal().Should().Be(3);
-            ((OSDArray)ti["o"])[0].AsReal().Should().Be(0.25);
-            ((OSDArray)ti["o"])[1].AsReal().Should().Be(-0.5);
-            ti["r"].AsReal().Should().Be(1.5);
+            Assert.Equal(2, ((OSDArray)ti["s"])[0].AsReal());
+            Assert.Equal(3, ((OSDArray)ti["s"])[1].AsReal());
+            Assert.Equal(0.25, ((OSDArray)ti["o"])[0].AsReal());
+            Assert.Equal(-0.5, ((OSDArray)ti["o"])[1].AsReal());
+            Assert.Equal(1.5, ti["r"].AsReal());
 
-            ((OSDArray)map["bc"]).Select(o => o.AsReal()).Should().Equal(1, 0, 0, 0.5);
-            ((OSDArray)map["ec"]).Select(o => o.AsReal()).Should().Equal(0, 1, 0);
-            map["mf"].Type.Should().Be(OSDType.Real);
-            map["mf"].AsReal().Should().Be(0.25);
-            map["rf"].AsReal().Should().Be(0.75);
-            map["am"].Type.Should().Be(OSDType.Integer);
-            map["am"].AsInteger().Should().Be(2);
-            map["ac"].AsReal().Should().BeApproximately(0.3, 1e-6);
-            map["ds"].Type.Should().Be(OSDType.Boolean);
-            map["ds"].AsBoolean().Should().BeTrue();
-            map.Keys.Should().BeEquivalentTo(new[] { "tex", "ti", "bc", "ec", "mf", "rf", "am", "ac", "ds" });
+            Assert.Equal(new double[] { 1, 0, 0, 0.5 }, ((OSDArray)map["bc"]).Select(o => o.AsReal()));
+            Assert.Equal(new double[] { 0, 1, 0 }, ((OSDArray)map["ec"]).Select(o => o.AsReal()));
+            Assert.Equal(OSDType.Real, map["mf"].Type);
+            Assert.Equal(0.25, map["mf"].AsReal());
+            Assert.Equal(0.75, map["rf"].AsReal());
+            Assert.Equal(OSDType.Integer, map["am"].Type);
+            Assert.Equal(2, map["am"].AsInteger());
+            Assert.Equal(0.3, map["ac"].AsReal(), 1e-6);
+            Assert.Equal(OSDType.Boolean, map["ds"].Type);
+            Assert.True(map["ds"].AsBoolean());
+            Assert.Equivalent(new[] { "tex", "ti", "bc", "ec", "mf", "rf", "am", "ac", "ds" }, map.Keys);
         }
 
         [Fact]
@@ -114,15 +122,15 @@ namespace OpenSim.Region.Framework.Scenes.Tests
 
             GltfMaterialOverride back = GltfMaterialOverride.FromData(ovr.ToData());
 
-            back.GetTexture(GltfMaterialOverride.SLOT_EMISSIVE).Should().Be(Emissive);
-            back.GetTexture(GltfMaterialOverride.SLOT_BASE_COLOR).Should().BeNull();
-            back.GetRotation(GltfMaterialOverride.SLOT_NORMAL).Should().Be(0.5f);
-            back.GetScale(GltfMaterialOverride.SLOT_NORMAL).Should().BeNull();
-            back.RoughnessFactor.Should().BeApproximately(0.2f, 1e-6f);
-            back.MetallicFactor.Should().BeNull();
-            back.DoubleSided.Should().BeFalse();
-            back.BaseColor.Should().BeNull();
-            back.ToData().Should().Be(ovr.ToData());
+            Assert.Equal(Emissive, back.GetTexture(GltfMaterialOverride.SLOT_EMISSIVE));
+            Assert.Null(back.GetTexture(GltfMaterialOverride.SLOT_BASE_COLOR));
+            Assert.Equal(0.5f, back.GetRotation(GltfMaterialOverride.SLOT_NORMAL));
+            Assert.Null(back.GetScale(GltfMaterialOverride.SLOT_NORMAL));
+            Assert.Equal(0.2, (double)back.RoughnessFactor, 1e-6);
+            Assert.Null(back.MetallicFactor);
+            Assert.False(back.DoubleSided);
+            Assert.Null(back.BaseColor);
+            Assert.Equal(ovr.ToData(), back.ToData());
         }
 
         [Fact]
@@ -134,14 +142,14 @@ namespace OpenSim.Region.Framework.Scenes.Tests
 
             var map = (OSDMap)OSDParser.DeserializeLLSDNotation(ovr.ToData());
 
-            ((OSDArray)map["bc"]).Select(o => o.AsReal()).Should().Equal(1, 1, 1, 0.4);
+            Assert.Equal(new double[] { 1, 1, 1, 0.4 }, ((OSDArray)map["bc"]).Select(o => o.AsReal()));
         }
 
         [Fact]
         public void NothingOverriddenStoresNothing()
         {
             TestHelpers.InMethod();
-            new GltfMaterialOverride().ToData().Should().BeNull();
+            Assert.Null(new GltfMaterialOverride().ToData());
         }
 
         [Fact]
@@ -154,15 +162,15 @@ namespace OpenSim.Region.Framework.Scenes.Tests
 
             GltfMaterialOverride ovr = GltfMaterialOverride.FromData(data);
 
-            ovr.BaseColor.Should().Be(new Vector3(0.5f, 0.25f, 1f));
-            ovr.BaseAlpha.Should().Be(1f);
-            ovr.MetallicFactor.Should().Be(0f);
-            ovr.GetOffset(0).Should().Be(new Vector2(0.1f, 0.2f));
-            ovr.GetScale(0).Should().Be(new Vector2(4, 5));
-            ovr.GetRotation(0).Should().BeApproximately(0.7f, 1e-6f);
-            ovr.GetTexture(0).Should().Be(Normal);
-            ovr.GetTexture(1).Should().BeNull();
-            ovr.GetTexture(3).Should().Be(Emissive);
+            Assert.Equal(new Vector3(0.5f, 0.25f, 1f), ovr.BaseColor);
+            Assert.Equal(1f, ovr.BaseAlpha);
+            Assert.Equal(0f, ovr.MetallicFactor);
+            Assert.Equal(new Vector2(0.1f, 0.2f), ovr.GetOffset(0));
+            Assert.Equal(new Vector2(4, 5), ovr.GetScale(0));
+            Assert.Equal(0.7, (double)ovr.GetRotation(0), 1e-6);
+            Assert.Equal(Normal, ovr.GetTexture(0));
+            Assert.Null(ovr.GetTexture(1));
+            Assert.Equal(Emissive, ovr.GetTexture(3));
         }
 
         [Fact]
@@ -183,22 +191,22 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             GltfMaterialOverride ovr = GltfMaterialOverride.FromData(OSDParser.SerializeLLSDNotation(legacy));
             var map = (OSDMap)OSDParser.DeserializeLLSDNotation(ovr.ToData());
 
-            ovr.GetTexture(GltfMaterialOverride.SLOT_BASE_COLOR).Should().Be(Normal);
-            ovr.GetScale(GltfMaterialOverride.SLOT_BASE_COLOR).Should().Be(new Vector2(2, 2));
-            ovr.GetOffset(GltfMaterialOverride.SLOT_BASE_COLOR).Should().Be(new Vector2(0, 0.5f));
-            ovr.GetRotation(GltfMaterialOverride.SLOT_BASE_COLOR).Should().Be(0.25f);
-            ovr.GetTexture(GltfMaterialOverride.SLOT_EMISSIVE).Should().Be(Emissive);
-            ovr.AlphaMode.Should().Be(1);
-            map.Keys.Should().BeEquivalentTo(new[] { "tex", "ti", "bc", "am" });
-            map["tex"].Should().BeOfType<OSDArray>();
+            Assert.Equal(Normal, ovr.GetTexture(GltfMaterialOverride.SLOT_BASE_COLOR));
+            Assert.Equal(new Vector2(2, 2), ovr.GetScale(GltfMaterialOverride.SLOT_BASE_COLOR));
+            Assert.Equal(new Vector2(0, 0.5f), ovr.GetOffset(GltfMaterialOverride.SLOT_BASE_COLOR));
+            Assert.Equal(0.25f, ovr.GetRotation(GltfMaterialOverride.SLOT_BASE_COLOR));
+            Assert.Equal(Emissive, ovr.GetTexture(GltfMaterialOverride.SLOT_EMISSIVE));
+            Assert.Equal(1, ovr.AlphaMode);
+            Assert.Equivalent(new[] { "tex", "ti", "bc", "am" }, map.Keys);
+            Assert.IsType<OSDArray>(map["tex"]);
         }
 
         [Fact]
         public void UnreadableDataReadsAsNoOverride()
         {
             TestHelpers.InMethod();
-            GltfMaterialOverride.FromData("{not llsd").IsEmpty.Should().BeTrue();
-            GltfMaterialOverride.FromData(null).IsEmpty.Should().BeTrue();
+            Assert.True(GltfMaterialOverride.FromData("{not llsd").IsEmpty);
+            Assert.True(GltfMaterialOverride.FromData(null).IsEmpty);
         }
 
         [Fact]
@@ -206,14 +214,14 @@ namespace OpenSim.Region.Framework.Scenes.Tests
         {
             TestHelpers.InMethod();
             SceneObjectPart part = NewPart();
-            GltfMaterialOverride.SetRenderMaterial(part, 2, Material).Should().BeTrue();
+            Assert.True(GltfMaterialOverride.SetRenderMaterial(part, 2, Material));
 
-            GltfMaterialOverride.Edit(part, 2, o => { o.MetallicFactor = 0.5f; o.AlphaMode = 1; }).Should().BeTrue();
+            Assert.True(GltfMaterialOverride.Edit(part, 2, o => { o.MetallicFactor = 0.5f; o.AlphaMode = 1; }));
 
             OSDMap map = Stored(part, 2);
-            map["mf"].AsReal().Should().Be(0.5);
-            map["am"].AsInteger().Should().Be(1);
-            GltfMaterialOverride.Get(part.Shape, 2).MetallicFactor.Should().Be(0.5f);
+            Assert.Equal(0.5, map["mf"].AsReal());
+            Assert.Equal(1, map["am"].AsInteger());
+            Assert.Equal(0.5f, GltfMaterialOverride.Get(part.Shape, 2).MetallicFactor);
         }
 
         [Fact]
@@ -224,7 +232,7 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             GltfMaterialOverride.SetRenderMaterial(part, 0, Material);
             GltfMaterialOverride.Edit(part, 0, o => o.RoughnessFactor = 0.1f);
 
-            GltfMaterialOverride.Edit(part, 0, o => o.RoughnessFactor = 0.1f).Should().BeFalse();
+            Assert.False(GltfMaterialOverride.Edit(part, 0, o => o.RoughnessFactor = 0.1f));
         }
 
         [Fact]
@@ -238,8 +246,8 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             GltfMaterialOverride.Edit(part, 0, o => o.SetTexture(GltfMaterialOverride.SLOT_NORMAL, Normal));
 
             GltfMaterialOverride ovr = GltfMaterialOverride.Get(part.Shape, 0);
-            ovr.BaseColor.Should().Be(new Vector3(1, 0, 0));
-            ovr.GetTexture(GltfMaterialOverride.SLOT_NORMAL).Should().Be(Normal);
+            Assert.Equal(new Vector3(1, 0, 0), ovr.BaseColor);
+            Assert.Equal(Normal, ovr.GetTexture(GltfMaterialOverride.SLOT_NORMAL));
         }
 
         [Fact]
@@ -250,10 +258,10 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             GltfMaterialOverride.SetRenderMaterial(part, 0, Material);
             GltfMaterialOverride.Edit(part, 0, o => o.MetallicFactor = 0.5f);
 
-            GltfMaterialOverride.Edit(part, 0, o => o.MetallicFactor = null).Should().BeTrue();
+            Assert.True(GltfMaterialOverride.Edit(part, 0, o => o.MetallicFactor = null));
 
-            part.Shape.RenderMaterials.Should().NotBeNull();
-            part.Shape.RenderMaterials.overrides.Should().BeNull();
+            Assert.NotNull(part.Shape.RenderMaterials);
+            Assert.Null(part.Shape.RenderMaterials.overrides);
         }
 
         [Fact]
@@ -264,15 +272,15 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             // texture transforms excepted
             SceneObjectPart part = NewPart();
 
-            GltfMaterialOverride.Edit(part, 1, o =>
+            Assert.True(GltfMaterialOverride.Edit(part, 1, o =>
             {
                 o.MetallicFactor = 0.5f;
                 o.SetTexture(GltfMaterialOverride.SLOT_BASE_COLOR, Normal);
                 o.SetScale(GltfMaterialOverride.SLOT_BASE_COLOR, new Vector2(3, 3));
-            }).Should().BeTrue();
+            }));
 
             OSDMap map = Stored(part, 1);
-            map.Keys.Should().BeEquivalentTo(new[] { "ti" });
+            Assert.Equivalent(new[] { "ti" }, map.Keys);
         }
 
         [Fact]
@@ -285,9 +293,9 @@ namespace OpenSim.Region.Framework.Scenes.Tests
 
             GltfMaterialOverride.Edit(part, -1, o => o.DoubleSided = true);
 
-            part.Shape.RenderMaterials.overrides.Should().HaveCount(sides);
+            Assert.Equal(sides, System.Linq.Enumerable.Count(part.Shape.RenderMaterials.overrides));
             for (int f = 0; f < sides; f++)
-                GltfMaterialOverride.Get(part.Shape, f).DoubleSided.Should().BeTrue();
+                Assert.True(GltfMaterialOverride.Get(part.Shape, f).DoubleSided);
         }
 
         [Fact]
@@ -297,9 +305,9 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             SceneObjectPart part = NewPart();
             int sides = part.GetNumberOfSides();
 
-            GltfMaterialOverride.SetRenderMaterial(part, sides, Material).Should().BeFalse();
-            GltfMaterialOverride.Edit(part, sides, o => o.DoubleSided = true).Should().BeFalse();
-            part.Shape.RenderMaterials.Should().BeNull();
+            Assert.False(GltfMaterialOverride.SetRenderMaterial(part, sides, Material));
+            Assert.False(GltfMaterialOverride.Edit(part, sides, o => o.DoubleSided = true));
+            Assert.Null(part.Shape.RenderMaterials);
         }
 
         [Fact]
@@ -317,13 +325,13 @@ namespace OpenSim.Region.Framework.Scenes.Tests
                 o.SetOffset(GltfMaterialOverride.SLOT_NORMAL, new Vector2(0.5f, 0.5f));
             });
 
-            GltfMaterialOverride.SetRenderMaterial(part, 0, OtherMaterial).Should().BeTrue();
+            Assert.True(GltfMaterialOverride.SetRenderMaterial(part, 0, OtherMaterial));
 
-            GltfMaterialOverride.GetRenderMaterial(part.Shape, 0).Should().Be(OtherMaterial);
+            Assert.Equal(OtherMaterial, GltfMaterialOverride.GetRenderMaterial(part.Shape, 0));
             GltfMaterialOverride ovr = GltfMaterialOverride.Get(part.Shape, 0);
-            ovr.BaseColor.Should().BeNull();
-            ovr.GetTexture(GltfMaterialOverride.SLOT_NORMAL).Should().BeNull();
-            ovr.GetOffset(GltfMaterialOverride.SLOT_NORMAL).Should().Be(new Vector2(0.5f, 0.5f));
+            Assert.Null(ovr.BaseColor);
+            Assert.Null(ovr.GetTexture(GltfMaterialOverride.SLOT_NORMAL));
+            Assert.Equal(new Vector2(0.5f, 0.5f), ovr.GetOffset(GltfMaterialOverride.SLOT_NORMAL));
         }
 
         [Fact]
@@ -334,11 +342,11 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             GltfMaterialOverride.SetRenderMaterial(part, 0, Material);
             GltfMaterialOverride.SetRenderMaterial(part, 3, Material);
 
-            GltfMaterialOverride.SetRenderMaterial(part, 0, UUID.Zero).Should().BeTrue();
+            Assert.True(GltfMaterialOverride.SetRenderMaterial(part, 0, UUID.Zero));
 
-            GltfMaterialOverride.GetRenderMaterial(part.Shape, 0).Should().Be(UUID.Zero);
-            GltfMaterialOverride.GetRenderMaterial(part.Shape, 3).Should().Be(Material);
-            part.Shape.RenderMaterials.entries.Should().HaveCount(1);
+            Assert.Equal(UUID.Zero, GltfMaterialOverride.GetRenderMaterial(part.Shape, 0));
+            Assert.Equal(Material, GltfMaterialOverride.GetRenderMaterial(part.Shape, 3));
+            Assert.Equal(1, System.Linq.Enumerable.Count(part.Shape.RenderMaterials.entries));
         }
 
         [Fact]
@@ -348,7 +356,7 @@ namespace OpenSim.Region.Framework.Scenes.Tests
             SceneObjectPart part = NewPart();
             GltfMaterialOverride.SetRenderMaterial(part, -1, Material);
 
-            GltfMaterialOverride.SetRenderMaterial(part, -1, Material).Should().BeFalse();
+            Assert.False(GltfMaterialOverride.SetRenderMaterial(part, -1, Material));
         }
     }
 }

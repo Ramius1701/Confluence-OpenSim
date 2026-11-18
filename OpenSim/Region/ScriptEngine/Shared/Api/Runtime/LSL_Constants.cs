@@ -479,6 +479,11 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         public const int PRIM_DAMAGE = 51;
         public const int PRIM_HEALTH = 52;
 
+        // [Confluence] Tranquillity #402: PRIM_GLTF_BASE_COLOR alpha_mode
+        public const int PRIM_GLTF_ALPHA_MODE_OPAQUE = 0;
+        public const int PRIM_GLTF_ALPHA_MODE_BLEND = 1;
+        public const int PRIM_GLTF_ALPHA_MODE_MASK = 2;
+
         public const int OVERRIDE_GLTF_BASE_COLOR_FACTOR = 1;
         public const int OVERRIDE_GLTF_BASE_ALPHA = 2;
         public const int OVERRIDE_GLTF_BASE_ALPHA_MODE = 3;
