@@ -943,6 +943,10 @@ NaN/Infinity before being applied.
   stalled REST-console long-poll no longer throws in the poll service thread (#382). An entry with spaces
   around the `|` in `OutboundDisallowForUserScripts` and its sibling lists is read again (opensim-master
   7a5950df3e had dropped the trim, so the second and later entries were ignored; fixed here 2026-11-08).
+- **From the 2026-11-18 donor batch:** the LLSD login reply carries the region's size, so a viewer that reads it no
+  longer takes a varregion as 256 m until it first moves (Tranquillity #395); SimulatorFeatures lists the region's
+  script engines under `OpenSimExtras["ScriptEngines"]`, for a viewer's script editor (#401); and every HTTP and HTTPS
+  listener binds to the configured address (#412, see HARDENING.md "Listening address").
 
 ## Database
 

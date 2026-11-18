@@ -218,6 +218,16 @@ their SQL from the values they were given; they now pass them as query parameter
 accepts a token only if it is a UUID, so a crafted token string never reaches a store. Only grids on SQLite were
 exposed; nothing in the configuration changes.
 
+## Listening address
+
+From Tranquillity #412 (2026-11-18), adapted: the HTTPS listeners (a region's SSL main server and out-of-band
+listener, Robust's `https_main` and `https_listener`) bound to every interface whatever the configuration said, and
+so did servers that modules open later (scripted URLs, remote admin on its own port, ConsolePort). They now follow
+the address the process is given: a region's `[Network] http_listener_address`, Robust's `[Network] address`
+(Tranquillity named a new key, `bind_ip_address`; we keep upstream's). `127.0.0.1` keeps a process to this machine.
+A value that is not an IP address is reported at startup instead of silently meaning every interface. Unset, as on
+Casperia, nothing changes.
+
 ## Deployment checklist
 
 1. Back up the database (Gloebit migrations).

@@ -29839,3 +29839,27 @@ differing (non-deterministic rebuild output plus the weather DLL), copied by pat
 first read 300/301 (OpenSim.Data.PGSQL.dll, a read during a slow write), identical on a second check. The copy ran
 much slower than on 2026-11-08. OpenSimWeather.Module.dll 0.7.0 is in every folder. Waiting on the owner: start the
 grid, then TESTING 8.11 in Aurora on Sandbox.
+
+## Donor check 2026-11-18: Tranquillity #386-#416; batch 1 ported (#395, #401, #412)
+
+opensim-master: nothing new since `9d00a55552`. New open PR #74 (PGSQL group notices: TMStamp is epoch seconds; 6
+lines) - take when merged. #72 still open. Tranquillity develop `c85783e993`: #386-#412 merged in a day. #387-#391,
+ported early (2026-11-16), landed as the same commits (only a Jolt doc line, `74747bc27b`, came on top). Not
+applicable: #386 (their RemoteAdmin bug), #392 (no AIS module), #393/#394 (their test projects), #406 (their v1.1.2
+release packaging). Open: #413 (CI), #414 (97 test-failure fixes), #415 (GetAssets material as texture), #416
+(console default answers).
+
+Batch 1, ported today:
+- #395: the LLSD login reply carries region_size_x/y as the XML-RPC one did. Tests in LoginRegionSizeTests.
+- #401: SimulatorFeatures OpenSimExtras["ScriptEngines"] lists each IScriptModule's ScriptEngineName. Our Caps
+  constructor read MainServer.Instance.UseSSL before its own null check; made null-safe (`?.`), which their test
+  needed (no main server in a test).
+- #412, adapted: HTTPS listeners and servers modules open later bound to every interface. Tranquillity added
+  `[Network] bind_ip_address`; we kept upstream's keys (`http_listener_address` on regions, `address` on Robust),
+  which already bound the plain main listener, and made every listener follow them through
+  MainServer.DefaultListenIPAddress. A non-address value is reported at startup instead of silently meaning every
+  interface. Casperia sets none of these, so nothing changes there. Tests check the OS listening sockets.
+
+Full Phlox suite 6734 passed, 0 failed, 2 skipped. Not pushed, not deployed. Next: batch 2 (#405, #407, #404, #403),
+then 3 (#400, #402, #409), then 4 (#398, #399, #408, #410, #396). Next review starts from origin/master
+`9d00a55552`, tranquillity/develop `c85783e993`, PRs after #416.

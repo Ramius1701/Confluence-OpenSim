@@ -183,6 +183,9 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       you are in it - flakes or drops fall past you and reach the ground all around, on a 1024 m region too; walking
       or flying a distance, it keeps up within a few seconds; under a roof or indoors there is none; standing on a
       raised platform it falls to the platform. Report your viewer's particle setting if it looks thin.
+- [ ] 8.12 Region size at login (Tranquillity #395, 2026-11-18): log in to a varregion (larger than 256 m) with a
+      viewer that reads the LLSD login reply (Aurora); the whole region shows and you can walk past 256 m at once,
+      without a teleport first.
 - [ ] 8.11 Aurora weather (0.7.0, 2026-11-17), on Sandbox: in Aurora Viewer tick "Let regions set the weather", then
       `weather rain`, `weather storm`, `weather snow`, `weather blizzard`, `weather sunny` in turn. Aurora draws each
       (storm: thunder and lightning; snow: lying snow), fading in and out with the sky over about two minutes, and
