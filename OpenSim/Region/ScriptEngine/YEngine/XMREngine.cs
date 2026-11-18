@@ -67,7 +67,7 @@ using SceneScriptEvents = OpenSim.Region.Framework.Scenes.scriptEvents;
 namespace OpenSim.Region.ScriptEngine.Yengine
 {
     [Mono.Addins.Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "YEngine")]
-    public partial class Yengine: INonSharedRegionModule, IScriptEngine, IScriptModule, IScriptStateProvider
+    public partial class Yengine: INonSharedRegionModule, IScriptEngine, IScriptModule, IScriptStateProvider, IScriptSuspension
     {
         public static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -324,6 +324,7 @@ namespace OpenSim.Region.ScriptEngine.Yengine
             m_Scene.EventManager.OnRezScript += OnRezScript;
 
             m_Scene.StackModuleInterface<IScriptModule>(this);
+            m_Scene.StackModuleInterface<IScriptSuspension>(this);
         }
 
         private void OneTimeLateInitialization()
@@ -2134,6 +2135,15 @@ namespace OpenSim.Region.ScriptEngine.Yengine
         /**
          * @brief Allow script to dequeue events.
          */
+        /// <summary>True when this engine runs the script and has it suspended (IScriptSuspension).</summary>
+        public bool IsSuspended(UUID itemID)
+        {
+            if (!TryGetInstance(itemID, out XMRInstance instance))
+                return false;
+            lock (instance.m_QueueLock)
+                return instance.m_Suspended;
+        }
+
         public bool ResumeScript(UUID itemID)
         {
             if (TryGetInstance(itemID, out XMRInstance instance))

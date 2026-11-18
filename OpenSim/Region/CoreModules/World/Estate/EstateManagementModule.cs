@@ -1725,6 +1725,9 @@ namespace OpenSim.Region.CoreModules.World.Estate
             Scene.RegionInfo.RegionSettings.Save();
             TriggerRegionInfoChange();
 
+            // pauses or resumes the scripts whether or not the scene commands module is loaded
+            Scene.ScriptsEnabled = !disableScripts;
+
             ISceneCommandsModule scm = Scene.RequestModuleInterface<ISceneCommandsModule>();
 
             if (scm != null)
