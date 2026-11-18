@@ -228,6 +228,19 @@ the address the process is given: a region's `[Network] http_listener_address`, 
 A value that is not an IP address is reported at startup instead of silently meaning every interface. Unset, as on
 Casperia, nothing changes.
 
+## Group powers and land sales
+
+From Tranquillity #407 and #405 (2026-11-18). Groups (upstream OpenSim behaviour, unchanged here until then): a
+member's abilities came only from the role whose title they showed, so a second role's abilities did nothing and
+switching titles changed what a member could do. The service also stored any role as the shown title without
+checking the member held it: a stock viewer offers only held roles, but a modified viewer or a crafted request could
+pick the Owners role and get owner powers. Powers are now the union of the roles held, owners hold every power,
+a title can be shown only from a role held, nobody ejects an owner, and only owners assign the Owners role. Land: a
+parcel whose sale was cancelled in the viewer stayed buyable for nothing while "sell objects with land" was ticked;
+a purchase for a group needed nothing of the buyer; a failed payment still handed the parcel over; a deed could go
+to a group other than the parcel's. All closed. Gloebit's own after-sale check is unchanged (vendored as is), so a
+purchase *for a group* on a Gloebit region fails that check until Gloebit takes the same change.
+
 ## Deployment checklist
 
 1. Back up the database (Gloebit migrations).

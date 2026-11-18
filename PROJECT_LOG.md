@@ -29863,3 +29863,38 @@ Batch 1, ported today:
 Full Phlox suite 6734 passed, 0 failed, 2 skipped. Not pushed, not deployed. Next: batch 2 (#405, #407, #404, #403),
 then 3 (#400, #402, #409), then 4 (#398, #399, #408, #410, #396). Next review starts from origin/master
 `9d00a55552`, tranquillity/develop `c85783e993`, PRs after #416.
+
+## Batch 2 ported (2026-11-18): Tranquillity #403, #404, #405, #407
+
+Their files are reformatted (file-scoped namespaces, one indent level less), so most of this went in hunk by hunk
+with a re-indenting patch script (scratchpad), the rest by hand.
+- #404 (Phlox): llGetVehicleFlags returns the flags; llRezObjectWithParams reads REZ_POS as [pos, relative,
+  at_root] and refuses unknown or short rules. Kept ours for llSetAgentEnvironment / llReplaceAgentEnvironment
+  (Phlox already runs YEngine's real implementation; theirs refuses the first and sends a bare asset for the
+  second). Their tests pass against ours.
+- #403 (YEngine): PRIM_CLICK_ACTION and PRIM_COLLISION_SOUND set and read (and skipped on a seated avatar),
+  PRIM_DAMAGE held to 0..100, SL constants (DEREZ_*, PASS_*, STATUS_*, PRIM_MEDIA_MAX_*, TP_ROUTING_*, LAND_BRUSH_*,
+  SIT_OK, AGENT_AUTOMATED, ...). Already ours and kept: the sit-flag rules and functions, PRIM_DAMAGE/HEALTH with a
+  real damage type and health (their tests adjusted to that), OBJECT_LOCKED / OBJECT_VOLUME_DETECT.
+- #405 (land): only ForSale makes a parcel buyable; buying for a group needs LandDeed and leaves the group as
+  owner; the land moves only once the money module reports it paid (new EventManager.OnLandBuyTransfer;
+  ConfluenceCurrencyModule already sets amountDebited); a deed goes only to the parcel's group; no resale without
+  "allow land resell" except estate managers; abandon clears sale terms. DTL module patched; Gloebit NOT (vendored):
+  on a Gloebit region a purchase for a group fails Gloebit's after-sale check until Gloebit takes their change.
+  Their test fixture now places a root presence (Legion's stale-circuit guard in our parcel handlers).
+- #407 (groups, live runs Groups Module V2): powers are the union of held roles, owners have all; a title only
+  from a held role; invite-only groups need an invitation (our ban check first); owners can't be ejected or removed
+  by others; only owners assign Owners. GetAgentGroupPowers kept public and made consistent. This was upstream
+  OpenSim behaviour, not a donor regression: powers came from the shown title's role, and the service stored any
+  role as the title (a modified viewer could pick Owners). Visible change after deploy: members in several roles
+  get all their roles' abilities.
+
+Full Phlox suite 6786 passed, 0 failed, 2 skipped. Not pushed, not deployed.
+
+From here on every ported fix is checked against opensim-master (memory: verify-donor-fixes-against-upstream).
+Upstream has #395, #405, #407 and #412's bugs (evidence: LLLoginResponse.cs:667, LandManagementModule.cs:1742/1776/
+1801, GroupsService.cs:426/438/712 plus the region's JoinGroupRequest with no enrollment check - a stock viewer can
+join an invite-only group - and BaseHttpServer.cs:1986, MainServer.cs:409). The owner chose public PRs to
+opensim/opensim from branches on the Ramius1701/OpenSim-Continuum fork (the account's only fork of opensim/opensim;
+its own branches untouched). Upstream's NUnit test projects are commented out of prebuild.xml (2445-3062), so the
+PRs are build-verified against origin/master and cite our xUnit tests.

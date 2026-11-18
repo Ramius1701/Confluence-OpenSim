@@ -228,6 +228,14 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 9.10 Whole-grid start with SimProtection's stuck-region check on (2026-10-29; live has
       `RestartSimIfZeroFPS = false` until this build is deployed, then set it back to true): every region reaches
       "Startup complete" and none logs "[SIM PROTECTION]: ... ~0 FPS" while starting.
+- [ ] 9.11 Land sales (Tranquillity #405, 2026-11-18): sell a parcel for C$ to another resident - the money moves
+      and the land changes hands; with the buyer short of money the land stays put. "Cancel land sale" with "sell
+      objects with land" still ticked: nobody can buy it. Buy land for a group as a member without "Deed land and
+      buy land for group": refused; with it: the group owns the parcel. Abandon a parcel that was for sale: its
+      price and authorised buyer are gone.
+- [ ] 9.12 Group roles (Tranquillity #407, 2026-11-18): a member in two roles has both roles' abilities; choosing
+      the Owners title without holding the role is refused; a non-owner cannot eject an owner or a member who holds
+      a role; joining an invite-only group needs an invitation; group chat and notices still reach members.
 
 - [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
       see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,
@@ -263,6 +271,9 @@ Try these on a test region first.
       sit on a prim with no sit target and land on the clicked surface; `llGetAccel` in a falling physical prim
       is not zero; push a physical ball off a region edge with no neighbour and it waits there, then comes back
       when moved; link and unlink a moving physical linkset several times without errors in the log.
+- [ ] 11.9 Script fixes from 2026-11-18: a YEngine script sets and reads `PRIM_CLICK_ACTION` and
+      `PRIM_COLLISION_SOUND` (#403); a Phlox vehicle's `llGetVehicleFlags` returns its flags, not its type, and
+      `llRezObjectWithParams` with a relative `REZ_POS` rezzes beside the object (#404).
 
 ## 12. Open bugs that need a live reproduction
 

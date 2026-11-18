@@ -947,6 +947,12 @@ NaN/Infinity before being applied.
   longer takes a varregion as 256 m until it first moves (Tranquillity #395); SimulatorFeatures lists the region's
   script engines under `OpenSimExtras["ScriptEngines"]`, for a viewer's script editor (#401); and every HTTP and HTTPS
   listener binds to the configured address (#412, see HARDENING.md "Listening address").
+  Batch 2: land sales hand the parcel over only once the money module has charged, a parcel stops being for sale
+  when its sale is cancelled, group purchases need the deed ability and leave the group as owner, and estates
+  without "allow land resell" keep selling to their managers (#405); group abilities are the union of every role a
+  member holds, owners cannot be ejected or demoted by others, and the Owners title needs the role (#407); YEngine
+  sets and reads `PRIM_CLICK_ACTION` / `PRIM_COLLISION_SOUND` and knows more SL constants (#403); three Phlox calls
+  that answered wrongly in silence (`llGetVehicleFlags`, `llRezObjectWithParams` `REZ_POS`) are fixed (#404).
 
 ## Database
 
