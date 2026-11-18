@@ -29855,7 +29855,8 @@ Batch 1, ported today:
   constructor read MainServer.Instance.UseSSL before its own null check; made null-safe (`?.`), which their test
   needed (no main server in a test).
 - #412, adapted: HTTPS listeners and servers modules open later bound to every interface. Tranquillity added
-  `[Network] bind_ip_address`; we kept upstream's keys (`http_listener_address` on regions, `address` on Robust),
+  `[Network] bind_ip_address`; we kept this tree's keys (`http_listener_address` on regions, `address` on Robust;
+  correction: they are Bill Blight's `e8e91167db` (2019), inherited from a donor, not opensim-master's),
   which already bound the plain main listener, and made every listener follow them through
   MainServer.DefaultListenIPAddress. A non-address value is reported at startup instead of silently meaning every
   interface. Casperia sets none of these, so nothing changes there. Tests check the OS listening sockets.
@@ -29898,3 +29899,20 @@ join an invite-only group - and BaseHttpServer.cs:1986, MainServer.cs:409). The 
 opensim/opensim from branches on the Ramius1701/OpenSim-Continuum fork (the account's only fork of opensim/opensim;
 its own branches untouched). Upstream's NUnit test projects are commented out of prebuild.xml (2445-3062), so the
 PRs are build-verified against origin/master and cite our xUnit tests.
+
+## Upstream PRs to opensim/opensim (2026-11-18)
+
+Opened at the owner's request, each one commit on origin/master `9d00a55552`, branches pushed to the
+Ramius1701/OpenSim-Continuum fork (the account's only fork of opensim/opensim; nothing of Continuum's own touched),
+built in a clean worktree at `S:\Github\work\opensim-upstream`:
+- opensim/opensim#75 `fix/llsd-login-region-size`: the LLSD login reply's region size (Tranquillity #395).
+- opensim/opensim#76 `fix/land-sale-checks`: land buy, pay, deed, resell and abandon checks (#405). Notes for grid
+  owners in the PR: a money module must set amountDebited for paid land sales.
+- opensim/opensim#77 `fix/group-roles-and-joins`: group powers as the union of held roles, title only from a held
+  role, joins checked against OpenEnrollment / invitations (a stock viewer could join an invite-only group
+  upstream), owners protected (#407). Our ban check and our #346 session check were left out of it.
+Not sent: #412's listener fix. Correction to the batch 1 notes: opensim-master has no listening-address setting
+at all (`http_listener_address` / Robust `address` are Bill Blight's `e8e91167db`, 2019, inherited from a donor), so
+the HTTPS-listener line it changes is not reachable upstream; not serious, not sent. #401/#403 are features, #404
+is Phlox-only. Upstream's NUnit projects are commented out of prebuild.xml (2445-3062), so the PRs cite
+Tranquillity's xUnit tests, which pass in ours. No CI ran yet (upstream's workflows need a maintainer's approval).
