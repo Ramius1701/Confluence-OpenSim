@@ -800,6 +800,17 @@ namespace InWorldz.Phlox.Glue
         /// <summary>The handles of the volumes this object made, as integers.</summary>
         LSLList iwWindVolumes();
         Vector3 iwWind(Vector3 offset);
+        // [Confluence] Tranquillity #409: Second Life's signatures (overloads of older entries where the name exists).
+        LSLList llGetAttachedListFiltered(string avatar, LSLList options);
+        LSLList llFindNotecardTextSync(string name, string pattern, int start, int count, LSLList options);
+        string llFindNotecardTextCount(string name, string pattern, LSLList options);
+        int llSetParcelForSale(int forSale, LSLList options);
+        int llGetGameControlMode(string id);
+        LSLList llGetGameControlModeAxes(string id);
+        int llGetGameControlModeButtons(string id);
+        void llMapBeacon(string regionName, Vector3 pos, LSLList options);
+        int llGiveAgentInventory(string agent, string folder, LSLList inventory, LSLList options);
+        int llTransferOwnership(string agent, int flags, LSLList options);
         int iwHasParcelPowers(int groupPower);
         Vector3 iwGroundSurfaceNormal(Vector3 offset);
         string iwRequestAnimationData(string name);

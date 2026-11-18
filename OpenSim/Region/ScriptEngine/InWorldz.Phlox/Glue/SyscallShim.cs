@@ -1103,6 +1103,16 @@ private static string ConvToString(object o)
 								Shim_iwWindVolumeCreate,              //1009  [Confluence] Tranquillity #320 (969 there)
 								Shim_iwWindVolumeRemove,              //1010
 								Shim_iwWindVolumes,                   //1011
+								Shim_llGetAttachedListFilteredList,    //1012  [Confluence] Tranquillity #409 (972 there)
+								Shim_llFindNotecardTextSyncList,       //1013
+								Shim_llFindNotecardTextCount,          //1014
+								Shim_llSetParcelForSale,               //1015
+								Shim_llGetGameControlMode,             //1016
+								Shim_llGetGameControlModeAxes,         //1017
+								Shim_llGetGameControlModeButtons,      //1018
+								Shim_llMapBeaconRegion,                //1019
+								Shim_llGiveAgentInventoryList,         //1020
+								Shim_llTransferOwnershipFlags,         //1021
         };
 
         /// <summary>
@@ -9271,5 +9281,88 @@ private static string ConvToString(object o)
             LSLList ret = self._systemAPI.osGetAvatarList();
             self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
         }
-    }
+    
+        // [Confluence] Tranquillity #409: Second Life's forms of functions an older entry holds under another shape, and
+        // functions OpenSim's LSL lacks.
+        static private void Shim_llGetAttachedListFilteredList(SyscallShim self)
+        {
+            LSLList p1 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            LSLList ret = self._systemAPI.llGetAttachedListFiltered(p0, p1);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_llFindNotecardTextSyncList(SyscallShim self)
+        {
+            LSLList p4 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            int p3 = ConvToInt(self._interpreter.ScriptState.Operands.Pop());
+            int p2 = ConvToInt(self._interpreter.ScriptState.Operands.Pop());
+            string p1 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            Defer(self, "llFindNotecardTextSync", new object[] { p0, p1, p2, p3, p4 }, () => ConvToLSLType(self._systemAPI.llFindNotecardTextSync(p0, p1, p2, p3, p4)), new LSLList(), false);
+        }
+
+        static private void Shim_llFindNotecardTextCount(SyscallShim self)
+        {
+            LSLList p2 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            string p1 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            string ret = self._systemAPI.llFindNotecardTextCount(p0, p1, p2);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_llSetParcelForSale(SyscallShim self)
+        {
+            LSLList p1 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            int p0 = ConvToInt(self._interpreter.ScriptState.Operands.Pop());
+            int ret = self._systemAPI.llSetParcelForSale(p0, p1);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_llGetGameControlMode(SyscallShim self)
+        {
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            int ret = self._systemAPI.llGetGameControlMode(p0);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_llGetGameControlModeAxes(SyscallShim self)
+        {
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            LSLList ret = self._systemAPI.llGetGameControlModeAxes(p0);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_llGetGameControlModeButtons(SyscallShim self)
+        {
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            int ret = self._systemAPI.llGetGameControlModeButtons(p0);
+            self._interpreter.SafeOperandsPush(ConvToLSLType(ret));
+        }
+
+        static private void Shim_llMapBeaconRegion(SyscallShim self)
+        {
+            LSLList p2 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            Vector3 p1 = ConvToVector(self._interpreter.ScriptState.Operands.Pop());
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            self._systemAPI.llMapBeacon(p0, p1, p2);
+        }
+
+        static private void Shim_llGiveAgentInventoryList(SyscallShim self)
+        {
+            LSLList p3 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            LSLList p2 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            string p1 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            Defer(self, "llGiveAgentInventory", new object[] { p0, p1, p2, p3 }, () => ConvToLSLType(self._systemAPI.llGiveAgentInventory(p0, p1, p2, p3)), -4, false);
+        }
+
+        static private void Shim_llTransferOwnershipFlags(SyscallShim self)
+        {
+            LSLList p2 = ConvToLSLList(self._interpreter.ScriptState.Operands.Pop());
+            int p1 = ConvToInt(self._interpreter.ScriptState.Operands.Pop());
+            string p0 = ConvToString(self._interpreter.ScriptState.Operands.Pop());
+            Defer(self, "llTransferOwnership", new object[] { p0, p1, p2 }, () => ConvToLSLType(self._systemAPI.llTransferOwnership(p0, p1, p2)), -6, false);
+        }
+}
 }

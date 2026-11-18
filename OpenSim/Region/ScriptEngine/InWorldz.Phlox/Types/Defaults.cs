@@ -7187,6 +7187,79 @@ namespace InWorldz.Phlox.Types
                 ParamNames = new string[] { },
                 TableIndex = 1011
             }},
+            // [Confluence] Tranquillity #409: Second Life's forms of functions an older entry holds under another shape
+            // (the __2 entries) and functions OpenSim's LSL lacks; their 972-983, renumbered 1012-1021 above our table.
+            // llRemoteLoadScript and llRemoteDataSetRegion (their 976/977) are ours already, at 975/974.
+            {"llGetAttachedListFiltered__2", new FunctionSig {
+                FunctionName = "llGetAttachedListFiltered",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] { VarType.Key, VarType.List },
+                ParamNames = new string[] { "avatar", "options" },
+                TableIndex = 1012
+            }},
+            {"llFindNotecardTextSync__5", new FunctionSig {
+                FunctionName = "llFindNotecardTextSync",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] { VarType.String, VarType.String, VarType.Integer, VarType.Integer, VarType.List },
+                ParamNames = new string[] { "name", "pattern", "start", "count", "options" },
+                TableIndex = 1013
+            }},
+            {"llFindNotecardTextCount", new FunctionSig {
+                FunctionName = "llFindNotecardTextCount",
+                ReturnType = VarType.Key,
+                ParamTypes = new VarType[] { VarType.String, VarType.String, VarType.List },
+                ParamNames = new string[] { "name", "pattern", "options" },
+                TableIndex = 1014
+            }},
+            {"llSetParcelForSale", new FunctionSig {
+                FunctionName = "llSetParcelForSale",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Integer, VarType.List },
+                ParamNames = new string[] { "ForSale", "Options" },
+                TableIndex = 1015
+            }},
+            {"llGetGameControlMode", new FunctionSig {
+                FunctionName = "llGetGameControlMode",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "id" },
+                TableIndex = 1016
+            }},
+            {"llGetGameControlModeAxes", new FunctionSig {
+                FunctionName = "llGetGameControlModeAxes",
+                ReturnType = VarType.List,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "id" },
+                TableIndex = 1017
+            }},
+            {"llGetGameControlModeButtons", new FunctionSig {
+                FunctionName = "llGetGameControlModeButtons",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Key },
+                ParamNames = new string[] { "id" },
+                TableIndex = 1018
+            }},
+            {"llMapBeacon__3", new FunctionSig {
+                FunctionName = "llMapBeacon",
+                ReturnType = VarType.Void,
+                ParamTypes = new VarType[] { VarType.String, VarType.Vector, VarType.List },
+                ParamNames = new string[] { "region_name", "pos", "options" },
+                TableIndex = 1019
+            }},
+            {"llGiveAgentInventory__4", new FunctionSig {
+                FunctionName = "llGiveAgentInventory",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Key, VarType.String, VarType.List, VarType.List },
+                ParamNames = new string[] { "agent", "folder", "inventory", "options" },
+                TableIndex = 1020
+            }},
+            {"llTransferOwnership__3", new FunctionSig {
+                FunctionName = "llTransferOwnership",
+                ReturnType = VarType.Integer,
+                ParamTypes = new VarType[] { VarType.Key, VarType.Integer, VarType.List },
+                ParamNames = new string[] { "agent", "flags", "options" },
+                TableIndex = 1021
+            }},
          };
 
         /// <summary>
