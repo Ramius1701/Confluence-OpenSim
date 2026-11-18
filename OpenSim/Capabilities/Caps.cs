@@ -153,7 +153,8 @@ namespace OpenSim.Framework.Capabilities
             m_regionName = regionName;
             Flags = CapsFlags.None;
             m_capsActive.Reset();
-            if (MainServer.Instance.UseSSL)
+            // [Confluence] null-safe, as the else branch already expects: with no main server (a test) this threw.
+            if (MainServer.Instance?.UseSSL == true)
                 m_baseCapsURL = $"https://{MainServer.Instance.SSLCommonName}:{MainServer.Instance.SSLPort}";
             else
             {
