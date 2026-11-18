@@ -127,8 +127,10 @@ namespace OpenSim.ApplicationPlugins.RemoteController
                     }
 
                     m_application = openSim;
-                    string bind_ip_address = m_config.GetString("bind_ip_address", "0.0.0.0");
-                    IPAddress ipaddr = IPAddress.Parse(bind_ip_address);
+                    // [Confluence] Tranquillity #412: unset, the server binds where [Network] http_listener_address says
+                    // (MainServer.DefaultListenIPAddress), not always to every interface.
+                    string bind_ip_address = m_config.GetString("bind_ip_address", string.Empty).Trim();
+                    IPAddress ipaddr = bind_ip_address.Length == 0 ? null : IPAddress.Parse(bind_ip_address);
                     m_httpServer = MainServer.GetHttpServer((uint)port,ipaddr);
 
                     Dictionary<string, XmlRpcMethod> availableMethods = new Dictionary<string, XmlRpcMethod>();

@@ -885,7 +885,10 @@
     ;; the region ports use UDP.
     ; http_listener_port = 9000
 
-    ;; the following option will allow you to bind this instance to a specific IP, for the HTTP portion of the instance.
+    ;; the following option will allow you to bind this instance to a specific IP, for the HTTP portion of the instance:
+    ;; every HTTP and HTTPS port of the simulator, including ones modules open (scripted URLs, remote admin on its
+    ;; own port). 127.0.0.1 accepts connections from this machine only. The UDP region ports follow InternalAddress
+    ;; in Regions.ini.
     ; http_listener_address = <some ip assigned to this system>
 
     ;; Servers allowed to call this process's control-plane endpoints: creating

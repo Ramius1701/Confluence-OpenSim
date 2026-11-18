@@ -64,9 +64,16 @@ namespace OpenSim.Framework
             if (netConfig == null)
                 return;
 
+            // [Confluence] Tranquillity #412: every HTTP and HTTPS listener of the simulator binds to this address (it used
+            // to bind only the plain main listener). A value that is not an IP address is reported, not passed over in
+            // silence: it leaves the simulator listening on every interface.
             string str_ip = netConfig.GetString("http_listener_address", "0.0.0.0");
-            if (!IPAddress.TryParse(str_ip, out HttpListenerAddress))
+            if (!IPAddress.TryParse(str_ip.Trim(), out HttpListenerAddress))
+            {
                 HttpListenerAddress = IPAddress.Any;
+                if (!string.IsNullOrWhiteSpace(str_ip))
+                    Console.WriteLine("[NETWORK]: http_listener_address \"{0}\" is not an IP address; listening on every interface.", str_ip);
+            }
 
             HttpListenerPort = (uint) netConfig.GetInt("http_listener_port", (int) ConfigSettings.DefaultRegionHttpPort);
             httpSSLPort = (uint)netConfig.GetInt("http_listener_sslport", (int)ConfigSettings.DefaultRegionHttpPort + 1);

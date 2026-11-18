@@ -67,8 +67,16 @@ namespace OpenSim.Server.Base
             uint port = (uint)networkConfig.GetInt("port", 0);
 
             IPAddress m_ipaddress;
-            if (!IPAddress.TryParse(address, out m_ipaddress))
+            if (!IPAddress.TryParse(address.Trim(), out m_ipaddress))
+            {
                 m_ipaddress = IPAddress.Any;
+                if (!string.IsNullOrWhiteSpace(address))
+                    System.Console.WriteLine("ERROR: [Network] address \"{0}\" is not an IP address; listening on every interface.", address);
+            }
+            // [Confluence] Tranquillity #412: every listener below, and the servers services open later through
+            // MainServer.GetHttpServer (ConsolePort, a connector on its own port), bind to [Network] address (the HTTPS
+            // listeners used to bind to every interface whatever it said).
+            MainServer.DefaultListenIPAddress = m_ipaddress;
 
             if (port == 0)
             {
@@ -113,7 +121,7 @@ namespace OpenSim.Server.Base
                     Environment.Exit(1);
                 }
 
-                httpServer = new BaseHttpServer(port, ssl_main, cert_path, cert_pass);
+                httpServer = new BaseHttpServer(port, ssl_main, cert_path, cert_pass) { ListenIPAddress = m_ipaddress };
             }
 
             MainServer.AddHttpServer(httpServer);
@@ -140,7 +148,7 @@ namespace OpenSim.Server.Base
                         //Thread.CurrentThread.Abort();
                     }
 
-                    MainServer.AddHttpServer(new BaseHttpServer(https_port, ssl_listener, cert_path, cert_pass));
+                    MainServer.AddHttpServer(new BaseHttpServer(https_port, ssl_listener, cert_path, cert_pass) { ListenIPAddress = m_ipaddress });
                 }
                 else
                 {

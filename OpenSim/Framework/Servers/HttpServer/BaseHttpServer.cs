@@ -2006,7 +2006,9 @@ namespace OpenSim.Framework.Servers.HttpServer
                 }
                 else
                 {
-                    m_httpListener = tinyHTTPListener.Create(IPAddress.Any, (int)m_port, m_cert);
+                    // [Confluence] Tranquillity #412: the HTTPS listener binds where the plain one does (it always bound to
+                    // every interface, whatever ListenIPAddress said).
+                    m_httpListener = tinyHTTPListener.Create(m_listenIPAddress, (int)m_port, m_cert);
                     if(m_certificateValidationCallback is not null)
                         m_httpListener.CertificateValidationCallback = m_certificateValidationCallback;
                     m_httpListener.ExceptionThrown += httpServerException;

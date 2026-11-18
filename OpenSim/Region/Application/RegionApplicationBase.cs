@@ -70,6 +70,9 @@ namespace OpenSim
             Initialize();
 
             IPAddress ipaddress = m_networkServersInfo.HttpListenerAddress;
+            // [Confluence] Tranquillity #412: every listener below, and the servers modules open later through
+            // MainServer.GetHttpServer, bind to [Network] http_listener_address (only the plain main listener used to).
+            MainServer.DefaultListenIPAddress = ipaddress ?? IPAddress.Any;
 
             uint mainport = m_networkServersInfo.HttpListenerPort;
             uint mainSSLport = m_networkServersInfo.httpSSLPort;
@@ -85,6 +88,7 @@ namespace OpenSim
                         mainSSLport, m_networkServersInfo.HttpUsesSSL,
                         m_networkServersInfo.HttpSSLCN,
                         m_networkServersInfo.HttpSSLCertPath, m_networkServersInfo.HttpSSLCNCertPass);
+                m_httpServer.ListenIPAddress = MainServer.DefaultListenIPAddress;
                 m_httpServer.Start();
                 MainServer.AddHttpServer(m_httpServer);
             }
@@ -113,6 +117,7 @@ namespace OpenSim
                         m_networkServersInfo.https_port, m_networkServersInfo.ssl_listener,
                         m_networkServersInfo.cert_path,
                         m_networkServersInfo.cert_pass);
+                    server.ListenIPAddress = MainServer.DefaultListenIPAddress;
 
                     m_log.InfoFormat("[REGION SERVER]: Starting OOB HTTPS server on port {0}", server.SSLPort);
                     server.Start();
@@ -121,6 +126,7 @@ namespace OpenSim
                 else
                 {
                     server = new BaseHttpServer(m_networkServersInfo.https_port);
+                    server.ListenIPAddress = MainServer.DefaultListenIPAddress;
 
                     m_log.InfoFormat("[REGION SERVER]: Starting HTTP server on port {0} for external HTTPS", server.Port);
                     server.Start();

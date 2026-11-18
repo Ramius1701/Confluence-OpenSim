@@ -390,7 +390,7 @@ namespace OpenSim.Framework.Servers
         /// </remarks>
         /// <returns></returns>
         /// <param name='port'>If 0 then the default HTTP server is returned.</param>
-        /// <param name='ipaddr'>A specific IP address to bind to.  If null then the default IP address is used.</param>
+        /// <param name='ipaddr'>A specific IP address to bind to.  If null then <see cref="DefaultListenIPAddress"/> is used.</param>
         public static IHttpServer GetHttpServer(uint port, IPAddress ipaddr)
         {
             if (port == 0)
@@ -406,14 +406,21 @@ namespace OpenSim.Framework.Servers
 
                 m_Servers[port] = new BaseHttpServer(port);
 
-                if (ipaddr != null)
-                    m_Servers[port].ListenIPAddress = ipaddr;
+                m_Servers[port].ListenIPAddress = ipaddr ?? DefaultListenIPAddress;
 
                 m_Servers[port].Start();
 
                 return m_Servers[port];
             }
         }
+
+        /// <summary>
+        /// [Confluence] Tranquillity #412: the address a server created by <see cref="GetHttpServer(uint, IPAddress)"/>
+        /// listens on when the caller names none (scripted URLs, XML-RPC, a connector or remote admin on a port of its
+        /// own). Set at startup from the region's [Network] http_listener_address or Robust's [Network] address, so every
+        /// listener of the process binds there. Default: every interface, as before.
+        /// </summary>
+        public static IPAddress DefaultListenIPAddress { get; set; } = IPAddress.Any;
 
         public static void Stop()
         {
