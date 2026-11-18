@@ -842,6 +842,10 @@ namespace OpenSim.Modules.Currency
         /// <param name="landBuyEvent">The land buy event.</param>
         private void ValidateLandBuy(Object sender, EventManager.LandBuyArgs landBuyEvent)
         {
+            // [Confluence] Tranquillity #405: processLandBuy charges nothing while selling is disabled, so a sale for a
+            // price is not validated then (the land module gave it away).
+            if (!m_sellEnabled && landBuyEvent.parcelPrice > 0) return;
+
             IClientAPI senderClient = GetLocateClient(landBuyEvent.agentId);
             if (senderClient != null)
             {
