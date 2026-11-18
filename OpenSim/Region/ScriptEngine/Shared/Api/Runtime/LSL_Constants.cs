@@ -1378,5 +1378,67 @@ namespace OpenSim.Region.ScriptEngine.Shared.ScriptBase
         public const int TRANSFER_BAD_ROOT = -5;
         public const int TRANSFER_NO_PERMS = -6;
         public const int TRANSFER_NO_ATTACHMENT = -7;
+
+        // [Confluence] Tranquillity #403: SL constants (secondlife/lsl-definitions) for functions and rules this engine
+        // has, so SL scripts using them compile. Pathfinding, game controls, combat 2.0, environment and the functions
+        // not implemented here are left out. VEHICLE_FLAG_BLOCK_INTERFERENCE is left out on purpose: its value, 0x400,
+        // is OpenSim's VEHICLE_FLAG_NO_X, so an SL script setting it would change the vehicle.
+
+        // llDerezObject
+        public const int DEREZ_DIE = 0;
+        public const int DEREZ_MAKE_TEMP = 1;
+        public const int DEREZ_TO_INVENTORY = 2;
+
+        // llPassTouches, llPassCollisions
+        public const int PASS_IF_NOT_HANDLED = 0;
+        public const int PASS_ALWAYS = 1;
+        public const int PASS_NEVER = 2;
+
+        // SL's names for the status codes OpenSim calls LSL_STATUS_* (llSetPrimMediaParams, llClearPrimMedia, ...)
+        public const int STATUS_OK = 0;
+        public const int STATUS_MALFORMED_PARAMS = 1000;
+        public const int STATUS_TYPE_MISMATCH = 1001;
+        public const int STATUS_BOUNDS_ERROR = 1002;
+        public const int STATUS_NOT_FOUND = 1003;
+        public const int STATUS_NOT_SUPPORTED = 1004;
+        public const int STATUS_INTERNAL_ERROR = 1999;
+        public const int STATUS_WHITELIST_FAILED = 2001;
+
+        // prim-params rules
+        public const int PRIM_CLICK_ACTION = 43;
+        public const int PRIM_COLLISION_SOUND = 53;
+
+        // llSetPrimMediaParams limits
+        public const int PRIM_MEDIA_PARAM_MAX = 14;
+        public const int PRIM_MEDIA_MAX_URL_LENGTH = 1024;
+        public const int PRIM_MEDIA_MAX_WHITELIST_SIZE = 1024;
+        public const int PRIM_MEDIA_MAX_WHITELIST_COUNT = 64;
+        public const int PRIM_MEDIA_MAX_WIDTH_PIXELS = 2048;
+        public const int PRIM_MEDIA_MAX_HEIGHT_PIXELS = 2048;
+
+        // llGetParcelDetails PARCEL_DETAILS_TP_ROUTING
+        public const int TP_ROUTING_BLOCKED = 0;
+        public const int TP_ROUTING_LANDINGP = 1;
+        public const int TP_ROUTING_FREE = 2;
+
+        // llModifyLand: SL's current brush names (TerrainModule.ModifyTerrain reads 0, 1, 2 as small, medium, large)
+        public const int LAND_BRUSH_SMALL = 0;
+        public const int LAND_BRUSH_MEDIUM = 1;
+        public const int LAND_BRUSH_LARGE = 2;
+
+        // llSitOnLink
+        public const int SIT_OK = 1;
+
+        // llGetAgentInfo; this simulator sets neither
+        public const int AGENT_AUTOMATED = 0x4000;
+        public const int AGENT_FLOATING_VIA_SCRIPTED_ATTACHMENT = 0x8000;
+
+        // http_response metadata
+        public const int HTTP_BODY_TRUNCATED = 0;
+
+        // flags this simulator accepts but does not act on yet
+        public const int REGION_FLAG_BLOCK_FLYOVER = 0x8000000;      // llGetRegionFlags
+        public const int STATUS_DIE_ON_NO_REZZER = 0x1000;            // llSetStatus
+        public const int REZ_FLAG_DIE_ON_NO_REZZER = 0x0100;          // llRezObjectWithParams REZ_FLAGS
     }
 }

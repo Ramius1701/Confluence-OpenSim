@@ -1918,14 +1918,19 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
         public void llSetClickAction(int action)
         {
-            byte old = m_host.ClickAction;
-            m_host.ClickAction = (byte)action;
-            if(m_host.ClickAction != old)
+            SetPartClickAction(m_host, action);
+        }
+
+        /// <summary>llSetClickAction and PRIM_CLICK_ACTION on one prim.</summary>
+        private static void SetPartClickAction(SceneObjectPart part, int action)
+        {
+            byte old = part.ClickAction;
+            part.ClickAction = (byte)action;
+            if(part.ClickAction != old)
             {
-                m_host.ParentGroup.HasGroupChanged = true;
-                m_host.ScheduleFullUpdate();
+                part.ParentGroup.HasGroupChanged = true;
+                part.ScheduleFullUpdate();
             }
-            return;
         }
 
         public void llSetColor(LSL_Vector color, int face)
@@ -6114,28 +6119,36 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
         public void llCollisionSound(LSL_String impact_sound, LSL_Float impact_volume)
         {
+            SetPartCollisionSound(m_host, impact_sound.m_string, (float)impact_volume);
+        }
 
-            if(String.IsNullOrEmpty(impact_sound.m_string))
+        /// <summary>
+        /// llCollisionSound and PRIM_COLLISION_SOUND on one prim: "" suppresses the collision sound; otherwise a sound's
+        /// key or the name of a sound in the prim.
+        /// </summary>
+        private static void SetPartCollisionSound(SceneObjectPart part, string impact_sound, float impact_volume)
+        {
+            if(String.IsNullOrEmpty(impact_sound))
             {
-                m_host.CollisionSoundVolume = (float)impact_volume;
-                m_host.CollisionSound = m_host.invalidCollisionSoundUUID;
-                m_host.CollisionSoundType = -1; // disable all sounds
-                m_host.aggregateScriptEvents();
+                part.CollisionSoundVolume = impact_volume;
+                part.CollisionSound = part.invalidCollisionSoundUUID;
+                part.CollisionSoundType = -1; // disable all sounds
+                part.aggregateScriptEvents();
                 return;
             }
 
             // TODO: Parameter check logic required.
-            UUID soundId = ScriptUtils.GetAssetIdFromKeyOrItemName(m_host, impact_sound, AssetType.Sound);
+            UUID soundId = ScriptUtils.GetAssetIdFromKeyOrItemName(part, impact_sound, AssetType.Sound);
             if(soundId.IsZero())
-                m_host.CollisionSoundType = -1;
+                part.CollisionSoundType = -1;
             else
             {
-                m_host.CollisionSound = soundId;
-                m_host.CollisionSoundVolume = (float)impact_volume;
-                m_host.CollisionSoundType = 1;
+                part.CollisionSound = soundId;
+                part.CollisionSoundVolume = impact_volume;
+                part.CollisionSoundType = 1;
             }
 
-            m_host.aggregateScriptEvents();
+            part.aggregateScriptEvents();
         }
 
         public LSL_String llGetAnimation(LSL_Key id)
@@ -12672,7 +12685,8 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                                 return new LSL_List();
                             }
 
-                            part.ParentGroup.Damage = primDamage;
+                            // [Confluence] Tranquillity #403: SL holds prim damage to 0..100
+                            part.ParentGroup.Damage = Math.Clamp(primDamage, 0f, 100f);
                             part.ParentGroup.RootPart.SetLslDamageType(primDamageType);
                             break;
                         case ScriptBaseClass.PRIM_HEALTH:
@@ -12691,6 +12705,41 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                             }
 
                             part.ParentGroup.RootPart.SetLslHealth(Math.Max(0f, primHealth));
+                            break;
+                        case ScriptBaseClass.PRIM_CLICK_ACTION:
+                            // [Confluence] Tranquillity #403: [ PRIM_CLICK_ACTION, integer action ], as llSetClickAction on this prim
+                            if (remain < 1)
+                                return new LSL_List();
+                            int clickAction;
+                            try
+                            {
+                                clickAction = rules.GetLSLIntegerItem(idx++);
+                            }
+                            catch (InvalidCastException)
+                            {
+                                Error(originFunc, string.Format("Error running rule #{0} -> PRIM_CLICK_ACTION: arg #{1} - parameter 2 must be an integer", rulesParsed, idx - idxStart - 1));
+                                return new LSL_List();
+                            }
+                            SetPartClickAction(part, clickAction);
+                            break;
+                        case ScriptBaseClass.PRIM_COLLISION_SOUND:
+                            // [Confluence] Tranquillity #403: [ PRIM_COLLISION_SOUND, string sound, float volume ], as
+                            // llCollisionSound on this prim
+                            if (remain < 2)
+                                return new LSL_List();
+                            string collisionSound;
+                            float collisionVolume;
+                            try
+                            {
+                                collisionSound = rules.GetStrictStringItem(idx++);
+                                collisionVolume = (float)rules.GetLSLFloatItem(idx++);
+                            }
+                            catch (InvalidCastException)
+                            {
+                                Error(originFunc, string.Format("Error running rule #{0} -> PRIM_COLLISION_SOUND: arg #{1} - parameters must be string, float", rulesParsed, idx - idxStart - 1));
+                                return new LSL_List();
+                            }
+                            SetPartCollisionSound(part, collisionSound, collisionVolume);
                             break;
                         case ScriptBaseClass.PRIM_ALPHA_MODE:
                             if (remain < 3)
@@ -14221,6 +14270,17 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
                     case ScriptBaseClass.PRIM_HEALTH:
                         res.Add(new LSL_Float(part.ParentGroup.RootPart.GetLslHealth()));
+                        break;
+
+                    case ScriptBaseClass.PRIM_CLICK_ACTION:
+                        // [Confluence] Tranquillity #403
+                        res.Add(new LSL_Integer(part.ClickAction));
+                        break;
+
+                    case ScriptBaseClass.PRIM_COLLISION_SOUND:
+                        // [Confluence] Tranquillity #403: [ key sound, float volume ]; a suppressed sound reads NULL_KEY
+                        res.Add(new LSL_Key(part.CollisionSound.Equals(part.invalidCollisionSoundUUID) ? ScriptBaseClass.NULL_KEY : part.CollisionSound.ToString()));
+                        res.Add(new LSL_Float(part.CollisionSoundVolume));
                         break;
 
                     case ScriptBaseClass.PRIM_NORMAL:
@@ -19920,12 +19980,14 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                         case ScriptBaseClass.PRIM_SCRIPTED_SIT_ONLY:
                         case ScriptBaseClass.PRIM_SIT_FLAGS:
                         case ScriptBaseClass.PRIM_HEALTH:
+                        case ScriptBaseClass.PRIM_CLICK_ACTION:
                             if (remain < 1)
                                 return new LSL_List();
                             idx++;
                             break;
 
                         case ScriptBaseClass.PRIM_DAMAGE:
+                        case ScriptBaseClass.PRIM_COLLISION_SOUND:
                             if (remain < 2)
                                 return new LSL_List();
                             idx += 2;
