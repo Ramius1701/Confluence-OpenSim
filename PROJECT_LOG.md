@@ -29952,3 +29952,16 @@ codes no longer reach any viewer (owner to decide whether to drop them).
 
 S: ran out of space on 11-22 (Rust build output from the viewer project, ~55 GB); the owner plans a separate G: VHDX
 for the GitHub work.
+
+## Deployed 60eb4a411f: batches 1-3 (2026-11-22)
+
+Full Phlox suite before the push: 6907 passed, 0 failed, 2 skipped (a first run while the viewer project's cargo
+build held the CPU and S: had filled had 15 failures - the wind-volume and osMakeNotecard / YEngine damage classes - all
+passing alone and in pairs: process-wide OSSL settings and load, which Tranquillity #396 addresses). Pushed
+`18b06d51ab..60eb4a411f` (19 commits). Deployed with the grid down: 218 binaries per folder (the rebuild plus the new
+code, including Region.Framework's GltfMaterialOverride), moved aside into `Backups/dll-20261122-deploy`, 3488 files,
+md5 301/301 in the grid root and all 15 regions, 0 problems. Live now on start: batch 1 (#395 login region size, #401
+script engines, #412 listen addresses - nothing set on Casperia, so unchanged), batch 2 (#403, #404, #405 land sales,
+#407 group roles - members in several roles gain all their roles' abilities), batch 3 (#400 disable-scripts pauses,
+#402 glTF through one store for both engines, #409 Phlox functions). In-world checks: TESTING 8.12, 9.11, 9.12,
+11.9, 11.10.
