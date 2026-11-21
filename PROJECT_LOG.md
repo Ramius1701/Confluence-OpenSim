@@ -29965,3 +29965,14 @@ script engines, #412 listen addresses - nothing set on Casperia, so unchanged), 
 #407 group roles - members in several roles gain all their roles' abilities), batch 3 (#400 disable-scripts pauses,
 #402 glTF through one store for both engines, #409 Phlox functions). In-world checks: TESTING 8.12, 9.11, 9.12,
 11.9, 11.10.
+
+## OpenSimWeather 0.7.1 deployed: Aurora weather codes removed (2026-11-22)
+
+At the owner's decision, after Aurora Viewer removed region weather (Aurora #4280; the Confluence viewer follows), the
+Aurora codes 0.7.0 marked into the weather skies are removed (`d740052233`): AuroraWeather, `[Weather] AuroraWeather`,
+the Aurora* sky keys, their 11 test cases and docs (TESTING 8.11 dropped). The northern-lights effect (AuroraEnabled)
+is unrelated and kept. Full Phlox suite 6896 passed, 0 failed, 2 skipped. Deployed with the grid down: 212 binaries per
+folder, 3392 files, 301/301 in all 16 folders (SVC's OpenSim.Server.Handlers.dll first read as a mismatch during the
+slow write, identical on recheck). The move-aside script named its backup folder by date only, so this second deploy
+of the day overwrote `Backups/dll-20261122-deploy` with the 60eb4a411f build; the script now names it by date and
+time (`dll-yyyyMMdd-HHmm-deploy`). The pre-today build remains in the 11-17 backup.
