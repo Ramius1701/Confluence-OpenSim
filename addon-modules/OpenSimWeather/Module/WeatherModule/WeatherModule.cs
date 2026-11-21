@@ -1671,13 +1671,9 @@ namespace OpenSim.Region.OptionalModules.World.Weather
         {
             // [Confluence] The weather skies are changes to the region's own skies (WeatherSky.cs). Clear and sunny have
             // none: they show the region's sky. [Weather.Sky.<Weather>] sections can change a weather's numbers.
-            // [Weather] AuroraWeather (default true) marks each weather sky with what Aurora Viewer draws for it.
-            bool auroraWeather = source.Configs["Weather"]?.GetBoolean("AuroraWeather", true) ?? true;
             foreach (WeatherKind kind in new[] { WeatherKind.Rain, WeatherKind.Storm, WeatherKind.Snow, WeatherKind.Blizzard })
             {
                 SkyEffect effect = SkyEffect.For(kind.ToString(), source.Configs["Weather.Sky." + kind]);
-                if (effect != null && !auroraWeather)
-                    effect.Aurora = null;
                 if (effect != null)
                     m_skyEffects[kind] = effect;
                 if (source.Configs["Weather.Environment." + kind] != null)

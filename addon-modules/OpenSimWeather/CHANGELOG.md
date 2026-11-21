@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1 - Confluence: Aurora Viewer weather codes removed (2026-11-22)
+
+- Aurora Viewer removed region weather (its #4280, for Second Life's shared-experience policy), and the Confluence
+  viewer follows it, so no viewer reads the codes 0.7.0 wrote into the weather skies any more. They are gone:
+  `AuroraWeather`, `[Weather] AuroraWeather` and the `Aurora*` keys of `[Weather.Sky.<Weather>]` are no longer read,
+  and the skies' numbers are no longer marked. The weather sky, particles, lightning and thunder are unchanged, as is
+  the separate northern-lights effect (`AuroraEnabled`).
+
 ## 0.7.0 - Confluence: Aurora Viewer draws the weather (2026-11-17)
 
 - Each weather sky now also carries what Aurora Viewer draws for it (`AuroraWeather`, in WeatherSky.cs): rain or snow,
