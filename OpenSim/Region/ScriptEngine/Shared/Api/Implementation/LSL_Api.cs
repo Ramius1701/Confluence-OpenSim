@@ -12970,37 +12970,40 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
                             break;
 
-                        case ScriptBaseClass.PRIM_GLTF_NORMAL:
-                        case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
-                        case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
-                        case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
-                            // [face, texture, repeats, offsets, rotation] common to
-                            // all four, plus type-specific extra values: none for
-                            // NORMAL, metallic+roughness floats for
-                            // METALLIC_ROUGHNESS, an emissive color vector for
-                            // EMISSIVE, and color/alpha/alpha_mode/alpha_cutoff/
-                            // double_sided for BASE_COLOR - see
-                            // ApplyGltfPrimitiveParams and its helpers for the
-                            // exact per-index handling.
-                            int gltfNeed = code switch
-                            {
-                                ScriptBaseClass.PRIM_GLTF_BASE_COLOR => 10,
-                                ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS => 7,
-                                ScriptBaseClass.PRIM_GLTF_EMISSIVE => 6,
-                                _ => 5, // PRIM_GLTF_NORMAL
-                            };
-                            if (remain < gltfNeed)
-                                return new LSL_List();
-
-                            materialChanged |= ApplyGltfPrimitiveParams(part, code, rules.GetSublist(idx, idx + gltfNeed - 1), originFunc);
-                            idx += gltfNeed;
-                            break;
 
                         case ScriptBaseClass.PRIM_LINK_TARGET:
                             if (remain < 3) // setting to 3 on the basis that parsing any usage of PRIM_LINK_TARGET that has nothing following it is pointless.
                                 return new LSL_List();
 
                             return rules.GetSublist(idx, -1);
+
+                        case ScriptBaseClass.PRIM_RENDER_MATERIAL:
+                            // [ PRIM_RENDER_MATERIAL, integer face, string render_material ]
+                            if (remain < 2)
+                                return new LSL_List();
+                            try
+                            {
+                                face = rules.GetIntegerItem(idx++);
+                            }
+                            catch(InvalidCastException)
+                            {
+                                Error(originFunc, string.Format("Error running rule #{0} -> PRIM_RENDER_MATERIAL: arg #{1} - must be integer", rulesParsed, idx - idxStart - 1));
+                                return new LSL_List();
+                            }
+                            if (!RenderMaterialKeyOrName(rules.GetStringItem(idx++), originFunc, out UUID renderMaterial))
+                                return new LSL_List();
+                            SetPartRenderMaterial(part, renderMaterial, face);
+                            break;
+
+                        case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
+                        case ScriptBaseClass.PRIM_GLTF_NORMAL:
+                        case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
+                        case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
+                            if (remain < GltfValueCount(code))
+                                return new LSL_List();
+                            if (!SetPrimGltf(part, code, rules, ref idx, originFunc, rulesParsed))
+                                return new LSL_List();
+                            break;
 
                         case ScriptBaseClass.PRIM_PROJECTOR:
                             if (remain < 4)
@@ -14309,32 +14312,6 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                         }
                         break;
 
-                    case ScriptBaseClass.PRIM_GLTF_NORMAL:
-                    case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
-                    case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
-                    case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
-                        // Readback counterpart to the write side in
-                        // SetPrimParams - reads the per-face override JSON
-                        // (GetMaterialOverrideData) merged with the assigned
-                        // base material underneath it (GetGltfMaterialAssetData)
-                        // for anything the override doesn't specify, so a
-                        // face with an assigned material but no override
-                        // reads back that material's real values, not
-                        // "nothing here" defaults - see GetGltfPrimitiveParams.
-                        if (remain < 1)
-                            return new LSL_List();
-
-                        face = rules.GetIntegerItem(idx++);
-                        if (face == ScriptBaseClass.ALL_SIDES)
-                        {
-                            for (face = 0; face < nsides; face++)
-                                GetGltfPrimitiveParams(ref res, code, part, face);
-                        }
-                        else if (face >= 0 && face < nsides)
-                        {
-                            GetGltfPrimitiveParams(ref res, code, part, face);
-                        }
-                        break;
 
                     case ScriptBaseClass.PRIM_LINK_TARGET:
 
@@ -14343,6 +14320,17 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                             return new LSL_List();
 
                         return rules.GetSublist(idx, -1);
+
+                    case ScriptBaseClass.PRIM_RENDER_MATERIAL:
+                    case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
+                    case ScriptBaseClass.PRIM_GLTF_NORMAL:
+                    case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
+                    case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
+                        if (remain < 1)
+                            return new LSL_List();
+                        face = rules.GetIntegerItem(idx++);
+                        GetPrimGltf(part, code, face, ref res);
+                        break;
 
                     case ScriptBaseClass.PRIM_PROJECTOR:
                         if (part.Shape.ProjectionEntry)
@@ -20063,6 +20051,22 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
                             idx += 7;
                             break;
 
+                        // glTF materials: nothing to set on an avatar, but the values are skipped so the rules after apply
+                        case ScriptBaseClass.PRIM_RENDER_MATERIAL:
+                            if (remain < 2)
+                                return new LSL_List();
+                            idx += 2;
+                            break;
+
+                        case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
+                        case ScriptBaseClass.PRIM_GLTF_NORMAL:
+                        case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
+                        case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
+                            if (remain < GltfValueCount(code))
+                                return new LSL_List();
+                            idx += GltfValueCount(code);
+                            break;
+
                         case ScriptBaseClass.PRIM_LINK_TARGET:
                             if (remain < 3) // setting to 3 on the basis that parsing any usage of PRIM_LINK_TARGET that has nothing following it is pointless.
                                 return new LSL_List();
@@ -23536,6 +23540,14 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             }
         }
 
+        #region glTF render materials and overrides
+        // [Confluence] Tranquillity #402 (87056d1564): replaces our own YEngine glTF code (cdfa19342e), which stored in
+        // the same place but fell short of SL's rules (8 of their 10 tests failed against it).
+
+        // The faces' glTF render materials and overrides are kept through GltfMaterialOverride (OpenSim.Region.Framework),
+        // in the compact form viewers read and MaterialsModule writes, so YEngine and Phlox scripts and viewer edits see the
+        // same data. SL: https://wiki.secondlife.com/wiki/GLTF_Overrides
+
         public LSL_String llGetRenderMaterial(LSL_Integer lface )
         {
             return GetMaterial(m_host, lface.value);
@@ -23543,358 +23555,47 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
 
         protected static LSL_String GetMaterial(SceneObjectPart part, int face)
         {
-            if (part.Shape.RenderMaterials is null ||
-                    part.Shape.RenderMaterials.entries is null ||
-                    part.Shape.RenderMaterials.entries.Length == 0)
-                return ScriptBaseClass.NULL_KEY;
-
             if (face == ScriptBaseClass.ALL_SIDES)
                 face = 0;
-            else if (face < 0)
-                return ScriptBaseClass.NULL_KEY;
-            else if (face >= GetNumberOfSides(part))
+            else if (face < 0 || face >= GetNumberOfSides(part))
                 return ScriptBaseClass.NULL_KEY;
 
-            UUID asset = UUID.Zero;
-            bool found = false;
-            foreach(Primitive.RenderMaterials.RenderMaterialEntry re in part.Shape.RenderMaterials.entries)
-            {
-                if(re.te_index == face)
-                {
-                    asset = re.id;
-                    found = true;
-                    break;
-                }
-            }
+            return GltfAssetAsSeen(part, GltfMaterialOverride.GetRenderMaterial(part.Shape, face), AssetType.Material);
+        }
 
-            if(!found)
-                 return ScriptBaseClass.NULL_KEY;
+        /// <summary>
+        /// A render material or glTF texture key as a script reads it (SL llGetRenderMaterial): the item's name when it is
+        /// in the prim's inventory, else the key when the owner has full permissions on the object, else NULL_KEY.
+        /// </summary>
+        protected static LSL_String GltfAssetAsSeen(SceneObjectPart part, UUID asset, AssetType type)
+        {
+            if (asset.IsZero())
+                return ScriptBaseClass.NULL_KEY;
 
             lock (part.TaskInventory)
             {
                 part.TaskInventory.LockItemsForRead(true);
                 try
-                { 
+                {
                     foreach (KeyValuePair<UUID, TaskInventoryItem> inv in part.TaskInventory)
                     {
-                        if (inv.Value.Type == (int)AssetType.Material && inv.Value.AssetID.Equals(asset))
-                            return inv.Value.Name.ToString();
+                        if (inv.Value.Type == (int)type && inv.Value.AssetID.Equals(asset))
+                            return inv.Value.Name;
                     }
                 }
                 finally { part.TaskInventory.LockItemsForRead(false); }
             }
 
-            if((part.ParentGroup.EffectiveOwnerPerms & (uint)PermissionMask.All) != (uint)PermissionMask.All)
+            if ((part.ParentGroup.EffectiveOwnerPerms & (uint)PermissionMask.All) != (uint)PermissionMask.All)
                 return ScriptBaseClass.NULL_KEY;
 
             return asset.ToString();
         }
 
-        private string GetGltfMaterialAssetData(SceneObjectPart part, int face)
-        {
-            UUID materialID = GetRenderMaterialID(part, face);
-            if (materialID.IsZero())
-                return "{}";
-
-            AssetBase asset = World.AssetService?.Get(materialID.ToString());
-            if (asset is null || asset.Data is null || asset.Data.Length == 0)
-                return "{}";
-
-            return TryExtractGltfJson(asset.Data, out string json)
-                && TryCompactGltfMaterialJson(json, out string data) ? data : "{}";
-        }
-
-        private static UUID GetRenderMaterialID(SceneObjectPart part, int face)
-        {
-            if (part?.Shape?.RenderMaterials?.entries is null)
-                return UUID.Zero;
-
-            foreach (Primitive.RenderMaterials.RenderMaterialEntry entry in part.Shape.RenderMaterials.entries)
-            {
-                if (entry.te_index == face)
-                    return entry.id;
-            }
-            return UUID.Zero;
-        }
-
-        private static bool TryExtractGltfJson(byte[] data, out string json)
-        {
-            json = null;
-            if (data is null || data.Length == 0)
-                return false;
-
-            string text = Encoding.UTF8.GetString(data).Trim();
-            if (text.StartsWith("{", StringComparison.Ordinal) && text.Contains("\"materials\"", StringComparison.Ordinal))
-            {
-                json = text;
-                return true;
-            }
-
-            try
-            {
-                if (TryExtractGltfJson(OSDParser.DeserializeLLSDXml(data), out json))
-                    return true;
-            }
-            catch
-            {
-            }
-
-            try
-            {
-                return TryExtractGltfJson(OSDParser.DeserializeJson(text), out json);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static bool TryExtractGltfJson(OSD osd, out string json)
-        {
-            json = null;
-            if (osd is not OSDMap map)
-                return false;
-
-            if (map.TryGetValue("gltf_json", out OSD gltfJson))
-            {
-                json = gltfJson.AsString();
-                return !string.IsNullOrWhiteSpace(json);
-            }
-
-            if (map.ContainsKey("materials"))
-            {
-                json = OSDParser.SerializeJsonString(map);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryGetGltfExtensionTransform(OSDMap inMap, out OSDMap outMap)
-        {
-            outMap = null;
-            if (inMap is null || !inMap.TryGetValue("extensions", out OSD extOSD) || extOSD is not OSDMap extMap)
-                return false;
-
-            if (!extMap.TryGetValue("KHR_texture_transform", out OSD trOSD) || trOSD is not OSDMap trMap)
-                return false;
-
-            OSDMap result = new();
-            if (trMap.TryGetValue("offset", out OSD offsetOSD) && offsetOSD is OSDArray offset && offset.Count >= 2)
-            {
-                result["o"] = new OSDArray
-                {
-                    Math.Round((double)offset[0], 4),
-                    Math.Round((double)offset[1], 4)
-                };
-            }
-
-            if (trMap.TryGetValue("rotation", out OSD rotationOSD))
-                result["r"] = Math.Round(rotationOSD.AsReal(), 6);
-
-            if (trMap.TryGetValue("scale", out OSD scaleOSD) && scaleOSD is OSDArray scale && scale.Count >= 2)
-            {
-                result["s"] = new OSDArray
-                {
-                    Math.Round((double)scale[0], 4),
-                    Math.Round((double)scale[1], 4)
-                };
-            }
-
-            outMap = result;
-            return result.Count > 0;
-        }
-
-        private static bool TryCompactGltfMaterialJson(string json, out string data)
-        {
-            data = "{}";
-            if (string.IsNullOrWhiteSpace(json))
-                return false;
-
-            try
-            {
-                if (OSDParser.DeserializeJson(json) is not OSDMap mainMap)
-                    return false;
-
-                if (!mainMap.TryGetValue("materials", out OSD materialsOSD) ||
-                    materialsOSD is not OSDArray materialsArray ||
-                    materialsArray.Count < 1 ||
-                    materialsArray[0] is not OSDMap material)
-                    return false;
-
-                UUID[] textureURIs = ReadGltfTextureUris(mainMap);
-                bool hasTextureUris = textureURIs is not null;
-                OSDMap compact = new();
-                OSDArray transforms = new(4);
-                UUID[] textureIDs = new UUID[4];
-                bool[] textureChanged = new bool[4];
-                bool texturesChanged = false;
-
-                void SetTextureFromIndex(OSDMap textureMap, int compactIndex)
-                {
-                    if (!hasTextureUris || textureMap is null ||
-                        !textureMap.TryGetValue("index", out OSD indexOSD))
-                        return;
-
-                    int sourceIndex = indexOSD.AsInteger();
-                    if (sourceIndex >= 0 && sourceIndex < textureURIs.Length)
-                    {
-                        textureIDs[compactIndex] = textureURIs[sourceIndex];
-                        textureChanged[compactIndex] = true;
-                        texturesChanged = true;
-                    }
-                }
-
-                void SetTransform(OSDMap textureMap, int compactIndex)
-                {
-                    if (!TryGetGltfExtensionTransform(textureMap, out OSDMap transform))
-                        return;
-
-                    while (transforms.Count < compactIndex)
-                        transforms.Add(new OSDMap());
-
-                    if (transforms.Count == compactIndex)
-                        transforms.Add(transform);
-                    else
-                        transforms[compactIndex] = transform;
-                }
-
-                if (material.TryGetValue("pbrMetallicRoughness", out OSD pmrOSD) && pmrOSD is OSDMap pmrMap)
-                {
-                    if (pmrMap.TryGetValue("baseColorTexture", out OSD baseTextureOSD) && baseTextureOSD is OSDMap baseTexture)
-                    {
-                        SetTextureFromIndex(baseTexture, 0);
-                        SetTransform(baseTexture, 0);
-                    }
-
-                    if (pmrMap.TryGetValue("metallicRoughnessTexture", out OSD mrTextureOSD) && mrTextureOSD is OSDMap mrTexture)
-                    {
-                        SetTextureFromIndex(mrTexture, 2);
-                        SetTransform(mrTexture, 2);
-                    }
-
-                    if (pmrMap.TryGetValue("baseColorFactor", out OSD baseColorOSD) && baseColorOSD is OSDArray baseColor && baseColor.Count >= 4)
-                    {
-                        compact["bc"] = new OSDArray
-                        {
-                            Math.Round(baseColor[0].AsReal(), 4),
-                            Math.Round(baseColor[1].AsReal(), 4),
-                            Math.Round(baseColor[2].AsReal(), 4),
-                            Math.Round(baseColor[3].AsReal(), 4)
-                        };
-                    }
-
-                    if (pmrMap.TryGetValue("metallicFactor", out OSD metallicFactor))
-                        compact["mf"] = Math.Round(metallicFactor.AsReal(), 4);
-
-                    if (pmrMap.TryGetValue("roughnessFactor", out OSD roughnessFactor))
-                        compact["rf"] = Math.Round(roughnessFactor.AsReal(), 4);
-                }
-
-                if (material.TryGetValue("normalTexture", out OSD normalOSD) && normalOSD is OSDMap normalTexture)
-                {
-                    SetTextureFromIndex(normalTexture, 1);
-                    SetTransform(normalTexture, 1);
-                }
-
-                if (material.TryGetValue("occlusionTexture", out OSD occlusionOSD) && occlusionOSD is OSDMap occlusionTexture)
-                {
-                    SetTextureFromIndex(occlusionTexture, 2);
-                    SetTransform(occlusionTexture, 2);
-                }
-
-                if (material.TryGetValue("emissiveTexture", out OSD emissiveOSD) && emissiveOSD is OSDMap emissiveTexture)
-                {
-                    SetTextureFromIndex(emissiveTexture, 3);
-                    SetTransform(emissiveTexture, 3);
-                }
-
-                if (material.TryGetValue("alphaMode", out OSD alphaMode))
-                {
-                    compact["am"] = alphaMode.AsString() switch
-                    {
-                        "BLEND" => 1,
-                        "MASK" => 2,
-                        _ => 0
-                    };
-                }
-
-                if (material.TryGetValue("alphaCutoff", out OSD alphaCutoff))
-                    compact["ac"] = Math.Round(alphaCutoff.AsReal(), 4);
-
-                if (material.TryGetValue("emissiveFactor", out OSD emissiveFactorOSD) && emissiveFactorOSD is OSDArray emissiveFactor && emissiveFactor.Count >= 3)
-                {
-                    compact["ec"] = new OSDArray
-                    {
-                        Math.Round(emissiveFactor[0].AsReal(), 4),
-                        Math.Round(emissiveFactor[1].AsReal(), 4),
-                        Math.Round(emissiveFactor[2].AsReal(), 4)
-                    };
-                }
-
-                if (material.TryGetValue("doubleSided", out OSD doubleSided))
-                    compact["ds"] = OSD.FromBoolean(doubleSided.AsBoolean());
-
-                if (texturesChanged)
-                {
-                    OSDArray tex = new(textureIDs.Length);
-                    for (int i = 0; i < textureIDs.Length; ++i)
-                        tex.Add(textureChanged[i] ? OSD.FromUUID(textureIDs[i]) : new OSD());
-                    compact["tex"] = tex;
-                }
-
-                if (transforms.Count > 0)
-                    compact["ti"] = transforms;
-
-                if (compact.Count == 0)
-                    return false;
-
-                data = OSDParser.SerializeLLSDNotation(compact);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static UUID[] ReadGltfTextureUris(OSDMap mainMap)
-        {
-            if (!mainMap.TryGetValue("images", out OSD imagesOSD) ||
-                imagesOSD is not OSDArray imagesArray ||
-                imagesArray.Count == 0 ||
-                imagesArray.Count >= 16 ||
-                !mainMap.TryGetValue("textures", out OSD texturesOSD) ||
-                texturesOSD is not OSDArray texturesArray ||
-                texturesArray.Count == 0 ||
-                texturesArray.Count >= 16)
-                return null;
-
-            UUID[] imageUris = new UUID[imagesArray.Count];
-            for (int i = 0; i < imagesArray.Count; ++i)
-            {
-                if (imagesArray[i] is OSDMap imageMap &&
-                    imageMap.TryGetValue("uri", out OSD uriOSD) &&
-                    UUID.TryParse(uriOSD.AsString(), out UUID textureID))
-                    imageUris[i] = textureID;
-            }
-
-            UUID[] textureUris = new UUID[texturesArray.Count];
-            for (int i = 0; i < texturesArray.Count; ++i)
-            {
-                if (texturesArray[i] is OSDMap textureMap &&
-                    textureMap.TryGetValue("source", out OSD sourceOSD))
-                {
-                    int imageIndex = sourceOSD.AsInteger();
-                    if (imageIndex >= 0 && imageIndex < imageUris.Length)
-                        textureUris[i] = imageUris[imageIndex];
-                }
-            }
-            return textureUris;
-        }
-
         public LSL_Integer llIsLinkGLTFMaterial(LSL_Integer linknum, LSL_Integer lface)
         {
+            // SL: FALSE for a link that does not exist or names several prims (LINK_SET, ...), and for a face that does
+            // not exist; ALL_SIDES is TRUE only when every face has a glTF material.
             SceneObjectPart part;
             if (linknum == ScriptBaseClass.LINK_ROOT)
                 part = m_host.ParentGroup.RootPart;
@@ -23905,1114 +23606,414 @@ namespace OpenSim.Region.ScriptEngine.Shared.Api
             if(part is null)
                 return 0;
 
-            if (part.Shape.RenderMaterials is null ||
-                    part.Shape.RenderMaterials.entries is null ||
-                    part.Shape.RenderMaterials.entries.Length == 0)
-                return 0;
-
+            int nsides = GetNumberOfSides(part);
             int face = lface.value;
             if (face == ScriptBaseClass.ALL_SIDES)
             {
-                int nsides = GetNumberOfSides(part);
-                bool[] pbr = new bool[nsides];
-                foreach(Primitive.RenderMaterials.RenderMaterialEntry re in part.Shape.RenderMaterials.entries)
+                if (nsides == 0)
+                    return 0;
+                for (int f = 0; f < nsides; f++)
                 {
-                    if(re.te_index > 0 && re.te_index < pbr.Length && re.id.IsNotZero())
-                        pbr[re.te_index] = true;
-                }
-                foreach(bool b in pbr)
-                {
-                    if (!b)
+                    if (GltfMaterialOverride.GetRenderMaterial(part.Shape, f).IsZero())
                         return 0;
                 }
                 return 1;
             }
 
-            if (face < 0)
+            if (face < 0 || face >= nsides)
                 return 0;
-            else if (face >= GetNumberOfSides(part))
-                return 0;
-            foreach(Primitive.RenderMaterials.RenderMaterialEntry re in part.Shape.RenderMaterials.entries)
-            {
-                if(re.te_index == face)
-                    return re.id.IsZero() ? 0 : 1;
-            }
-            return 0;
+            return GltfMaterialOverride.GetRenderMaterial(part.Shape, face).IsZero() ? 0 : 1;
         }
 
         public void llSetRenderMaterial(LSL_String materialstr, LSL_Integer lsl_face)
         {
-            SetRenderMaterial(m_host, materialstr, lsl_face, "llSetRenderMaterial");
+            if (RenderMaterialKeyOrName(materialstr.m_string, "llSetRenderMaterial", out UUID matID))
+                SetPartRenderMaterial(m_host, matID, lsl_face.value);
         }
 
-        public void llSetLinkRenderMaterial(LSL_Integer linknum, LSL_String materialstr, LSL_Integer lsl_face)
+        public void llSetLinkRenderMaterial(LSL_Integer link, LSL_String materialstr, LSL_Integer lsl_face)
         {
-            foreach (SceneObjectPart part in GetLinkParts(linknum.value))
-                SetRenderMaterial(part, materialstr, lsl_face, "llSetLinkRenderMaterial");
-        }
-
-        public void llSetLinkGLTFOverrides(LSL_Integer linknum, LSL_Integer lsl_face, LSL_List overrides)
-        {
-            if (overrides is null)
+            if (!RenderMaterialKeyOrName(materialstr.m_string, "llSetLinkRenderMaterial", out UUID matID))
                 return;
-
-            foreach (SceneObjectPart part in GetLinkParts(linknum.value))
-            {
-                int face = lsl_face.value;
-                if (face == ScriptBaseClass.ALL_SIDES)
-                {
-                    int nsides = GetNumberOfSides(part);
-                    for (int side = 0; side < nsides; ++side)
-                        ApplyGltfOverrides(part, side, overrides);
-                }
-                else
-                    ApplyGltfOverrides(part, face, overrides);
-            }
+            foreach (SceneObjectPart part in GetLinkParts(link.value))
+                SetPartRenderMaterial(part, matID, lsl_face.value);
         }
 
-        private bool ApplyGltfOverrides(SceneObjectPart part, int face, LSL_List overrides)
+        /// <summary>
+        /// SL llSetLinkGLTFOverrides: a list of OVERRIDE_GLTF_* constants each followed by its value, "" clearing that
+        /// override. A face that does not exist changes nothing.
+        /// </summary>
+        public void llSetLinkGLTFOverrides(LSL_Integer link, LSL_Integer lsl_face, LSL_List options)
         {
-            if (part is null || face < 0 || face >= GetNumberOfSides(part))
-                return false;
-
-            string data = GetMaterialOverrideData(part, face);
-            bool changed = false;
-            bool touched = false;
-            string assetData = GetGltfMaterialAssetData(part, face);
-            double[] baseColor = ReadCompactNumberArray(data, "bc", 4)
-                ?? ReadCompactNumberArray(assetData, "bc", 4)
-                ?? [1.0, 1.0, 1.0, 1.0];
-            bool clearBaseColor = false;
-
-            int idx = 0;
-            while (idx < overrides.Length)
+            const string func = "llSetLinkGLTFOverrides";
+            List<Action<GltfMaterialOverride>> edits = new();
+            object[] data = options.Data;
+            for (int i = 0; i + 1 < data.Length; i += 2)
             {
-                int op = overrides.GetLSLIntegerItem(idx++);
-                if (idx >= overrides.Length)
-                    break;
-
-                object rawValue = overrides.Data[idx];
-                bool clear = IsEmptyString(rawValue);
-
-                switch (op)
+                object v = data[i + 1];
+                if (!GltfInt(data[i], out int? param) || !param.HasValue)
                 {
-                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_COLOR_FACTOR:
-                        touched = true;
-                        if (clear)
-                        {
-                            idx++;
-                            clearBaseColor = true;
-                        }
-                        else
-                        {
-                            LSL_Vector color = overrides.GetVector3Item(idx++);
-                            baseColor[0] = color.x;
-                            baseColor[1] = color.y;
-                            baseColor[2] = color.z;
-                        }
+                    Error(func, $"parameter {i} must be an OVERRIDE_GLTF_* constant");
+                    return;
+                }
+                switch (param.Value)
+                {
+                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_COLOR_FACTOR when GltfColor(v, out Vector3? c):
+                        edits.Add(o => o.BaseColor = c);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA:
-                        touched = true;
-                        if (clear)
-                        {
-                            idx++;
-                            clearBaseColor = true;
-                        }
-                        else
-                            baseColor[3] = overrides.GetStrictFloatItem(idx++);
+                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA when GltfUnit(v, out float? a):
+                        edits.Add(o => o.BaseAlpha = a);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA_MODE:
-                        touched = true;
-                        data = clear ? RemoveCompactKey(data, "am") : SetCompactKey(data, "am", new OSDInteger(overrides.GetLSLIntegerItem(idx)));
-                        idx++;
-                        changed = true;
+                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA_MODE when GltfAlphaMode(v, out int? m):
+                        edits.Add(o => o.AlphaMode = m);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA_MASK:
-                        touched = true;
-                        data = clear ? RemoveCompactKey(data, "ac") : SetCompactKey(data, "ac", new OSDReal(overrides.GetStrictFloatItem(idx)));
-                        idx++;
-                        changed = true;
+                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA_MASK when GltfUnit(v, out float? ac):
+                        edits.Add(o => o.AlphaCutoff = ac);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_DOUBLE_SIDED:
-                        touched = true;
-                        data = clear ? RemoveCompactKey(data, "ds") : SetCompactKey(data, "ds", OSD.FromBoolean(overrides.GetLSLIntegerItem(idx) != 0));
-                        idx++;
-                        changed = true;
+                    case ScriptBaseClass.OVERRIDE_GLTF_BASE_DOUBLE_SIDED when GltfInt(v, out int? ds):
+                        edits.Add(o => o.DoubleSided = ds.HasValue ? ds.Value != 0 : null);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_METALLIC_FACTOR:
-                        touched = true;
-                        data = clear ? RemoveCompactKey(data, "mf") : SetCompactKey(data, "mf", new OSDReal(overrides.GetStrictFloatItem(idx)));
-                        idx++;
-                        changed = true;
+                    case ScriptBaseClass.OVERRIDE_GLTF_METALLIC_FACTOR when GltfUnit(v, out float? mf):
+                        edits.Add(o => o.MetallicFactor = mf);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_ROUGHNESS_FACTOR:
-                        touched = true;
-                        data = clear ? RemoveCompactKey(data, "rf") : SetCompactKey(data, "rf", new OSDReal(overrides.GetStrictFloatItem(idx)));
-                        idx++;
-                        changed = true;
+                    case ScriptBaseClass.OVERRIDE_GLTF_ROUGHNESS_FACTOR when GltfUnit(v, out float? rf):
+                        edits.Add(o => o.RoughnessFactor = rf);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_EMISSIVE_FACTOR:
-                        touched = true;
-                        if (clear)
-                        {
-                            data = RemoveCompactKey(data, "ec");
-                            idx++;
-                        }
-                        else
-                        {
-                            LSL_Vector color = overrides.GetVector3Item(idx++);
-                            data = SetCompactKey(data, "ec", CompactVector(color, 3));
-                        }
-                        changed = true;
+                    case ScriptBaseClass.OVERRIDE_GLTF_EMISSIVE_FACTOR when GltfColor(v, out Vector3? ec):
+                        edits.Add(o => o.EmissiveColor = ec);
                         break;
-
-                    case ScriptBaseClass.OVERRIDE_GLTF_EXTENSION_JSON:
-                        touched = true;
-                        data = clear ? RemoveCompactKey(data, "xj") : SetCompactKey(data, "xj", OSD.FromString(rawValue?.ToString() ?? string.Empty));
-                        idx++;
-                        changed = true;
-                        break;
-
                     default:
-                        idx++;
-                        break;
+                        Error(func, $"invalid value for parameter {param.Value}");
+                        return;
                 }
-            }
-
-            if (!touched)
-                return false;
-
-            if (clearBaseColor)
-            {
-                data = RemoveCompactKey(data, "bc");
-                changed = true;
-            }
-            else if (ReadCompactNumberArray(data, "bc", 4) is not null ||
-                ContainsOverride(overrides, ScriptBaseClass.OVERRIDE_GLTF_BASE_COLOR_FACTOR) ||
-                ContainsOverride(overrides, ScriptBaseClass.OVERRIDE_GLTF_BASE_ALPHA))
-            {
-                data = SetCompactKey(data, "bc", CompactVector(baseColor));
-                changed = true;
-            }
-
-            if (!HasRenderMaterial(part, face) && HasCompactOverrideData(data))
-                return false;
-
-            if (changed && SetMaterialOverrideData(part, face, data))
-            {
-                part.ParentGroup.HasGroupChanged = true;
-                part.ScheduleUpdate(PrimUpdateFlags.MaterialOvr | PrimUpdateFlags.FullUpdate);
-                part.TriggerScriptChangedEvent(Changed.MATERIAL);
-                return true;
-            }
-
-            return false;
-        }
-
-        // Read-side counterpart to ApplyGltfPrimitiveParams below - same
-        // [texture, repeats, offsets, rotation] shape common to all four
-        // codes, plus the same type-specific extras SetPrimParams accepts.
-        // Reads two layers - the per-face override JSON
-        // (GetMaterialOverrideData) and, for anything the override doesn't
-        // specify, the assigned base material (GetGltfMaterialAssetData,
-        // already normalized into this exact same compact key scheme by
-        // TryCompactGltfMaterialJson) - so a face with an assigned material
-        // but no override now reads back that material's real values
-        // instead of "nothing set". Every field is read via the same
-        // ReadCompact* parser applied to both strings in turn, not new
-        // parsing logic, so override-only behavior for a face that has no
-        // assigned base material is unchanged. Defaults for a field present
-        // in neither layer match real SL's own "nothing set" values
-        // (repeats 1,1; offset 0,0; rotation 0; base color white/alpha 1;
-        // alpha mode BLEND(1); metallic/roughness 1,1; emissive black) -
-        // the same defaults getLSLFaceMaterial already uses for its own
-        // "material not found" case just above, kept consistent rather
-        // than inventing new ones.
-        private void GetGltfPrimitiveParams(ref LSL_List res, int code, SceneObjectPart part, int face)
-        {
-            string overrideData = GetMaterialOverrideData(part, face);
-            string baseData = GetGltfMaterialAssetData(part, face);
-            int textureIndex = GltfTextureIndex(code);
-
-            UUID textureID = ReadCompactUuidArrayItem(overrideData, "tex", textureIndex);
-            if (textureID.IsZero())
-                textureID = ReadCompactUuidArrayItem(baseData, "tex", textureIndex);
-            res.Add(new LSL_String(textureID.IsZero() ? ScriptBaseClass.NULL_KEY : textureID.ToString()));
-
-            OSDMap overrideTransform = ReadCompactTransformMaps(overrideData, textureIndex + 1)[textureIndex];
-            OSDMap baseTransform = ReadCompactTransformMaps(baseData, textureIndex + 1)[textureIndex];
-
-            LSL_Vector repeats = new(1.0, 1.0, 0);
-            if (overrideTransform.TryGetValue("s", out OSD sVal) && sVal is OSDArray sArr && sArr.Count >= 2)
-                repeats = new LSL_Vector(sArr[0].AsReal(), sArr[1].AsReal(), 0);
-            else if (baseTransform.TryGetValue("s", out OSD bsVal) && bsVal is OSDArray bsArr && bsArr.Count >= 2)
-                repeats = new LSL_Vector(bsArr[0].AsReal(), bsArr[1].AsReal(), 0);
-            res.Add(repeats);
-
-            LSL_Vector offsets = new(0, 0, 0);
-            if (overrideTransform.TryGetValue("o", out OSD oVal) && oVal is OSDArray oArr && oArr.Count >= 2)
-                offsets = new LSL_Vector(oArr[0].AsReal(), oArr[1].AsReal(), 0);
-            else if (baseTransform.TryGetValue("o", out OSD boVal) && boVal is OSDArray boArr && boArr.Count >= 2)
-                offsets = new LSL_Vector(boArr[0].AsReal(), boArr[1].AsReal(), 0);
-            res.Add(offsets);
-
-            double rotation;
-            if (overrideTransform.TryGetValue("r", out OSD rVal))
-                rotation = rVal.AsReal();
-            else if (baseTransform.TryGetValue("r", out OSD brVal))
-                rotation = brVal.AsReal();
-            else
-                rotation = 0.0;
-            res.Add(new LSL_Float(rotation));
-
-            switch (code)
-            {
-                case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
-                    double[] baseColor = ReadCompactNumberArray(overrideData, "bc", 4) ?? ReadCompactNumberArray(baseData, "bc", 4);
-                    res.Add(baseColor is not null
-                            ? new LSL_Vector(baseColor[0], baseColor[1], baseColor[2])
-                            : new LSL_Vector(1.0, 1.0, 1.0));
-                    res.Add(new LSL_Float(baseColor is not null ? baseColor[3] : 1.0));
-                    bool hasAlphaMode = ReadCompactDouble(overrideData, "am", out double alphaMode)
-                            || ReadCompactDouble(baseData, "am", out alphaMode);
-                    res.Add(new LSL_Integer(hasAlphaMode ? (int)alphaMode : 1));
-                    bool hasAlphaCutoff = ReadCompactDouble(overrideData, "ac", out double alphaCutoff)
-                            || ReadCompactDouble(baseData, "ac", out alphaCutoff);
-                    res.Add(new LSL_Float(hasAlphaCutoff ? alphaCutoff : 0.0));
-                    bool doubleSided = (ReadCompactBool(overrideData, "ds", out bool ovDs) ? ovDs
-                            : ReadCompactBool(baseData, "ds", out bool baseDs) && baseDs);
-                    res.Add(new LSL_Integer(doubleSided ? 1 : 0));
-                    break;
-
-                case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
-                    bool hasMetallic = ReadCompactDouble(overrideData, "mf", out double metallic)
-                            || ReadCompactDouble(baseData, "mf", out metallic);
-                    res.Add(new LSL_Float(hasMetallic ? metallic : 1.0));
-                    bool hasRoughness = ReadCompactDouble(overrideData, "rf", out double roughness)
-                            || ReadCompactDouble(baseData, "rf", out roughness);
-                    res.Add(new LSL_Float(hasRoughness ? roughness : 1.0));
-                    break;
-
-                case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
-                    double[] emissive = ReadCompactNumberArray(overrideData, "ec", 3) ?? ReadCompactNumberArray(baseData, "ec", 3);
-                    res.Add(emissive is not null
-                            ? new LSL_Vector(emissive[0], emissive[1], emissive[2])
-                            : new LSL_Vector(0, 0, 0));
-                    break;
-
-                // PRIM_GLTF_NORMAL has no type-specific extras.
-            }
-        }
-
-        private bool ApplyGltfPrimitiveParams(SceneObjectPart part, int code, LSL_List values, string originFunc)
-        {
-            if (part is null || values is null || values.Length < 1)
-                return false;
-
-            int face = values.GetIntegerItem(0);
-            if (face == ScriptBaseClass.ALL_SIDES)
-            {
-                bool changed = false;
-                int nsides = GetNumberOfSides(part);
-                for (int side = 0; side < nsides; ++side)
-                    changed |= ApplyGltfPrimitiveParamsToFace(part, code, side, values, originFunc);
-                return changed;
-            }
-
-            return ApplyGltfPrimitiveParamsToFace(part, code, face, values, originFunc);
-        }
-
-        private bool ApplyGltfPrimitiveParamsToFace(SceneObjectPart part, int code, int face, LSL_List values, string originFunc)
-        {
-            if (part is null || face < 0 || face >= GetNumberOfSides(part))
-                return false;
-
-            string oldData = GetMaterialOverrideData(part, face);
-            string data = oldData;
-            int textureIndex = GltfTextureIndex(code);
-
-            if (!ApplyGltfTextureParam(part, ref data, textureIndex, values.Data[1], originFunc))
-                return false;
-
-            data = ApplyGltfTextureTransformParams(data, textureIndex, values);
-
-            switch (code)
-            {
-                case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
-                    data = ApplyGltfBaseColorParams(data, values);
-                    break;
-
-                case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
-                    data = ApplyCompactFloatParam(data, "mf", values, 5);
-                    data = ApplyCompactFloatParam(data, "rf", values, 6);
-                    break;
-
-                case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
-                    data = ApplyCompactVectorParam(data, "ec", values, 5, 3);
-                    break;
-            }
-
-            if (!HasRenderMaterial(part, face) && HasCompactOverrideData(data))
-                return false;
-
-            if (data == oldData || !SetMaterialOverrideData(part, face, data))
-                return false;
-
-            part.ParentGroup.HasGroupChanged = true;
-            part.ScheduleUpdate(PrimUpdateFlags.MaterialOvr | PrimUpdateFlags.FullUpdate);
-            part.TriggerScriptChangedEvent(Changed.MATERIAL);
-            return true;
-        }
-
-        private static int GltfTextureIndex(int code)
-        {
-            return code switch
-            {
-                ScriptBaseClass.PRIM_GLTF_NORMAL => 1,
-                ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS => 2,
-                ScriptBaseClass.PRIM_GLTF_EMISSIVE => 3,
-                _ => 0
-            };
-        }
-
-        private bool ApplyGltfTextureParam(SceneObjectPart part, ref string data, int textureIndex, object rawValue, string originFunc)
-        {
-            string textureName = rawValue?.ToString() ?? string.Empty;
-            if (textureName.Length == 0 || UUID.ZeroString.Equals(textureName, StringComparison.OrdinalIgnoreCase))
-            {
-                data = SetCompactUuidArrayItem(data, "tex", textureIndex, UUID.Zero);
-                return true;
-            }
-
-            UUID textureID = ScriptUtils.GetAssetIdFromItemName(part, textureName, (int)AssetType.Texture);
-            if (textureID.IsZero() && (!UUID.TryParse(textureName, out textureID) || textureID.IsZero()))
-            {
-                Error(originFunc, $"texture \"{textureName}\" not found");
-                return false;
-            }
-
-            data = SetCompactUuidArrayItem(data, "tex", textureIndex, textureID);
-            return true;
-        }
-
-        private static string ApplyGltfTextureTransformParams(string data, int textureIndex, LSL_List values)
-        {
-            OSDMap[] transforms = ReadCompactTransformMaps(data, textureIndex + 1);
-            OSDMap transform = transforms[textureIndex];
-
-            if (IsEmptyString(values.Data[2]))
-                transform.Remove("s");
-            else
-            {
-                LSL_Vector repeats = values.GetVector3Item(2);
-                transform["s"] = CompactVector2(repeats);
-            }
-
-            if (IsEmptyString(values.Data[3]))
-                transform.Remove("o");
-            else
-            {
-                LSL_Vector offsets = values.GetVector3Item(3);
-                transform["o"] = CompactVector2(offsets);
-            }
-
-            if (IsEmptyString(values.Data[4]))
-                transform.Remove("r");
-            else
-                transform["r"] = new OSDReal(Math.Round(values.GetStrictFloatItem(4), 4));
-
-            return SetCompactTransformArray(data, transforms);
-        }
-
-        private static string ApplyGltfBaseColorParams(string data, LSL_List values)
-        {
-            bool clearColor = IsEmptyString(values.Data[5]);
-            bool clearAlpha = IsEmptyString(values.Data[6]);
-            if (clearColor && clearAlpha)
-            {
-                data = RemoveCompactKey(data, "bc");
-            }
-            else
-            {
-                double[] baseColor = [1.0, 1.0, 1.0, 1.0];
-                if (!clearColor)
-                {
-                    LSL_Vector color = values.GetVector3Item(5);
-                    baseColor[0] = color.x;
-                    baseColor[1] = color.y;
-                    baseColor[2] = color.z;
-                }
-
-                if (!clearAlpha)
-                    baseColor[3] = values.GetStrictFloatItem(6);
-
-                data = SetCompactKey(data, "bc", CompactVector(baseColor));
-            }
-
-            data = ApplyCompactIntegerParam(data, "am", values, 7);
-            data = ApplyCompactFloatParam(data, "ac", values, 8);
-            data = ApplyCompactBoolParam(data, "ds", values, 9);
-            return data;
-        }
-
-        private static string ApplyCompactIntegerParam(string data, string key, LSL_List values, int index)
-        {
-            return IsEmptyString(values.Data[index]) ?
-                    RemoveCompactKey(data, key) :
-                    SetCompactKey(data, key, new OSDInteger(values.GetLSLIntegerItem(index)));
-        }
-
-        private static string ApplyCompactFloatParam(string data, string key, LSL_List values, int index)
-        {
-            return IsEmptyString(values.Data[index]) ?
-                    RemoveCompactKey(data, key) :
-                    SetCompactKey(data, key, new OSDReal(Math.Round(values.GetStrictFloatItem(index), 4)));
-        }
-
-        private static string ApplyCompactBoolParam(string data, string key, LSL_List values, int index)
-        {
-            return IsEmptyString(values.Data[index]) ?
-                    RemoveCompactKey(data, key) :
-                    SetCompactKey(data, key, OSD.FromBoolean(values.GetLSLIntegerItem(index) != 0));
-        }
-
-        private static string ApplyCompactVectorParam(string data, string key, LSL_List values, int index, int components)
-        {
-            return IsEmptyString(values.Data[index]) ?
-                    RemoveCompactKey(data, key) :
-                    SetCompactKey(data, key, CompactVector(values.GetVector3Item(index), components));
-        }
-
-        private static bool IsEmptyString(object value)
-        {
-            return value is not null && value.ToString().Length == 0;
-        }
-
-        private static bool ContainsOverride(LSL_List overrides, int wanted)
-        {
-            for (int i = 0; i < overrides.Length; i += 2)
-            {
-                if (overrides.GetLSLIntegerItem(i) == wanted)
-                    return true;
-            }
-            return false;
-        }
-
-        private static OSDArray CompactVector(LSL_Vector value, int components = 4)
-        {
-            OSDArray array = new()
-            {
-                Math.Round(value.x, 4),
-                Math.Round(value.y, 4),
-                Math.Round(value.z, 4)
-            };
-
-            if (components > 3)
-                array.Add(1.0);
-
-            return array;
-        }
-
-        private static OSDArray CompactVector2(LSL_Vector value)
-        {
-            return new OSDArray
-            {
-                Math.Round(value.x, 4),
-                Math.Round(value.y, 4)
-            };
-        }
-
-        private static OSDArray CompactVector(double[] values)
-        {
-            OSDArray array = new(values.Length);
-            for (int i = 0; i < values.Length; ++i)
-                array.Add(Math.Round(values[i], 4));
-            return array;
-        }
-
-        private static bool HasRenderMaterial(SceneObjectPart part, int face)
-        {
-            if (part.Shape.RenderMaterials?.entries is null)
-                return false;
-
-            foreach (Primitive.RenderMaterials.RenderMaterialEntry entry in part.Shape.RenderMaterials.entries)
-            {
-                if (entry.te_index == face && entry.id.IsNotZero())
-                    return true;
-            }
-            return false;
-        }
-
-        private static string GetMaterialOverrideData(SceneObjectPart part, int face)
-        {
-            if (part.Shape.RenderMaterials?.overrides is null)
-                return "{}";
-
-            foreach (Primitive.RenderMaterials.RenderMaterialOverrideEntry entry in part.Shape.RenderMaterials.overrides)
-            {
-                if (entry.te_index == face && !string.IsNullOrEmpty(entry.data))
-                    return entry.data;
-            }
-            return "{}";
-        }
-
-        private static bool SetMaterialOverrideData(SceneObjectPart part, int face, string data)
-        {
-            part.Shape.RenderMaterials ??= new();
-            bool hasData = HasCompactOverrideData(data);
-            Primitive.RenderMaterials.RenderMaterialOverrideEntry[] entries = part.Shape.RenderMaterials.overrides;
-
-            if (entries is null || entries.Length == 0)
-            {
-                if (!hasData)
-                    return false;
-
-                part.Shape.RenderMaterials.overrides =
-                [
-                    new Primitive.RenderMaterials.RenderMaterialOverrideEntry
-                    {
-                        te_index = (byte)face,
-                        data = data
-                    }
-                ];
-                return true;
-            }
-
-            for (int i = 0; i < entries.Length; ++i)
-            {
-                if (entries[i].te_index != face)
-                    continue;
-
-                if (!hasData)
-                {
-                    if (entries.Length == 1)
-                        part.Shape.RenderMaterials.overrides = null;
-                    else
-                    {
-                        Primitive.RenderMaterials.RenderMaterialOverrideEntry[] replacement = new Primitive.RenderMaterials.RenderMaterialOverrideEntry[entries.Length - 1];
-                        if (i > 0)
-                            Array.Copy(entries, replacement, i);
-                        if (i + 1 < entries.Length)
-                            Array.Copy(entries, i + 1, replacement, i, entries.Length - i - 1);
-                        part.Shape.RenderMaterials.overrides = replacement;
-                    }
-                    return true;
-                }
-
-                if (entries[i].data == data)
-                    return false;
-
-                entries[i].data = data;
-                return true;
-            }
-
-            if (!hasData)
-                return false;
-
-            Array.Resize(ref entries, entries.Length + 1);
-            entries[^1] = new Primitive.RenderMaterials.RenderMaterialOverrideEntry
-            {
-                te_index = (byte)face,
-                data = data
-            };
-            part.Shape.RenderMaterials.overrides = entries;
-            return true;
-        }
-
-        private static bool HasCompactOverrideData(string data)
-        {
-            return !string.IsNullOrEmpty(data) && data.Trim() != "{}";
-        }
-
-        private static string CompactEntry(string key, OSD value)
-        {
-            string serialized = OSDParser.SerializeLLSDNotation(new OSDMap { [key] = value });
-            if (serialized.Length >= 2 && serialized[0] == '{' && serialized[^1] == '}')
-                return serialized[1..^1];
-            return $"'{key}':{serialized}";
-        }
-
-        private static string MergeCompactGltfData(string assetData, string overrideData)
-        {
-            string result = string.IsNullOrWhiteSpace(assetData) ? "{}" : assetData;
-            if (!HasCompactOverrideData(overrideData))
-                return result;
-
-            foreach (string key in s_gltfCompactKeys)
-            {
-                if (FindCompactKeyRange(overrideData, key, out int start, out int end))
-                {
-                    int colon = overrideData.IndexOf(':', start);
-                    if (colon > start && colon < end)
-                        result = SetCompactRawKey(result, key, overrideData[(colon + 1)..end].Trim());
-                }
-            }
-
-            return result;
-        }
-
-        private static readonly string[] s_gltfCompactKeys =
-        [
-            "tex", "ti", "bc", "am", "ac", "ds", "mf", "rf", "ec", "xj"
-        ];
-
-        private static string SetCompactKey(string data, string key, OSD value)
-        {
-            data = RemoveCompactKey(data, key);
-            string entry = CompactEntry(key, value);
-            return AddCompactEntry(data, entry);
-        }
-
-        private static string SetCompactRawKey(string data, string key, string rawValue)
-        {
-            data = RemoveCompactKey(data, key);
-            return AddCompactEntry(data, $"'{key}':{rawValue}");
-        }
-
-        private static string AddCompactEntry(string data, string entry)
-        {
-            string trimmed = string.IsNullOrWhiteSpace(data) ? "{}" : data.Trim();
-            if (trimmed == "{}")
-                return "{" + entry + "}";
-
-            int insert = trimmed.LastIndexOf('}');
-            if (insert < 0)
-                return "{" + entry + "}";
-
-            string prefix = trimmed[..insert].TrimEnd();
-            if (prefix.Length > 1 && prefix[^1] != '{')
-                prefix += ",";
-            return prefix + entry + trimmed[insert..];
-        }
-
-        private static string RemoveCompactKey(string data, string key)
-        {
-            if (!FindCompactKeyRange(data, key, out int start, out int end))
-                return string.IsNullOrWhiteSpace(data) ? "{}" : data;
-
-            int removeStart = start;
-            int removeEnd = end;
-            while (removeStart > 0 && char.IsWhiteSpace(data[removeStart - 1]))
-                removeStart--;
-
-            if (removeEnd < data.Length && data[removeEnd] == ',')
-                removeEnd++;
-            else
-            {
-                int comma = removeStart - 1;
-                while (comma >= 0 && char.IsWhiteSpace(data[comma]))
-                    comma--;
-                if (comma >= 0 && data[comma] == ',')
-                    removeStart = comma;
-            }
-
-            string result = (data[..removeStart] + data[removeEnd..]).Trim();
-            return result == "{" || result == "{}" ? "{}" : result;
-        }
-
-        private static bool FindCompactKeyRange(string data, string key, out int start, out int end)
-        {
-            start = -1;
-            end = -1;
-            if (string.IsNullOrEmpty(data))
-                return false;
-
-            string needle = "'" + key + "'";
-            int pos = 0;
-            while ((pos = data.IndexOf(needle, pos, StringComparison.Ordinal)) >= 0)
-            {
-                int i = pos + needle.Length;
-                while (i < data.Length && char.IsWhiteSpace(data[i]))
-                    i++;
-                if (i >= data.Length || data[i] != ':')
-                {
-                    pos += needle.Length;
-                    continue;
-                }
-
-                start = pos;
-                i++;
-                int depth = 0;
-                bool inString = false;
-                for (; i < data.Length; ++i)
-                {
-                    char c = data[i];
-                    if (c == '\'')
-                        inString = !inString;
-                    else if (!inString)
-                    {
-                        if (c == '[' || c == '{')
-                            depth++;
-                        else if (c == ']' || c == '}')
-                        {
-                            if (depth == 0 && c == '}')
-                                break;
-                            depth--;
-                        }
-                        else if (c == ',' && depth == 0)
-                            break;
-                    }
-                }
-                end = i;
-                return true;
-            }
-            return false;
-        }
-
-        private static string[] ReadCompactArrayItems(string data, string key)
-        {
-            if (!FindCompactKeyRange(data, key, out int start, out int end))
-                return Array.Empty<string>();
-
-            int valueStart = data.IndexOf('[', start);
-            if (valueStart < 0 || valueStart > end)
-                return Array.Empty<string>();
-
-            int valueEnd = FindMatchingCompactBracket(data, valueStart, '[', ']');
-            if (valueEnd < 0 || valueEnd > end)
-                return Array.Empty<string>();
-
-            List<string> items = new();
-            int itemStart = valueStart + 1;
-            int depth = 0;
-            bool inString = false;
-
-            for (int i = itemStart; i < valueEnd; ++i)
-            {
-                char c = data[i];
-                if (c == '\'')
-                {
-                    inString = !inString;
-                    continue;
-                }
-
-                if (inString)
-                    continue;
-
-                if (c == '[' || c == '{')
-                    depth++;
-                else if (c == ']' || c == '}')
-                    depth--;
-                else if (c == ',' && depth == 0)
-                {
-                    items.Add(data[itemStart..i].Trim());
-                    itemStart = i + 1;
-                }
-            }
-
-            if (itemStart <= valueEnd)
-                items.Add(data[itemStart..valueEnd].Trim());
-
-            return items.ToArray();
-        }
-
-        private static int FindMatchingCompactBracket(string data, int start, char open, char close)
-        {
-            if (start < 0 || start >= data.Length || data[start] != open)
-                return -1;
-
-            int depth = 0;
-            bool inString = false;
-            for (int i = start; i < data.Length; ++i)
-            {
-                char c = data[i];
-                if (c == '\'')
-                {
-                    inString = !inString;
-                    continue;
-                }
-
-                if (inString)
-                    continue;
-
-                if (c == open)
-                    depth++;
-                else if (c == close && --depth == 0)
-                    return i;
-            }
-
-            return -1;
-        }
-
-        private static UUID ReadCompactUuidArrayItem(string data, string key, int index)
-        {
-            string[] items = ReadCompactArrayItems(data, key);
-            if (index < 0 || index >= items.Length)
-                return UUID.Zero;
-
-            Match match = Regex.Match(items[index],
-                    @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-            if (match.Success && UUID.TryParse(match.Value, out UUID id))
-                return id;
-
-            return UUID.Zero;
-        }
-
-        private static string SetCompactUuidArrayItem(string data, string key, int index, UUID value)
-        {
-            int count = Math.Max(index + 1, Math.Max(4, ReadCompactArrayItems(data, key).Length));
-            UUID[] values = new UUID[count];
-            for (int i = 0; i < values.Length; ++i)
-                values[i] = ReadCompactUuidArrayItem(data, key, i);
-
-            values[index] = value;
-
-            int last = values.Length - 1;
-            while (last >= 0 && values[last].IsZero())
-                last--;
-
-            if (last < 0)
-                return RemoveCompactKey(data, key);
-
-            OSDArray array = new(last + 1);
-            for (int i = 0; i <= last; ++i)
-                array.Add(OSD.FromUUID(values[i]));
-
-            return SetCompactKey(data, key, array);
-        }
-
-        private static OSDMap[] ReadCompactTransformMaps(string data, int minimumCount)
-        {
-            string[] items = ReadCompactArrayItems(data, "ti");
-            OSDMap[] transforms = new OSDMap[Math.Max(minimumCount, Math.Max(4, items.Length))];
-
-            for (int i = 0; i < transforms.Length; ++i)
-                transforms[i] = i < items.Length ? ReadCompactTransformMap(items[i]) : new OSDMap();
-
-            return transforms;
-        }
-
-        private static OSDMap ReadCompactTransformMap(string data)
-        {
-            OSDMap map = new();
-            if (string.IsNullOrWhiteSpace(data))
-                return map;
-
-            double[] scale = ReadCompactNumberArray(data, "s", 2);
-            if (scale is not null)
-                map["s"] = new OSDArray { Math.Round(scale[0], 4), Math.Round(scale[1], 4) };
-
-            double[] offset = ReadCompactNumberArray(data, "o", 2);
-            if (offset is not null)
-                map["o"] = new OSDArray { Math.Round(offset[0], 4), Math.Round(offset[1], 4) };
-
-            if (ReadCompactDouble(data, "r", out double rotation))
-                map["r"] = new OSDReal(Math.Round(rotation, 4));
-
-            return map;
-        }
-
-        private static string SetCompactTransformArray(string data, OSDMap[] transforms)
-        {
-            int last = transforms.Length - 1;
-            while (last >= 0 && transforms[last].Count == 0)
-                last--;
-
-            if (last < 0)
-                return RemoveCompactKey(data, "ti");
-
-            OSDArray array = new(last + 1);
-            for (int i = 0; i <= last; ++i)
-                array.Add(transforms[i].Count == 0 ? new OSDMap() : transforms[i]);
-
-            return SetCompactKey(data, "ti", array);
-        }
-
-        private static bool ReadCompactDouble(string data, string key, out double value)
-        {
-            value = 0.0;
-            if (!FindCompactKeyRange(data, key, out int start, out int end))
-                return false;
-
-            int colon = data.IndexOf(':', start);
-            if (colon < 0 || colon >= end)
-                return false;
-
-            Match match = Regex.Match(data[(colon + 1)..end],
-                    @"[-+]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][-+]?\d+)?");
-            return match.Success && double.TryParse(match.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
-        }
-
-        private static bool ReadCompactBool(string data, string key, out bool value)
-        {
-            value = false;
-            if (!FindCompactKeyRange(data, key, out int start, out int end))
-                return false;
-
-            int colon = data.IndexOf(':', start);
-            if (colon < 0 || colon >= end)
-                return false;
-
-            string token = data[(colon + 1)..end].Trim();
-            if (token.StartsWith("true", StringComparison.OrdinalIgnoreCase))
-            {
-                value = true;
-                return true;
-            }
-            if (token.StartsWith("false", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (ReadCompactDouble(data, key, out double numeric))
-            {
-                value = Math.Abs(numeric) > double.Epsilon;
-                return true;
-            }
-            return false;
-        }
-
-        private static double[] ReadCompactNumberArray(string data, string key, int expected)
-        {
-            if (!FindCompactKeyRange(data, key, out _, out int end))
-                return null;
-
-            int keyStart = data.LastIndexOf('\'', end);
-            int valueStart = data.IndexOf('[', keyStart >= 0 ? keyStart : 0);
-            if (valueStart < 0 || valueStart > end)
-                return null;
-
-            int valueEnd = data.IndexOf(']', valueStart);
-            if (valueEnd < 0 || valueEnd > end)
-                return null;
-
-            MatchCollection matches = Regex.Matches(data[valueStart..valueEnd], @"[-+]?(?:\d+\.\d+|\d+|\.\d+)(?:[eE][-+]?\d+)?");
-            if (matches.Count < expected)
-                return null;
-
-            double[] values = new double[expected];
-            for (int i = 0; i < expected; ++i)
-            {
-                if (!double.TryParse(matches[i].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out values[i]))
-                    return null;
-            }
-            return values;
-        }
-
-        private void SetRenderMaterial(SceneObjectPart part, LSL_String materialstr, LSL_Integer lsl_face, string originFunc)
-        {
-            if(part is null || m_materialsModule is null)
-                return;
-
-            if(string.IsNullOrEmpty(materialstr.m_string))
-            {
-                Error(originFunc, "material \"\" not found");
-                return;
             }
 
             int face = lsl_face.value;
-            if(face < 0 && face != ScriptBaseClass.ALL_SIDES)
+            if (edits.Count == 0 || (face < 0 && face != ScriptBaseClass.ALL_SIDES))
                 return;
+            foreach (SceneObjectPart part in GetLinkParts(link.value))
+                GltfMaterialOverride.Edit(part, face, o => { foreach (var edit in edits) edit(o); });
+        }
 
-            bool changed;
-
-            if(UUID.ZeroString.Equals(materialstr.m_string, StringComparison.OrdinalIgnoreCase))
+        /// <summary>
+        /// A render material as llSetRenderMaterial and PRIM_RENDER_MATERIAL name it: a material item in the script's
+        /// prim, else a key (NULL_KEY: none). Anything else is an error.
+        /// </summary>
+        private bool RenderMaterialKeyOrName(string name, string func, out UUID material)
+        {
+            material = UUID.Zero;
+            if (!string.IsNullOrEmpty(name))
             {
-                if(part.Shape.RenderMaterials is null || part.Shape.RenderMaterials.entries is null || part.Shape.RenderMaterials.entries.Length == 0)
-                    return;
+                material = ScriptUtils.GetAssetIdFromItemName(m_host, name, (int)AssetType.Material);
+                if (material.IsNotZero() || UUID.TryParse(name, out material))
+                    return true;
+            }
+            Error(func, $"material \"{name}\" not found");
+            return false;
+        }
 
-                changed = m_materialsModule.CleanMaterialOverrides(ref part.Shape.RenderMaterials.overrides, face);
-                if(face == ScriptBaseClass.ALL_SIDES)
-                {
-                    part.Shape.RenderMaterials.entries = null;
-                    changed = true;
-                }
-                else
-                    changed |= m_materialsModule.RemoveMaterialEntry(ref part.Shape.RenderMaterials.entries, face);
-
-                if(changed)
-                {
-                    part.ParentGroup.HasGroupChanged = true;
-                    part.ScheduleUpdate(PrimUpdateFlags.MaterialOvr | PrimUpdateFlags.FullUpdate);
-                    part.TriggerScriptChangedEvent(Changed.MATERIAL);
-                }
+        /// <summary>
+        /// Set a part's render material on a face, or every face for ALL_SIDES, clearing the face's overrides but its
+        /// texture transforms (SL). A face that does not exist changes nothing. A change raises CHANGED_RENDER_MATERIAL.
+        /// </summary>
+        private static void SetPartRenderMaterial(SceneObjectPart part, UUID material, int face)
+        {
+            if (face < 0 && face != ScriptBaseClass.ALL_SIDES)
                 return;
-            }
-
-            UUID matID = ScriptUtils.GetAssetIdFromItemName(part, materialstr.m_string, (int)AssetType.Material);
-            if (matID.IsZero())
-            {
-                if (!UUID.TryParse(materialstr.m_string, out matID) || matID.IsZero())
-                {
-                    Error(originFunc, $"material \"{materialstr.m_string}\" not found");
-                    return;
-                }
-            }
-
-            int nsides = GetNumberOfSides(part);
-            if(face >= nsides)
-                return;
-
-            part.Shape.RenderMaterials ??= new();
-            part.Shape.RenderMaterials.entries ??= new Primitive.RenderMaterials.RenderMaterialEntry[1];
-
-            changed = m_materialsModule.CleanMaterialOverrides(ref part.Shape.RenderMaterials.overrides, face);
-            if(face == ScriptBaseClass.ALL_SIDES)
-            {
-                if(part.Shape.RenderMaterials.entries is null || part.Shape.RenderMaterials.entries.Length != nsides)
-                {
-                    part.Shape.RenderMaterials.entries = new Primitive.RenderMaterials.RenderMaterialEntry[nsides];
-                    for (int i = 0; i < part.Shape.RenderMaterials.entries.Length; i++)
-                    {
-                        part.Shape.RenderMaterials.entries[i] = new()
-                        {
-                            te_index = (byte)i,
-                            id = matID
-                        };
-                    }
-                    changed = true;
-                }
-                else
-                {
-                    for (int i = 0; i < part.Shape.RenderMaterials.entries.Length; i++)
-                    {
-                        if(matID.NotEqual(part.Shape.RenderMaterials.entries[i].id))
-                        {
-                            changed = true;
-                            part.Shape.RenderMaterials.entries[i].id = matID;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                int indx = 0;
-                for( ; indx < part.Shape.RenderMaterials.entries.Length; indx++)
-                {
-                    if (part.Shape.RenderMaterials.entries[indx].te_index == face)
-                    {
-                        if(matID.NotEqual(part.Shape.RenderMaterials.entries[indx].id))
-                        {
-                            changed = true;
-                            part.Shape.RenderMaterials.entries[indx].id = matID;
-                        }
-                        break;
-                    }
-                }
-                if(indx == part.Shape.RenderMaterials.entries.Length)
-                {
-                    Array.Resize(ref part.Shape.RenderMaterials.entries, part.Shape.RenderMaterials.entries.Length + 1);
-
-                    part.Shape.RenderMaterials.entries[indx] = new()
-                    {
-                        te_index = (byte)face,
-                        id = matID
-                    };
-                    changed = true;
-                }
-            }
-            if(changed)
-            {
-                part.ParentGroup.HasGroupChanged = true;
-                part.ScheduleUpdate(PrimUpdateFlags.MaterialOvr | PrimUpdateFlags.FullUpdate);
+            if (GltfMaterialOverride.SetRenderMaterial(part, face, material))
                 part.TriggerScriptChangedEvent(Changed.MATERIAL);
+        }
+
+        private static int GltfValueCount(int code) => code switch
+        {
+            ScriptBaseClass.PRIM_GLTF_NORMAL => 5,
+            ScriptBaseClass.PRIM_GLTF_EMISSIVE => 6,
+            ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS => 7,
+            _ => 10,
+        };
+
+        private static int GltfSlot(int code) => code switch
+        {
+            ScriptBaseClass.PRIM_GLTF_NORMAL => GltfMaterialOverride.SLOT_NORMAL,
+            ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS => GltfMaterialOverride.SLOT_METALLIC_ROUGHNESS,
+            ScriptBaseClass.PRIM_GLTF_EMISSIVE => GltfMaterialOverride.SLOT_EMISSIVE,
+            _ => GltfMaterialOverride.SLOT_BASE_COLOR,
+        };
+
+        private static string GltfRuleName(int code) => code switch
+        {
+            ScriptBaseClass.PRIM_GLTF_NORMAL => "PRIM_GLTF_NORMAL",
+            ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS => "PRIM_GLTF_METALLIC_ROUGHNESS",
+            ScriptBaseClass.PRIM_GLTF_EMISSIVE => "PRIM_GLTF_EMISSIVE",
+            _ => "PRIM_GLTF_BASE_COLOR",
+        };
+
+        /// <summary>
+        /// The PRIM_GLTF_BASE_COLOR, _NORMAL, _METALLIC_ROUGHNESS and _EMISSIVE setter rules (SL wiki pages of those
+        /// names): [ face, texture, repeats, offsets, rotation_in_radians, ...the rule's own values ], any value given as
+        /// "" clearing that override. <paramref name="idx"/> is at the face and is moved past the rule. False, after an
+        /// error, for a value of the wrong type or a texture that is neither in the prim nor a key.
+        /// </summary>
+        private bool SetPrimGltf(SceneObjectPart part, int code, LSL_List rules, ref int idx, string originFunc, uint rulesParsed)
+        {
+            int start = idx;
+            object[] data = rules.Data;
+            idx += GltfValueCount(code);
+            string rule = GltfRuleName(code);
+
+            bool Fail(int arg, string what)
+            {
+                Error(originFunc, $"Error running rule #{rulesParsed} -> {rule}: arg #{arg} - {what}");
+                return false;
+            }
+
+            if (!GltfInt(data[start], out int? lface) || !lface.HasValue)
+                return Fail(0, "parameter 1 must be integer");
+            int face = lface.Value;
+
+            if (!GltfTexture(data[start + 1], out UUID? texture, out bool found))
+                return Fail(1, "parameter 2 must be a string or key");
+            if (!found)
+                return Fail(1, $"texture \"{data[start + 1]}\" must be a UUID or a texture name on object inventory");
+            if (!GltfVector(data[start + 2], out Vector3? repeats))
+                return Fail(2, "parameter 3 (repeats) must be vector or \"\"");
+            if (!GltfVector(data[start + 3], out Vector3? offsets))
+                return Fail(3, "parameter 4 (offsets) must be vector or \"\"");
+            if (!GltfFloat(data[start + 4], out float? rotation))
+                return Fail(4, "parameter 5 (rotation) must be float or \"\"");
+
+            Action<GltfMaterialOverride> extra = null;
+            switch (code)
+            {
+                case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
+                    if (!GltfColor(data[start + 5], out Vector3? color))
+                        return Fail(5, "parameter 6 (color) must be vector or \"\"");
+                    if (!GltfUnit(data[start + 6], out float? alpha))
+                        return Fail(6, "parameter 7 (alpha) must be float or \"\"");
+                    if (!GltfAlphaMode(data[start + 7], out int? mode))
+                        return Fail(7, "parameter 8 (alpha_mode) must be a PRIM_GLTF_ALPHA_MODE_* constant or \"\"");
+                    if (!GltfUnit(data[start + 8], out float? cutoff))
+                        return Fail(8, "parameter 9 (alpha_mask_cutoff) must be float or \"\"");
+                    if (!GltfInt(data[start + 9], out int? doubleSided))
+                        return Fail(9, "parameter 10 (double_sided) must be integer or \"\"");
+                    extra = o =>
+                    {
+                        o.BaseColor = color;
+                        o.BaseAlpha = alpha;
+                        o.AlphaMode = mode;
+                        o.AlphaCutoff = cutoff;
+                        o.DoubleSided = doubleSided.HasValue ? doubleSided.Value != 0 : null;
+                    };
+                    break;
+                case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
+                    if (!GltfUnit(data[start + 5], out float? metallic))
+                        return Fail(5, "parameter 6 (metallic_factor) must be float or \"\"");
+                    if (!GltfUnit(data[start + 6], out float? roughness))
+                        return Fail(6, "parameter 7 (roughness_factor) must be float or \"\"");
+                    extra = o => { o.MetallicFactor = metallic; o.RoughnessFactor = roughness; };
+                    break;
+                case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
+                    if (!GltfColor(data[start + 5], out Vector3? emissive))
+                        return Fail(5, "parameter 6 (emissive_tint) must be vector or \"\"");
+                    extra = o => o.EmissiveColor = emissive;
+                    break;
+            }
+
+            if (face < 0 && face != ScriptBaseClass.ALL_SIDES)
+                return true;
+
+            int slot = GltfSlot(code);
+            GltfMaterialOverride.Edit(part, face, o =>
+            {
+                o.SetTexture(slot, texture);
+                o.SetScale(slot, repeats.HasValue
+                    ? new Vector2(Math.Clamp(repeats.Value.X, -10000f, 10000f), Math.Clamp(repeats.Value.Y, -10000f, 10000f))
+                    : null);
+                o.SetOffset(slot, offsets.HasValue
+                    ? new Vector2(Math.Clamp(offsets.Value.X, -1f, 1f), Math.Clamp(offsets.Value.Y, -1f, 1f))
+                    : null);
+                o.SetRotation(slot, rotation);
+                extra?.Invoke(o);
+            });
+            return true;
+        }
+
+        /// <summary>
+        /// The PRIM_RENDER_MATERIAL and PRIM_GLTF_* reads of one face, or of every face for ALL_SIDES; nothing for a
+        /// face that does not exist. A value that is not overridden reads as "", as SL documents.
+        /// </summary>
+        private static void GetPrimGltf(SceneObjectPart part, int code, int face, ref LSL_List res)
+        {
+            int nsides = GetNumberOfSides(part);
+            if (face == ScriptBaseClass.ALL_SIDES)
+            {
+                for (int f = 0; f < nsides; f++)
+                    GetPrimGltfFace(part, code, f, ref res);
+            }
+            else if (face >= 0 && face < nsides)
+                GetPrimGltfFace(part, code, face, ref res);
+        }
+
+        private static void GetPrimGltfFace(SceneObjectPart part, int code, int face, ref LSL_List res)
+        {
+            if (code == ScriptBaseClass.PRIM_RENDER_MATERIAL)
+            {
+                res.Add(GltfAssetAsSeen(part, GltfMaterialOverride.GetRenderMaterial(part.Shape, face), AssetType.Material));
+                return;
+            }
+
+            GltfMaterialOverride o = GltfMaterialOverride.Get(part.Shape, face);
+            int slot = GltfSlot(code);
+            LSL_String empty = new(string.Empty);
+
+            UUID? texture = o.GetTexture(slot);
+            if (!texture.HasValue)
+                res.Add(empty);
+            else if (texture.Value.Equals(GltfMaterialOverride.NullTextureOverride))
+                res.Add(new LSL_String(ScriptBaseClass.NULL_KEY));
+            else
+                res.Add(GltfAssetAsSeen(part, texture.Value, AssetType.Texture));
+
+            Vector2? scale = o.GetScale(slot);
+            res.Add(scale.HasValue ? (object)new LSL_Vector(scale.Value.X, scale.Value.Y, 0) : empty);
+            Vector2? offset = o.GetOffset(slot);
+            res.Add(offset.HasValue ? (object)new LSL_Vector(offset.Value.X, offset.Value.Y, 0) : empty);
+            res.Add(GltfOut(o.GetRotation(slot)));
+
+            switch (code)
+            {
+                case ScriptBaseClass.PRIM_GLTF_BASE_COLOR:
+                    res.Add(o.BaseColor.HasValue ? (object)new LSL_Vector(o.BaseColor.Value) : empty);
+                    res.Add(GltfOut(o.BaseAlpha));
+                    res.Add(o.AlphaMode.HasValue ? (object)new LSL_Integer(o.AlphaMode.Value) : empty);
+                    res.Add(GltfOut(o.AlphaCutoff));
+                    res.Add(o.DoubleSided.HasValue ? (object)new LSL_Integer(o.DoubleSided.Value ? 1 : 0) : empty);
+                    break;
+                case ScriptBaseClass.PRIM_GLTF_METALLIC_ROUGHNESS:
+                    res.Add(GltfOut(o.MetallicFactor));
+                    res.Add(GltfOut(o.RoughnessFactor));
+                    break;
+                case ScriptBaseClass.PRIM_GLTF_EMISSIVE:
+                    res.Add(o.EmissiveColor.HasValue ? (object)new LSL_Vector(o.EmissiveColor.Value) : empty);
+                    break;
             }
         }
+
+        // object on both arms: LSL_String converts implicitly to the other LSL types, which would turn "" into 0
+        private static object GltfOut(float? v) => v.HasValue ? (object)new LSL_Float(v.Value) : new LSL_String(string.Empty);
+
+        // The value readers for PRIM_GLTF_* and llSetLinkGLTFOverrides: "" is null (clear the override); false for a
+        // value of the wrong type.
+
+        private static bool GltfUnset(object v) => v switch
+        {
+            LSL_Types.LSLString s => string.IsNullOrEmpty(s.m_string),
+            LSL_Types.key k => string.IsNullOrEmpty(k.value),
+            string s => s.Length == 0,
+            _ => false,
+        };
+
+        private static string GltfString(object v) => v switch
+        {
+            LSL_Types.LSLString s => s.m_string,
+            LSL_Types.key k => k.value,
+            string s => s,
+            _ => null,
+        };
+
+        private bool GltfTexture(object v, out UUID? texture, out bool found)
+        {
+            texture = null;
+            found = true;
+            if (GltfUnset(v))
+                return true;
+            string name = GltfString(v);
+            if (name is null)
+                return false;
+            UUID id = ScriptUtils.GetAssetIdFromItemName(m_host, name, (int)AssetType.Texture);
+            if (id.IsZero() && !UUID.TryParse(name, out id))
+            {
+                found = false;
+                return true;
+            }
+            // NULL_KEY overrides the slot to no texture, the viewer's GLTF_OVERRIDE_NULL_UUID
+            texture = id.IsZero() ? GltfMaterialOverride.NullTextureOverride : id;
+            return true;
+        }
+
+        private static bool GltfVector(object v, out Vector3? vec)
+        {
+            vec = null;
+            if (GltfUnset(v))
+                return true;
+            switch (v)
+            {
+                case LSL_Vector lv:
+                    vec = new Vector3((float)lv.x, (float)lv.y, (float)lv.z);
+                    return true;
+                case Vector3 ov:
+                    vec = ov;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool GltfColor(object v, out Vector3? color)
+        {
+            if (!GltfVector(v, out color))
+                return false;
+            if (color.HasValue)
+                color = new Vector3(Math.Clamp(color.Value.X, 0f, 1f), Math.Clamp(color.Value.Y, 0f, 1f), Math.Clamp(color.Value.Z, 0f, 1f));
+            return true;
+        }
+
+        private static bool GltfFloat(object v, out float? f)
+        {
+            f = null;
+            if (GltfUnset(v))
+                return true;
+            switch (v)
+            {
+                case LSL_Float lf: f = (float)lf.value; return true;
+                case LSL_Integer li: f = li.value; return true;
+                case float fv: f = fv; return true;
+                case double dv: f = (float)dv; return true;
+                case int iv: f = iv; return true;
+                default: return false;
+            }
+        }
+
+        private static bool GltfUnit(object v, out float? f)
+        {
+            if (!GltfFloat(v, out f))
+                return false;
+            if (f.HasValue)
+                f = Math.Clamp(f.Value, 0f, 1f);
+            return true;
+        }
+
+        private static bool GltfInt(object v, out int? i)
+        {
+            i = null;
+            if (GltfUnset(v))
+                return true;
+            switch (v)
+            {
+                case LSL_Integer li: i = li.value; return true;
+                case int iv: i = iv; return true;
+                default: return false;
+            }
+        }
+
+        private static bool GltfAlphaMode(object v, out int? mode)
+        {
+            if (!GltfInt(v, out mode))
+                return false;
+            return !mode.HasValue || (mode.Value >= ScriptBaseClass.PRIM_GLTF_ALPHA_MODE_OPAQUE && mode.Value <= ScriptBaseClass.PRIM_GLTF_ALPHA_MODE_MASK);
+        }
+
+        #endregion
 
         public LSL_Vector llWorldPosToHUD(LSL_Vector wp)
         {
