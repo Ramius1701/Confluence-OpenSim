@@ -274,6 +274,11 @@ Try these on a test region first.
 - [ ] 11.9 Script fixes from 2026-11-18: a YEngine script sets and reads `PRIM_CLICK_ACTION` and
       `PRIM_COLLISION_SOUND` (#403); a Phlox vehicle's `llGetVehicleFlags` returns its flags, not its type, and
       `llRezObjectWithParams` with a relative `REZ_POS` rezzes beside the object (#404).
+- [ ] 11.10 Batch 3 (Tranquillity #400, #402, #409, 2026-11-22): Region/Estate > Disable scripts, then allow them
+      again: a counter or timer script carries on where it was instead of restarting (#400). A YEngine and a Phlox
+      script each set `PRIM_RENDER_MATERIAL` and `PRIM_GLTF_BASE_COLOR` on a PBR prim, then clear one override with
+      `""`: the viewer shows each change (Phlox's never showed before), and the other overrides stay (#402).
+      A Phlox script calls `llFindNotecardTextCount` and `llGetAttachedListFiltered(avatar, [])` (#409).
 
 ## 12. Open bugs that need a live reproduction
 

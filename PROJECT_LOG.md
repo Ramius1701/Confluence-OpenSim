@@ -29916,3 +29916,39 @@ at all (`http_listener_address` / Robust `address` are Bill Blight's `e8e91167db
 the HTTPS-listener line it changes is not reachable upstream; not serious, not sent. #401/#403 are features, #404
 is Phlox-only. Upstream's NUnit projects are commented out of prebuild.xml (2445-3062), so the PRs cite
 Tranquillity's xUnit tests, which pass in ours. No CI ran yet (upstream's workflows need a maintainer's approval).
+
+## Batch 3 ported (2026-11-19..22): Tranquillity #400, #402, #409; donor update 11-22
+
+- #409 (Phlox): ten SL-form functions. Their indices 972-983 collide with our own table (to 1011), so the ten we
+  lacked sit at 1012-1021 (llGetAttachedListFiltered__2, llFindNotecardTextSync__5, llFindNotecardTextCount,
+  llSetParcelForSale, the three llGetGameControlMode*, llMapBeacon__3, llGiveAgentInventory__4,
+  llTransferOwnership__3); the dispatch guard passes. llRemoteLoadScript / llRemoteDataSetRegion are ours already
+  (974/975; Halcyon's 15 ms chat throttle on their message, so their two tests expect +15 ms). Their ILSLSystemAPI
+  lines wait for #399 (batch 4): add the ten there when #399 comes in.
+- #400: "Disable scripts" suspends each script and allowing scripts resumes it with its state (upstream OpenSim
+  removes and recreates every script instance: Scene.ScriptsEnabled, every script restarts - an upstream PR
+  candidate). Built on SuspendScripts / ResumeScripts(engines, list) from #337, taken alone (#337 stays held).
+  IScriptSuspension lives in IScriptModule.cs (no new file).
+- #402: GltfMaterialOverride (new Region.Framework file; prebuild re-run) is the one store for a face's glTF material
+  and overrides in the viewer's compact form. Phlox's setters wrote keys viewers never read; they go through it now.
+  YEngine: our own glTF code (cdfa19342e, August) stored in the same place but failed 8 of their 10 SL-based tests;
+  at the owner's decision it is replaced by theirs (1,480 lines out, 474 in), and both engines share one store.
+  PRIM_GLTF_ALPHA_MODE_* added. GltfMaterialOverrideTests converted from FluentAssertions to xUnit (FA 8 is
+  commercial).
+
+Upstream check: #400's script-state loss is in opensim-master too (data loss on every toggle) - PR candidate. #402 and
+#409 are features / Phlox-only.
+
+Donor update 2026-11-22 (all S:\Github donor clones fast-forwarded; mobius-master is not a git clone; the
+`dreamgrid` remote's repository is gone). New since the last review: opensim-master `feccd9cc53` (profile flags kept
+when marking online); Tranquillity develop 30 merged PRs (#413-#470) and 58 direct commits (~18k lines: land and
+terrain, teleports and crossings, logins, linksets, FSAssets, hypergrid, control plane, Phlox script state, SQLite and
+PostgreSQL), 31 open (#478-#491 FSAssets/PGSQL); ManfredAabye/opensimcurrencyserver-dotnet (added as remote
+`currencyserver`): three code commits from Vlad-BloodMoon #13/#14 (atomic MoneyServer transfers and stale slots,
+session recovery after restart, MySQL reconnect) for our DTL/MoneyServer addons, inactive on Casperia;
+libremetaverse: 50 commits since 85429b83be (render-material and extended-mesh extra params among them), reference
+only. Aurora removed region weather (Aurora #4280); the Confluence viewer follows, so OpenSimWeather 0.7.0's Aurora
+codes no longer reach any viewer (owner to decide whether to drop them).
+
+S: ran out of space on 11-22 (Rust build output from the viewer project, ~55 GB); the owner plans a separate G: VHDX
+for the GitHub work.

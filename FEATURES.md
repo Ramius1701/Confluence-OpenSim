@@ -953,6 +953,11 @@ NaN/Infinity before being applied.
   member holds, owners cannot be ejected or demoted by others, and the Owners title needs the role (#407); YEngine
   sets and reads `PRIM_CLICK_ACTION` / `PRIM_COLLISION_SOUND` and knows more SL constants (#403); three Phlox calls
   that answered wrongly in silence (`llGetVehicleFlags`, `llRezObjectWithParams` `REZ_POS`) are fixed (#404).
+  Batch 3 (2026-11-22): the estate's "Disable scripts" pauses scripts and allowing them resumes each with its state,
+  where every script used to restart from scratch (#400); scripted glTF (PBR) materials and overrides go through one
+  shared store in the viewer's own format, so YEngine and Phlox follow SL's rules alike and Phlox's changes reach
+  viewers at all (#402); ten more Phlox functions in SL's forms, among them `llFindNotecardTextCount`,
+  `llSetParcelForSale` and the list forms of `llGetAttachedListFiltered` and `llTransferOwnership` (#409).
 
 ## Database
 

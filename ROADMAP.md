@@ -276,8 +276,7 @@ checked by `Tools/data-backend-check`.)*
   not applicable. Tranquillity merged its voice series on 10-22 as one commit, #365 (`df0e840132`, includes #362):
   porting it is for the owner and the Confluence-Voice session.
 - **From the 2026-11-18 donor fetch** (Tranquillity merged #386-#412 in a day): batches 1 (#395, #401, #412) and 2 (#403, #404,
-  #405, #407) ported that day. Still to port, in order: batch 3, scripts (#400 disable-scripts pauses, #402 scripted
-  glTF materials, #409 twelve Phlox ll functions); batch 4, Phlox engine structure (#398, #399, #408, #410) and the
+  #405, #407) ported that day, batch 3 (#400, #402, #409) on 11-22. Still to port: batch 4, Phlox engine structure (#398, #399, #408, #410) and the
   Phlox test harness #396. Not applicable: #386, #392, #393, #394, #406; #387-#391 were ported early and landed
   unchanged. #397 and #411 to confirm with batch 4.
 - **Gloebit is third-party since 2026-10-25** (vendored unmodified from gloebit/opensim-moneymodule-gloebit; refresh
