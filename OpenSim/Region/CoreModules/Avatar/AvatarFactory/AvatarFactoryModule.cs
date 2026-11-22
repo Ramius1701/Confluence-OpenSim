@@ -238,7 +238,13 @@ namespace OpenSim.Region.CoreModules.Avatar.AvatarFactory
                 // Process the baked texture array
                 if (textureEntry != null)
                 {
-                    m_log.DebugFormat("[AVFACTORY]: Received texture update for {0} {1}", sp.Name, sp.UUID);
+                    m_log.DebugFormat("[AVFACTORY]: Received texture update for {0} {1} ({2} cache items)",
+                        sp.Name, sp.UUID, cacheItems == null ? 0 : cacheItems.Length);
+
+                    // [Confluence] Bakes the viewer sends while the temporary default fallback is active are the
+                    // newest there are: they end the fallback. Before, RestoreRealAppearanceOnce later put back the
+                    // older saved bakes over them, and others saw the default avatar until the next outfit change.
+                    EndTemporaryFallbackForViewerBakes(sp);
 
 //                    WriteBakedTexturesReport(sp, m_log.DebugFormat);
 
@@ -407,6 +413,26 @@ namespace OpenSim.Region.CoreModules.Avatar.AvatarFactory
             return temporary;
         }
 
+        // Called under m_setAppearanceLock, before the viewer's bakes are applied.
+        private void EndTemporaryFallbackForViewerBakes(IScenePresence isp)
+        {
+            if (!m_temporaryFallbacks.TryRemove(isp.UUID, out TemporaryAppearanceFallback fallback))
+                return;
+
+            // While the temporary defaults are shown the presence wears default wearables and its viewer was told
+            // so; give both the real outfit back before the new bakes go on top of it.
+            if (fallback.State == TemporaryAppearanceFallbackState.ShowingTemporary)
+            {
+                AvatarWearable[] real = new AvatarAppearance(fallback.RealAppearance, true, true).Wearables;
+                isp.Appearance.Wearables = real;
+                isp.ControllingClient?.SendWearables(real, isp.Appearance.Serial);
+            }
+
+            m_log.InfoFormat(
+                "[AVFACTORY]: {0} in {1} sent new bakes during the temporary appearance fallback; using them, the fallback is done.",
+                isp.Name, m_scene.RegionInfo.RegionName);
+        }
+
         private bool ShouldSaveAppearance(IScenePresence sp)
         {
             if (!m_temporaryFallbacks.TryGetValue(sp.UUID, out TemporaryAppearanceFallback fallback))
@@ -472,6 +498,18 @@ namespace OpenSim.Region.CoreModules.Avatar.AvatarFactory
             if (m_temporaryFallbacks.ContainsKey(agentId))
                 return true;
 
+            // [Confluence] The fallback only helps when the viewer can be asked to rebake textures the region is
+            // missing. When the saved bakes are already default (or none is missing from the cache) RequestRebake
+            // asks for nothing, and the fallback used to show everyone the default avatar anyway, then put back
+            // the same saved bakes. Leave the avatar to the bakes its viewer sends on arrival instead.
+            if (RequestRebake(sp, true) == 0)
+            {
+                m_log.InfoFormat(
+                    "[AVFACTORY]: No temporary default appearance for {0} in {1}: none of its saved bakes can be asked for again; waiting for the viewer's own bakes.",
+                    sp.Name, m_scene.RegionInfo.RegionName);
+                return false;
+            }
+
             TemporaryAppearanceFallback fallback = new TemporaryAppearanceFallback
             {
                 RealAppearance = new AvatarAppearance(sp.Appearance, true, true),
@@ -480,7 +518,6 @@ namespace OpenSim.Region.CoreModules.Avatar.AvatarFactory
             };
 
             m_temporaryFallbacks[agentId] = fallback;
-            RequestRebake(sp, true);
             m_updateTimer.Start();
 
             m_log.InfoFormat(
@@ -1026,12 +1063,21 @@ namespace OpenSim.Region.CoreModules.Avatar.AvatarFactory
             }
         }
 
+        private bool IsCurrentFallback(ScenePresence sp, TemporaryAppearanceFallback fallback)
+        {
+            return m_temporaryFallbacks.TryGetValue(sp.UUID, out TemporaryAppearanceFallback current) && ReferenceEquals(current, fallback);
+        }
+
         private void RestoreRealAppearanceOnce(ScenePresence sp, TemporaryAppearanceFallback fallback)
         {
             AvatarAppearance realAppearance = new AvatarAppearance(fallback.RealAppearance, true, true);
 
             lock (m_setAppearanceLock)
             {
+                // [Confluence] the viewer's own bakes may have ended the fallback since the timer picked it up
+                if (!IsCurrentFallback(sp, fallback))
+                    return;
+
                 sp.Appearance = realAppearance;
                 sp.ControllingClient.SendWearables(realAppearance.Wearables, realAppearance.Serial);
                 SendAppearance(sp);
@@ -1052,6 +1098,10 @@ namespace OpenSim.Region.CoreModules.Avatar.AvatarFactory
 
             lock (m_setAppearanceLock)
             {
+                // [Confluence] the viewer's own bakes may have ended the fallback since the timer picked it up
+                if (!IsCurrentFallback(sp, fallback))
+                    return;
+
                 sp.Appearance = temporary;
                 sp.ControllingClient.SendWearables(temporary.Wearables, temporary.Serial);
                 SendAppearance(sp);

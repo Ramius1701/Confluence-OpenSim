@@ -29986,3 +29986,19 @@ removed (its repository is gone); `opensim-lickx` points at the moved clone. Don
 Tranquillity develop unchanged; new Tranquillity PRs #492 (server-side baking visitors), #493 (Phlox test waits),
 #494 (crossing not resent on return); opensim/opensim #74 (PostgreSQL group notice cleanup) noted; our #75-#77 not yet
 reviewed.
+
+## Appearance fallback: viewer bakes win (2026-11-22)
+
+Viewer report: on Region D two residents on Aurora Viewer each saw the other as the default avatar for the
+whole visit. The region log showed the cause on our side, in the temporary default appearance fallback
+(AvatarFactoryModule, Confluence-only since 7588f279f4; not in opensim-master or Tranquillity, so no upstream PR). On
+arrival their saved bakes were already default, so RequestRebake asked the viewer for nothing; six seconds later the
+fallback showed everyone the default avatar, and RestoreRealAppearanceOnce then put the saved default bakes back over
+the AgentSetAppearance the viewer had sent in between. Aurora's AgentSetAppearance carries no WearableData cache items
+(Firestorm's carries 11), so every Aurora login failed ValidateBakedTextureCache and went through the fallback.
+Fix: no fallback when RequestRebake can ask for nothing (the avatar keeps the bakes its viewer sends on arrival); bakes
+the viewer sends while the fallback runs end it, give the presence and its viewer the real outfit back, and are never
+overwritten by a timer step already under way. The "Received texture update" log line now gives the cache-item count.
+Tests: AppearanceFallbackViewerBakesTests (4; two fail on the old code). TESTING 8.13. A second report, an avatar seen
+spinning by an Aurora viewer, was not reproduced (Firestorm avatar watched from Aurora shows no spin); at the owner's
+decision no server change, the viewer stops extrapolating other avatars' angular velocity.

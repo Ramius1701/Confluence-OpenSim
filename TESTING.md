@@ -191,6 +191,10 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       services started", news). Stopping a region shows a "Region ... outage" entry within about two minutes
       (Aurora: ongoing, Investigating), and starting it again adds Resolved to the same entry (Aurora: over); the
       toolbar button flashes on each.
+- [ ] 8.13 Appearance on Aurora (2026-11-22): two residents on Aurora Viewer log in to the same region, one after the
+      other; each sees the other in their own outfit (no default grey or white body showing through mesh), and an
+      outfit change shows on the other viewer within a few seconds. The region log has no "Applied temporary default
+      appearance" for them, and "Received texture update ... (N cache items)" shows how many cache items Aurora sent.
 
 ## 9. Land, money and admin
 
