@@ -29976,3 +29976,13 @@ folder, 3392 files, 301/301 in all 16 folders (SVC's OpenSim.Server.Handlers.dll
 slow write, identical on recheck). The move-aside script named its backup folder by date only, so this second deploy
 of the day overwrote `Backups/dll-20261122-deploy` with the 60eb4a411f build; the script now names it by date and
 time (`dll-yyyyMMdd-HHmm-deploy`). The pre-today build remains in the 11-17 backup.
+
+## GitHub work moved to G:; donor check (2026-11-22)
+
+The working repos moved from the server disk to their own VHDX (G:), so the live servers and the source trees no
+longer share one disk (the Rust build folders had filled it). After the move prebuild had to be rerun: the project
+files it generates hold absolute paths and are not in git. Build and tests green from G:. Remotes: `dreamgrid`
+removed (its repository is gone); `opensim-lickx` points at the moved clone. Donor check: opensim-master and
+Tranquillity develop unchanged; new Tranquillity PRs #492 (server-side baking visitors), #493 (Phlox test waits),
+#494 (crossing not resent on return); opensim/opensim #74 (PostgreSQL group notice cleanup) noted; our #75-#77 not yet
+reviewed.
