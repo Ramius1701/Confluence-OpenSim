@@ -64,5 +64,9 @@ namespace OpenSim.Data.PGSQL
             return base.Get(String.Format("\"UserID\" LIKE '{0}%'", userID));
         }
 
+        public GridUserData[] GetOnlineInRegion(UUID regionID)
+        {
+            return base.Get(new[] { "LastRegionID", "Online" }, new[] { regionID.ToString(), true.ToString() });
+        }
     }
 }

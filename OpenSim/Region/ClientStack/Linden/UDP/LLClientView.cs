@@ -640,13 +640,37 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 OutPacket(disable, ThrottleOutPacketType.Unknown);
             }
 
-            // Fire the callback for this connection closing
-            OnConnectionClosed?.Invoke(this);
+            // Fire the callback for this connection closing, each handler on its own: one that throws must not keep the
+            // others (the logouts from presence and grid user among them) from running, nor this client from being taken
+            // out of the scene below. The client is already inactive, which the timeout does not look at again, so an
+            // avatar left in the scene stayed until the region restarted.
+            Action<IClientAPI> closed = OnConnectionClosed;
+            if (closed is not null)
+            {
+                foreach (Action<IClientAPI> handler in closed.GetInvocationList())
+                {
+                    try
+                    {
+                        handler(this);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Error(string.Format("{0} A connection closed handler for {1} in {2} failed", LogHeader, Name, m_scene.Name), e);
+                    }
+                }
+            }
 
-            m_asyncPacketProcess.Stop();
+            try
+            {
+                m_asyncPacketProcess.Stop();
 
-            // Flush all of the packets out of the UDP server for this client
-            m_udpServer?.Flush(m_udpClient);
+                // Flush all of the packets out of the UDP server for this client
+                m_udpServer?.Flush(m_udpClient);
+            }
+            catch (Exception e)
+            {
+                m_log.Error(string.Format("{0} Stopping the packet processing of {1} in {2} failed", LogHeader, Name, m_scene.Name), e);
+            }
 
             // Remove ourselves from the scene
             m_scene.RemoveClient(m_agentId, true);
@@ -671,15 +695,33 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             m_killRecord.Clear();
             GroupsInView.Clear();
 
-            if(m_scene.GetNumberOfClients() == 0)
-            {
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
-            }
+            // Give the memory back when the simulator has gone idle. This used to run when this region had no client
+            // left, on the thread closing the connection: on a simulator with several regions that was every time one of
+            // them emptied (a teleport out of a quiet region), and the full compacting collection stopped the whole
+            // process while the other regions had avatars in them.
+            if (NoClientsInAnyRegion())
+                Util.FireAndForget(_ => CollectWhenIdle(), null, "LLClientView.CollectWhenIdle");
         }
+
+        private bool NoClientsInAnyRegion()
+        {
+            if (m_scene.GetNumberOfClients() != 0)
+                return false;
+            foreach (Scene s in SceneManager.Instance.Scenes)
+                if (s.GetNumberOfClients() != 0)
+                    return false;
+            return true;
+        }
+
+        /// <summary>The collection run when the last client of the simulator closes (replaceable in tests).</summary>
+        public static Action CollectWhenIdle = () =>
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
+        };
 
         public void Kick(string message)
         {
@@ -691,7 +733,9 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 kupack.TargetBlock.TargetIP = 0;
                 kupack.TargetBlock.TargetPort = 0;
                 kupack.UserInfo.Reason = Util.StringToBytes256(message);
-                OutPacket(kupack, ThrottleOutPacketType.Task);
+                // sent at once, not queued behind the region's object updates, as LogoutReply is: the close that follows
+                // drops the client's queues
+                OutPacket(kupack, ThrottleOutPacketType.Unknown);
                 // You must sleep here or users get no message!
                 Thread.Sleep(500);
             }
@@ -2228,8 +2272,11 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             tpLocal.Info.LookAt = lookAt;
             tpLocal.Info.Position = position;
 
-            // Hack to get this out immediately and skip throttles
-            OutPacket(tpLocal, ThrottleOutPacketType.Unknown);
+            // In the queue the avatar's own terse updates use (Task), behind any already built. Sent ahead of them
+            // (it used to skip the throttles), a terse update built a moment before the teleport reached the viewer
+            // after this and put the avatar back where it had been until the next update: the snap back after a local
+            // teleport while moving.
+            OutPacket(tpLocal, ThrottleOutPacketType.Task);
         }
 
         public virtual void SendRegionTeleport(ulong regionHandle, byte simAccess, IPEndPoint newRegionEndPoint, uint locationID,
@@ -3407,7 +3454,9 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                     ItemID = UUID.Zero
                 };
 
-                OutPacket(logReply, ThrottleOutPacketType.Task);
+                // sent at once, not queued behind the region's object updates: the close that follows a logout drops the
+                // client's queues (Flush does nothing), and a viewer that gets no reply waits out its own logout timeout
+                OutPacket(logReply, ThrottleOutPacketType.Unknown);
             }
         }
 
@@ -5745,7 +5794,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                     PrimUpdateFlags flags = PrimUpdateFlags.CancelKill;
                     if(viewerCache && grp.IsViewerCachable)
                         flags |= PrimUpdateFlags.UpdateProbe;
-                    foreach (SceneObjectPart p in grp.Parts)
+                    foreach (SceneObjectPart p in grp.PartsInLinkOrder)
                         SendEntityUpdate(p, flags);
                 }
             }
@@ -5898,7 +5947,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                         PrimUpdateFlags flags = PrimUpdateFlags.CancelKill;
                         if (grp.IsViewerCachable)
                             flags |= PrimUpdateFlags.UpdateProbe;
-                        foreach (SceneObjectPart p in grp.Parts)
+                        foreach (SceneObjectPart p in grp.PartsInLinkOrder)
                             SendEntityUpdate(p, flags);
                     }
                 }
@@ -5908,7 +5957,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                     PrimUpdateFlags flags = PrimUpdateFlags.CancelKill;
                     foreach (SceneObjectGroup grp in GroupsNeedFullUpdate)
                     {
-                        foreach (SceneObjectPart p in grp.Parts)
+                        foreach (SceneObjectPart p in grp.PartsInLinkOrder)
                             SendEntityUpdate(p, flags);
                     }
                 }
@@ -8743,6 +8792,11 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             if(c.SceneAgent is null || c.SceneAgent.IsChildAgent ||
                     c.SceneAgent.IsInTransit || seq <= c.m_thisAgentUpdateArgs.lastpacketSequence )
             {
+                // a viewer sends agent updates to the region it believes it is in: one still sending them to a region
+                // that holds it only as a child agent has not taken in a crossing out of here
+                if (c.SceneAgent is ScenePresence child && child.IsChildAgent && !child.IsInTransit)
+                    child.AgentUpdateWhileChild();
+
                 // throttle reset is done at MoveAgentIntoRegion()
                 // called by scenepresence on completemovement
                 //PacketPool.Instance.ReturnPacket(packet);
@@ -9198,8 +9252,13 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             //m_log.Info("[LAND]: LAND:" + modify.ToString());
             for (int i = 0; i < modify.ParcelData.Length; i++)
             {
+                // [Tranquillity 550355f873] the real size in ModifyBlockExtended; a viewer without it sends the old brush
+                // index only (LLToolBrushLand: 0, 1, 2 for 1, 2 and 4 m). Indexing past it threw.
+                float brushSize = i < modify.ModifyBlockExtended.Length
+                    ? modify.ModifyBlockExtended[i].BrushSize
+                    : 1 << Math.Min((int)modify.ModifyBlock.BrushSize, 2);
                 c.OnModifyTerrain?.Invoke(c.m_agentId, modify.ModifyBlock.Height, modify.ModifyBlock.Seconds,
-                                    modify.ModifyBlockExtended[i].BrushSize, modify.ModifyBlock.Action,
+                                    brushSize, modify.ModifyBlock.Action,
                                     modify.ParcelData[i].North, modify.ParcelData[i].West,
                                     modify.ParcelData[i].South, modify.ParcelData[i].East,
                                     modify.ParcelData[i].LocalID);
@@ -10824,7 +10883,9 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 SalePrice = parcelPropertiesPacket.ParcelData.SalePrice,
                 SnapshotID = parcelPropertiesPacket.ParcelData.SnapshotID,
                 UserLocation = parcelPropertiesPacket.ParcelData.UserLocation,
-                UserLookAt = parcelPropertiesPacket.ParcelData.UserLookAt
+                UserLookAt = parcelPropertiesPacket.ParcelData.UserLookAt,
+                // [Tranquillity c3f55e0264] the UDP packet carries no media details or avatar settings: keep the parcel's
+                WithoutMediaDetailsAndAvatarSettings = true
             };
 
             // The UDP ParcelPropertiesUpdate packet has NO fields for SeeAVs / AnyAVSounds /

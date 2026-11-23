@@ -51,6 +51,11 @@ namespace OpenSim.Data
     {
         GridUserData Get(string userID);
         GridUserData[] GetAll(string query);
+
+        /// <summary>
+        /// [Tranquillity dfd2353889] The users marked online whose last region is <paramref name="regionID"/>.
+        /// </summary>
+        GridUserData[] GetOnlineInRegion(UUID regionID);
         bool Store(GridUserData data);
 
         /// <summary>

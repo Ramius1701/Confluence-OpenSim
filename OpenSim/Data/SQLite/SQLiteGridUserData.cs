@@ -65,7 +65,11 @@ namespace OpenSim.Data.SQLite
 
             return DoQuery(cmd);
         }
-        }
-
     }
+
+    public GridUserData[] GetOnlineInRegion(UUID regionID)
+    {
+        return base.Get(new[] { "LastRegionID", "Online" }, new[] { regionID.ToString(), true.ToString() });
+    }
+}
 }

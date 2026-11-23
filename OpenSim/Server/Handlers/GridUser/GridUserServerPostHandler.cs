@@ -83,6 +83,8 @@ namespace OpenSim.Server.Handlers.GridUser
                         return LoggedIn(request);
                     case "loggedout":
                         return LoggedOut(request);
+                    case "loggedoutregion":
+                        return LoggedOutRegion(request);
                     case "sethome":
                         return SetHome(request);
                     case "setposition":
@@ -142,6 +144,18 @@ namespace OpenSim.Server.Handlers.GridUser
                 return FailureResult();
 
             if (m_GridUserService.LoggedOut(userID, UUID.Zero, regionID, position, lookat))
+                return SuccessResult();
+
+            return FailureResult();
+        }
+
+        byte[] LoggedOutRegion(Dictionary<string, object> request)
+        {
+            if (!request.TryGetValue("RegionID", out object region) || !UUID.TryParse(region.ToString(), out UUID regionID)
+                    || regionID.IsZero())
+                return FailureResult();
+
+            if (m_GridUserService.LoggedOutRegion(regionID))
                 return SuccessResult();
 
             return FailureResult();

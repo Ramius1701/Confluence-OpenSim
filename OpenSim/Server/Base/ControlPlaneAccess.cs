@@ -286,13 +286,24 @@ namespace OpenSim.Server.Base
             if (!IsPrivilegedInstantMessageDialog(dialog))
                 return true;
 
-            if (remoteClient != null && IsTrustedAddress(remoteClient.Address))
+            if (IsTrustedCaller(remoteClient))
                 return true;
 
             LogRefusal("im|" + remoteClient?.Address + "|" + dialog,
                 string.Format("[CONTROL PLANE ACCESS]: Refusing privileged instant message (dialog {0}) from {1}: source address is not a trusted control-plane host.",
                     dialog, remoteClient?.Address.ToString() ?? "unknown"));
             return false;
+        }
+
+        /// <summary>
+        /// [Tranquillity 5e1e9979c0] A caller of an XML-RPC method is trusted: its address is, and its request is not a
+        /// script's. A script's llHTTPRequest to this host's own public address comes from an address this host may
+        /// trust, so before this a script could send a region the grid kick (250) or a god teleport.
+        /// </summary>
+        public bool IsTrustedCaller(IPEndPoint remote)
+        {
+            return remote is not null && remote is not OpenSim.Framework.Servers.HttpServer.ScriptRequestEndPoint
+                && IsTrustedAddress(remote.Address);
         }
 
         public static bool IsPrivilegedInstantMessageDialog(byte dialog)
@@ -339,9 +350,22 @@ namespace OpenSim.Server.Base
             if (string.IsNullOrWhiteSpace(host))
                 return;
 
-            if (Uri.TryCreate(host, UriKind.Absolute, out Uri uri))
+            host = host.Trim();
+
+            // [Tranquillity 9e464d5395] An entry is read as an address first. .NET reads "robust:8003",
+            // "robust.example.invalid:8003" and "fd00::1" as absolute URIs of the schemes "robust" and "fd00" with an
+            // empty host, and a lookup of an empty name answers this machine's own addresses: the host meant was
+            // refused and this machine trusted in its place. A URI's host is used only when it is not empty;
+            // otherwise the host:port and [IPv6]:port forms apply. An empty name is never looked up.
+            if (IPAddress.TryParse(host, out IPAddress literal))
             {
-                host = uri.Host;
+                AddTrustedAddress(literal);
+                return;
+            }
+
+            if (Uri.TryCreate(host, UriKind.Absolute, out Uri uri) && !string.IsNullOrEmpty(uri.Host))
+            {
+                host = uri.Host.Trim('[', ']');
             }
             else if (host[0] == '[')
             {
@@ -359,6 +383,12 @@ namespace OpenSim.Server.Base
             if (IPAddress.TryParse(host, out IPAddress address))
             {
                 AddTrustedAddress(address);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                m_log.WarnFormat("[CONTROL PLANE]: A trusted host entry names no host; ignored");
                 return;
             }
 

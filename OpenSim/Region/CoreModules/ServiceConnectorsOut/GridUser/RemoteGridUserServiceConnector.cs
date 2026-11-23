@@ -158,6 +158,13 @@ namespace OpenSim.Region.CoreModules.ServiceConnectorsOut.GridUser
             return m_RemoteConnector.LoggedOut(userID, sessionID, region, position, lookat);
         }
 
+        public bool LoggedOutRegion(UUID regionID)
+        {
+            // which users it changed is not known here
+            m_Infos.Clear();
+            return m_RemoteConnector.LoggedOutRegion(regionID);
+        }
+
         public bool SetHome(string userID, UUID regionID, Vector3 position, Vector3 lookAt)
         {
             if (m_RemoteConnector.SetHome(userID, regionID, position, lookAt))

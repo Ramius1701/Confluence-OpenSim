@@ -1840,6 +1840,25 @@ namespace OpenSim.Region.Framework.Scenes
             TeleportWithMomentum(pos, Vector3.Zero);
         }
 
+        /// <summary>
+        /// Raised, at most once a second, when this presence is a child agent and its viewer still sends agent updates
+        /// here: the viewer believes this is its region. After a crossing out of here that means the viewer did not take
+        /// in the crossing (the CrossedRegion event was lost or late).
+        /// </summary>
+        public event Action<ScenePresence> OnAgentUpdateWhileChild;
+
+        private long m_lastAgentUpdateWhileChildMs;
+
+        /// <summary>Called by the client stack for an agent update that reached this presence while it is a child.</summary>
+        public void AgentUpdateWhileChild()
+        {
+            long now = System.Environment.TickCount64;
+            if (now - m_lastAgentUpdateWhileChildMs < 1000)
+                return;
+            m_lastAgentUpdateWhileChildMs = now;
+            OnAgentUpdateWhileChild?.Invoke(this);
+        }
+
         public void TeleportWithMomentum(Vector3 pos, Vector3? v)
         {
             if(!CheckLocalTPLandingPoint(ref pos))
@@ -5893,7 +5912,7 @@ namespace OpenSim.Region.Framework.Scenes
             if (p != this && sog.HasPrivateAttachmentPoint)
                 return;
 
-            SceneObjectPart[] parts = sog.Parts;
+            SceneObjectPart[] parts = sog.PartsInLinkOrder;
             SceneObjectPart rootpart = sog.RootPart;
 
             PrimUpdateFlags update = PrimUpdateFlags.FullUpdate;
@@ -5916,7 +5935,7 @@ namespace OpenSim.Region.Framework.Scenes
             if (IsChildAgent || IsInTransit || IsDeleted)
                 return;
 
-            SceneObjectPart[] origparts = sog.Parts;
+            SceneObjectPart[] origparts = sog.PartsInLinkOrder;
             SceneObjectPart[] parts = new SceneObjectPart[origparts.Length];
             PrimUpdateFlags[] flags = new PrimUpdateFlags[origparts.Length];
 
@@ -5977,7 +5996,7 @@ namespace OpenSim.Region.Framework.Scenes
             if (IsChildAgent || IsInTransit)
                 return;
 
-            SceneObjectPart[] origparts = sog.Parts;
+            SceneObjectPart[] origparts = sog.PartsInLinkOrder;
             SceneObjectPart[] parts = new SceneObjectPart[origparts.Length];
             PrimUpdateFlags[] flags = new PrimUpdateFlags[origparts.Length];
 

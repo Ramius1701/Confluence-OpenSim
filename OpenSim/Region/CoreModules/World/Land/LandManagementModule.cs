@@ -772,6 +772,13 @@ namespace OpenSim.Region.CoreModules.World.Land
         /// </param>
         public ILandObject AddLandObject(ILandObject new_land)
         {
+            return AddLandObject(new_land, true);
+        }
+
+        /// <param name="fireAdded">False when the caller holds the land list's lock: it fires LandObjectAdded once it has
+        /// let go (see <see cref="EventManagerOnIncomingLandDataFromStorage"/>).</param>
+        private ILandObject AddLandObject(ILandObject new_land, bool fireAdded)
+        {
             // Only now can we add the prim counts to the land object - we rely on the global ID which is generated
             // as a random UUID inside LandData initialization
             if (m_primCountModule is not null)
@@ -848,7 +855,8 @@ namespace OpenSim.Region.CoreModules.World.Land
                 m_landFakeIDs[new_land.LandData.FakeID] = new_land.LandData.LocalID;
             }
 
-            m_scene.EventManager.TriggerLandObjectAdded(new_land);
+            if (fireAdded)
+                m_scene.EventManager.TriggerLandObjectAdded(new_land);
 
             return new_land;
         }
@@ -1254,6 +1262,9 @@ namespace OpenSim.Region.CoreModules.World.Land
         /// <returns>Returns true if successful</returns>
         public void Subdivide(int start_x, int start_y, int end_x, int end_y, UUID attempting_user_id)
         {
+            if (!JoinDivideAllowed(attempting_user_id))
+                return;
+
             //First, lets loop through the points and make sure they are all in the same peice of land
             //Get the land object at start
 
@@ -1306,6 +1317,11 @@ namespace OpenSim.Region.CoreModules.World.Land
 
             newLand.SetLandBitmap(newLand.GetSquareLandBitmap(start_x, start_y, end_x, end_y));
 
+            // a selection that holds no whole 4 m cell (a point, east of west, off the grid) gives
+            // no land: no parcel, or one of no land would be kept and stored for good
+            if (newLandData.Area <= 0 || newLandData.Area >= startLandData.Area)
+                return;
+
             //lets set the subdivision area of the original to false
             int startLandObjectIndex = startLandObject.LandData.LocalID;
             lock (m_landList)
@@ -1314,11 +1330,8 @@ namespace OpenSim.Region.CoreModules.World.Land
                 //m_landList[startLandObjectIndex].ForceUpdateLandInfo();
             }
 
-            UpdateLandObject(startLandObject.LandData.LocalID, startLandObject.LandData);
-
-            //add the new land object
-            ILandObject result = AddLandObject(newLand);
-
+            // a landing point now on the new parcel is the parent's no more; reset before the parent is stored, or
+            // the reset was lost on restart and visitors to the parent landed on the new parcel
             if (startLandObject.LandData.LandingType == (byte)LandingType.LandingPoint)
             {
                 int x = (int)startLandObject.LandData.UserLocation.X;
@@ -1329,7 +1342,12 @@ namespace OpenSim.Region.CoreModules.World.Land
                     startLandObject.LandData.UserLocation = Vector3.Zero;
                     startLandObject.LandData.UserLookAt = Vector3.Zero;
                 }
-             }
+            }
+
+            UpdateLandObject(startLandObject.LandData.LocalID, startLandObject.LandData);
+
+            //add the new land object
+            ILandObject result = AddLandObject(newLand);
 
             m_scene.EventManager.TriggerParcelPrimCountTainted();
 
@@ -1337,6 +1355,18 @@ namespace OpenSim.Region.CoreModules.World.Land
             startLandObject.SendLandUpdateToAvatarsOverMe();
             m_scene.ForEachClient(SendParcelOverlay);
 
+        }
+
+        /// <summary>
+        /// The region's Allow Land Join/Divide (RegionSettings.AllowLandJoinDivide): when it is off only
+        /// the estate's managers may join or divide parcels, as on Second Life. The viewer only greys
+        /// its buttons out; scripts (osParcelJoin, osParcelSubdivide) and other clients do not.
+        /// </summary>
+        private bool JoinDivideAllowed(UUID user)
+        {
+            if (m_scene.RegionInfo.RegionSettings.AllowLandJoinDivide)
+                return true;
+            return m_scene.Permissions.IsEstateManager(user) || m_scene.Permissions.IsAdministrator(user);
         }
 
         /// <summary>
@@ -1350,6 +1380,9 @@ namespace OpenSim.Region.CoreModules.World.Land
         /// <returns>Returns true if successful</returns>
         public void Join(int start_x, int start_y, int end_x, int end_y, UUID attempting_user_id)
         {
+            if (!JoinDivideAllowed(attempting_user_id))
+                return;
+
             int index = 0;
             int maxindex = -1;
             int maxArea = 0;
@@ -1400,9 +1433,14 @@ namespace OpenSim.Region.CoreModules.World.Land
                 {
                     m_landList[masterLandObject.LandData.LocalID].SetLandBitmap(
                         slaveLandObject.MergeLandBitmaps(masterLandObject.GetLandBitmap(), slaveLandObject.GetLandBitmap()));
-                    performFinalLandJoin(masterLandObject, slaveLandObject);
                 }
             }
+
+            // the stores, and the events they fire, outside the land list's lock: a handler takes the prim count's lock,
+            // which PrimCountModule.Recount holds while it asks for every parcel (this lock), and the two threads waited
+            // on each other for good
+            foreach (ILandObject slaveLandObject in selectedLandObjects)
+                performFinalLandJoin(masterLandObject, slaveLandObject);
 
             m_scene.EventManager.TriggerParcelPrimCountTainted();
             masterLandObject.SendLandUpdateToAvatarsOverMe();
@@ -1446,16 +1484,25 @@ namespace OpenSim.Region.CoreModules.World.Land
                 for (int x = 0; x < sx;)
                 {
                     curID = GetLandObjectIDinLandUnits(x,y);
-                    if(curID < 0)
-                        continue;
-
-                    ILandObject currentParcel = GetLandObject(curID);
-                    if (currentParcel is null)
-                        continue;
-
-                    LandData currentParcelLandData = currentParcel.LandData;
+                    ILandObject currentParcel = curID < 0 ? null : GetLandObject(curID);
+                    LandData currentParcelLandData = currentParcel?.LandData;
                     if (currentParcelLandData is null)
+                    {
+                        // a cell no parcel holds (between the land being cleared and loaded again, as an OAR
+                        // load does): public land with no lines, and on to the next cell. Skipping it without
+                        // moving on kept this thread spinning for good.
+                        byteArray[byteArrayCount] = 0;
+                        byteArrayCount++;
+                        if (byteArrayCount >= LAND_BLOCKS_PER_PACKET)
+                        {
+                            remote_client.SendLandParcelOverlay(byteArray, sequenceID);
+                            byteArrayCount = 0;
+                            sequenceID++;
+                            byteArray = new byte[LAND_BLOCKS_PER_PACKET];
+                        }
+                        ++x;
                         continue;
+                    }
 
                     // types
                     if (currentParcelLandData.OwnerID.Equals(remote_client.AgentId))
@@ -1590,7 +1637,7 @@ namespace OpenSim.Region.CoreModules.World.Land
 
             if (start_x < 0 || start_y < 0 || end_x < 0 || end_y < 0)
                 return;
-            if (start_x >= m_regionSizeX || start_y >= m_regionSizeX || end_x > m_regionSizeX || end_y > m_regionSizeY)
+            if (start_x >= m_regionSizeX || start_y >= m_regionSizeY || end_x > m_regionSizeX || end_y > m_regionSizeY)
                 return;
 
             if (end_x - start_x <= Constants.LandUnit &&
@@ -1771,6 +1818,11 @@ namespace OpenSim.Region.CoreModules.World.Land
                 if(!m_landList.TryGetValue(local_id, out land) || land is null)
                     return;
             }
+
+            // the recount scans every object of the region: only for someone who may see the answer, or any visitor
+            // asking again and again kept the region busy
+            if (!m_scene.Permissions.CanEditParcelProperties(remote_client.AgentId, land, GroupPowers.LandOptions, true))
+                return;
 
             m_scene.EventManager.TriggerParcelPrimCountUpdate();
             land.SendLandObjectOwners(remote_client);
@@ -2002,10 +2054,14 @@ namespace OpenSim.Region.CoreModules.World.Land
 
         private void EventManagerOnIncomingLandDataFromStorage(List<LandData> data)
         {
+            // the parcels are added under the land list's lock, and their events fired, their prim counts finalised and
+            // the avatars over them told once it is let go: those take the prim count's lock, which
+            // PrimCountModule.Recount holds while it asks for every parcel (this lock)
+            List<ILandObject> added = new();
             lock (m_landList)
             {
                 for (int i = 0; i < data.Count; i++)
-                    IncomingLandObjectFromStorage(data[i]);
+                    added.Add(IncomingLandObjectFromStorage(data[i]));
 
                 // Layer data is in LandUnit (4m) chunks
                 for (int y = 0; y < m_regionSizeY / Constants.TerrainPatchSize * (Constants.TerrainPatchSize / Constants.LandUnit); y++)
@@ -2049,7 +2105,9 @@ namespace OpenSim.Region.CoreModules.World.Land
                                 newLand.SetLandBitmap(CreateBitmapForID(0));
                                 newLand.LandData.OwnerID = m_scene.RegionInfo.EstateSettings.EstateOwner;
                                 newLand.LandData.ClaimDate = Util.UnixTimeSinceEpoch();
-                                newLand = AddLandObject(newLand);
+                                newLand = AddLandObject(newLand, false);
+                                if (newLand is not null)
+                                    added.Add(newLand);
                             }
                             else
                             {
@@ -2061,22 +2119,26 @@ namespace OpenSim.Region.CoreModules.World.Land
                     }
                 }
 
-                FinalizeLandPrimCountUpdate(); // update simarea information
-
-                lock (m_landList)
-                {
-                    foreach(LandObject lo in m_landList.Values)
-                        lo.SendLandUpdateToAvatarsOverMe();
-                }
             }
+
+            foreach (ILandObject lo in added)
+            {
+                if (lo is not null)
+                    m_scene.EventManager.TriggerLandObjectAdded(lo);
+            }
+
+            FinalizeLandPrimCountUpdate(); // update simarea information
+
+            foreach (ILandObject lo in AllParcels())
+                lo.SendLandUpdateToAvatarsOverMe();
         }
 
-        private void IncomingLandObjectFromStorage(LandData data)
+        private ILandObject IncomingLandObjectFromStorage(LandData data)
         {
             ILandObject new_land = new LandObject(data.OwnerID, data.IsGroupOwned, m_scene, data);
 
             new_land.SetLandBitmapFromByteArray();
-            AddLandObject(new_land);
+            return AddLandObject(new_land, false);
         }
 
         public void ReturnObjectsInParcel(int localID, uint returnType, UUID[] agentIDs, UUID[] taskIDs, IClientAPI remoteClient)

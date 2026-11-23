@@ -1232,7 +1232,9 @@ namespace OpenSim.Framework.Servers.HttpServer
             XmlRpcResponse xmlRpcResponse;
             if (methodWasFound)
             {
-                xmlRprcRequest.Params.Add(request.RemoteIPEndPoint); // Param[1]
+                // [Tranquillity 5e1e9979c0] a request carrying the script marker reaches the handler marked as such
+                IPEndPoint caller = ScriptRequestEndPoint.Of(request);
+                xmlRprcRequest.Params.Add(caller); // Param[1]
                 xmlRprcRequest.Params.Add(request.Url); // Param[2]
                 xmlRprcRequest.Params.Add(request.Headers["x-forwarded-for"]); // Param[3]
 
@@ -1248,7 +1250,7 @@ namespace OpenSim.Framework.Servers.HttpServer
 
                 try
                 {
-                    xmlRpcResponse = method(xmlRprcRequest, request.RemoteIPEndPoint);
+                    xmlRpcResponse = method(xmlRprcRequest, caller);
                 }
                 catch(Exception e)
                 {
@@ -1359,7 +1361,9 @@ namespace OpenSim.Framework.Servers.HttpServer
             XmlRpcResponse xmlRpcResponse;
             if (methodWasFound)
             {
-                xmlRprcRequest.Params.Add(request.RemoteIPEndPoint); // Param[1]
+                // [Tranquillity 5e1e9979c0] a request carrying the script marker reaches the handler marked as such
+                IPEndPoint caller = ScriptRequestEndPoint.Of(request);
+                xmlRprcRequest.Params.Add(caller); // Param[1]
                 xmlRprcRequest.Params.Add(request.Url); // Param[2]
 
                 xmlRprcRequest.Params.Add(request.Headers["x-forwarded-for"]); // Param[3]
@@ -1372,7 +1376,7 @@ namespace OpenSim.Framework.Servers.HttpServer
 
                 try
                 {
-                    xmlRpcResponse = method(xmlRprcRequest, request.RemoteIPEndPoint);
+                    xmlRpcResponse = method(xmlRprcRequest, caller);
                 }
                 catch (Exception e)
                 {

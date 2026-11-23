@@ -58,5 +58,12 @@ namespace OpenSim.Framework
         public bool AnyAVSounds;
         public bool GroupAVSounds;
         public bool ObscureMOAP;
+
+        /// <summary>
+        /// The update came as the UDP ParcelPropertiesUpdate, which carries no media type, description, size or loop
+        /// and none of the avatar visibility and sound settings: those stay as the parcel has them. The
+        /// ParcelPropertiesUpdate capability carries them all.
+        /// </summary>
+        public bool WithoutMediaDetailsAndAvatarSettings;
     }
 }

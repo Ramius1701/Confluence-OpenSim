@@ -1022,6 +1022,9 @@ namespace OpenSim.Region.Framework.Scenes
 
                 SeeIntoRegion = startupConfig.GetBoolean("see_into_region", SeeIntoRegion);
 
+                // [Tranquillity 4de23a806d] a login whose viewer never arrives is closed and logged out
+                LoginConnectWait = TimeSpan.FromSeconds(Math.Max(0, startupConfig.GetInt("LoginConnectWaitSeconds", 120)));
+
                 MaxUndoCount = startupConfig.GetInt("MaxPrimUndos", 20);
 
                 PhysicalPrims = startupConfig.GetBoolean("physical_prim", true);
@@ -1889,6 +1892,10 @@ namespace OpenSim.Region.Framework.Scenes
                         tempOnRezMS = (float)(nowMS - lastMS); // bad.. counts the FireAndForget, not CleanTempObjects
                         lastMS = nowMS;
                     }
+
+                    // logins whose viewer has not connected
+                    if (Frame % m_update_temp_cleaning == 0)
+                        CheckLoginArrivals();
 
                     if (Frame % m_update_events == 0)
                     {
@@ -3347,6 +3354,16 @@ namespace OpenSim.Region.Framework.Scenes
             // XXX: A race condition exists here where two simultaneous calls to AddNewAgent can interfere with
             // each other.  In practice, this does not currently occur in the code.
             AgentCircuitData aCircuit = m_authenticateHandler.GetAgentCircuitData(client.CircuitCode);
+            if (aCircuit is null)
+            {
+                // closed while it connected (a close, or a second connection from another endpoint, removed the
+                // circuit): there is nothing to add the agent with
+                m_log.WarnFormat(
+                    "[SCENE]: Not adding {0} {1} to {2}: its circuit {3} was removed while it connected",
+                    client.Name, client.AgentId, RegionInfo.RegionName, client.CircuitCode);
+                StatsReporter.UpdateUsersLoggingIn(false);
+                return null;
+            }
 
             // We lock here on AgentCircuitData to prevent a race condition between the thread adding a new connection
             // and a simultaneous one that removes it (as can happen if the client is closed at a particular point
@@ -4369,17 +4386,35 @@ namespace OpenSim.Region.Framework.Scenes
                     // We have a root agent. Is it in transit?
                     if (!EntityTransferModule.IsInTransit(sp.UUID))
                     {
-                        // We have a zombie from a crashed session.
-                        // Or the same user is trying to be root twice here, won't work.
-                        // Kill it.
-                        m_log.WarnFormat(
-                            "[SCENE]: Existing root scene presence detected for {0} {1} in {2} when connecting.  Removing existing presence.",
-                            sp.Name, sp.UUID, RegionInfo.RegionName);
+                        if (!vialogin && sp.ControllingClient is not null && sp.ControllingClient.SessionId.Equals(acd.SessionID))
+                        {
+                            // [Tranquillity c76725a634] The same session coming here by teleport or crossing: the
+                            // avatar is in the region it comes from, and this root is a copy left behind (two regions
+                            // came to disagree about where the avatar is). Closing it as a root logged the user off the
+                            // grid, closed the avatar's child agents in the other regions, and then refused this arrival
+                            // for the user being offline. Make it a child agent, as a region the avatar leaves does,
+                            // and let the arrival use it.
+                            m_log.WarnFormat(
+                                "[SCENE]: {0} {1} is arriving in {2} by teleport or crossing but was still root here: making the stale root a child agent",
+                                sp.Name, sp.UUID, RegionInfo.RegionName);
 
-                        if (sp.ControllingClient is not null)
-                            CloseAgent(sp.UUID, true);
+                            sp.HasMovedAway(false);
+                            sp.MakeChildAgent(source?.RegionHandle ?? 0);
+                        }
+                        else
+                        {
+                            // We have a zombie from a crashed session.
+                            // Or the same user is trying to be root twice here, won't work.
+                            // Kill it.
+                            m_log.WarnFormat(
+                                "[SCENE]: Existing root scene presence detected for {0} {1} in {2} when connecting.  Removing existing presence.",
+                                sp.Name, sp.UUID, RegionInfo.RegionName);
 
-                        sp = null;
+                            if (sp.ControllingClient is not null)
+                                CloseAgent(sp.UUID, true);
+
+                            sp = null;
+                        }
                     }
                     //else
                     //    m_log.WarnFormat("[SCENE]: Existing root scene presence for {0} {1} in {2}, but agent is in trasit", sp.Name, sp.UUID, RegionInfo.RegionName);
@@ -4441,6 +4476,11 @@ namespace OpenSim.Region.Framework.Scenes
                         "[SCENE {0}]: authorized {1} agent {2} {3} {4} (circuit code {5})",
                         Name, (acd.child ? "child" : "root"), acd.firstname, acd.lastname,
                         acd.AgentID, acd.circuitcode);
+
+                    // the login service marks the user online now; follow the login until the avatar is root here (its
+                    // circuit is a child one until then; the neighbours' child agents are not sent with ViaLogin)
+                    if ((teleportFlags & (uint)TPFlags.ViaLogin) != 0)
+                        AwaitLoginArrival(acd);
 
 
                     if (m_capsModule is not null)
@@ -4944,6 +4984,42 @@ Label_GroupsDone:
         }
 
         /// <summary>
+        /// [Tranquillity c9ec4bf8f1] Close the connection of a child agent that the viewer has opened again from
+        /// another endpoint, keeping what the new connection needs: the circuit it was authorised with and the agent's
+        /// capabilities at the same seed. A plain close removes both, so the new connection was refused (and the
+        /// viewer, which believed itself connected, could later not teleport or cross into this region).
+        /// </summary>
+        /// <returns>false when the agent is not a child here (a root agent's connection is closed as before).</returns>
+        public bool ReplaceChildConnection(UUID agentID, uint circuitCode)
+        {
+            AgentCircuitData acd = m_authenticateHandler.GetAgentCircuitData(circuitCode);
+            ScenePresence sp = GetScenePresence(agentID);
+            if (acd is null || sp is null || !sp.IsChildAgent || sp.IsNPC)
+                return false;
+
+            m_log.DebugFormat(
+                "[SCENE]: The viewer of child agent {0} in {1} connected again from another endpoint: replacing its connection",
+                agentID, Name);
+
+            // the first connection took the circuit's appearance for its presence; the new presence starts from it
+            AvatarAppearance appearance = sp.Appearance is null ? null : new AvatarAppearance(sp.Appearance);
+
+            CloseAgent(agentID, true);
+
+            acd.Appearance ??= appearance;
+            if (m_authenticateHandler.GetAgentCircuitData(circuitCode) is null)
+                m_authenticateHandler.AddNewCircuit(circuitCode, acd);
+
+            if (m_capsModule is not null && m_capsModule.GetCapsForUser(circuitCode) is null)
+            {
+                m_capsModule.SetAgentCapsSeeds(acd);
+                m_capsModule.CreateCaps(agentID, circuitCode);
+                m_capsModule.ActivateCaps(circuitCode);
+            }
+            return true;
+        }
+
+        /// <summary>
         /// We've got an update about an agent that sees into this region,
         /// send it to ScenePresence for processing  It's only positional data
         /// </summary>
@@ -4958,10 +5034,17 @@ Label_GroupsDone:
             ScenePresence childAgentUpdate = GetScenePresence(cAgentData.AgentID);
             if (childAgentUpdate is not null)
             {
-//                if (childAgentUpdate.ControllingClient.SessionId != cAgentData.SessionID)
-//                    // Only warn for now
-//                    m_log.WarnFormat("[SCENE]: Attempt at updating position of agent {0} with invalid session id {1}. Neighbor running older version?",
-//                        childAgentUpdate.UUID, cAgentData.SessionID);
+                // [Tranquillity 5e1e9979c0] PUT /agent is open to any caller (the region a Hypergrid visitor comes
+                // from sends its agent update through it): the session is what shows the update comes from the region
+                // the agent is in. Without it anyone who knew an avatar's and a region's ids could set the agent's
+                // throttles, draw distance, seed capabilities and position here.
+                if (childAgentUpdate.ControllingClient.SessionId.NotEqual(cAgentData.SessionID))
+                {
+                    m_log.WarnFormat(
+                        "[SCENE]: Ignoring a position update for agent {0} in {1}: its session id {2} is not the agent's",
+                        childAgentUpdate.UUID, Name, cAgentData.SessionID);
+                    return false;
+                }
 
                 // I can't imagine *yet* why we would get an update if the agent is a root agent..
                 // however to avoid a race condition crossing borders..

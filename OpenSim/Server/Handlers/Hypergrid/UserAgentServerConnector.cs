@@ -232,7 +232,7 @@ namespace OpenSim.Server.Handlers.Hypergrid
             // legitimately called cross-grid); anyone else must prove the
             // session is real via the actual tracked traveling-agent
             // record. See PROJECT_LOG.md, 2026-09-23.
-            bool trustedCaller = remoteClient != null && m_ControlPlaneAccess.IsTrustedAddress(remoteClient.Address);
+            bool trustedCaller = m_ControlPlaneAccess.IsTrustedCaller(remoteClient);
             if (!trustedCaller && !m_HomeUsersService.IsKnownTravelingAgent(userID, sessionID))
             {
                 Hashtable failHash = new Hashtable();

@@ -61,5 +61,11 @@ namespace OpenSim.Data.MySQL
             userID = MySqlHelper.EscapeString(userID);
             return base.Get(String.Format("UserID LIKE '{0}%'", userID));
         }
+
+        // [Tranquillity dfd2353889]
+        public GridUserData[] GetOnlineInRegion(UUID regionID)
+        {
+            return base.Get(new[] { "LastRegionID", "Online" }, new[] { regionID.ToString(), true.ToString() });
+        }
     }
 }
