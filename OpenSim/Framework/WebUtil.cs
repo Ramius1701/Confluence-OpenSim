@@ -1341,6 +1341,9 @@ namespace OpenSim.Framework
                     WebUtil.LogOutgoingDetail("SEND", reqnum, Encoding.UTF8.GetString(data));
 
                 responseMessage = client.Send(request, HttpCompletionOption.ResponseHeadersRead);
+                // [Tranquillity #438] an error answer is an error, whatever its body says: Robust's 500 can still carry
+                // <Result>Success</Result>, which a region read as a registration that worked (MakeRequest checks this)
+                responseMessage.EnsureSuccessStatusCode();
 
                 if ((responseMessage.Content.Headers.ContentLength is long contentLength) && contentLength != 0)
                 {

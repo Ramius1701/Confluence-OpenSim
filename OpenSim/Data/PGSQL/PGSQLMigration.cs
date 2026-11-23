@@ -91,9 +91,9 @@ namespace OpenSim.Data.PGSQL
                         cmd.ExecuteNonQuery();
                     }
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
-                    throw new Exception(sql);
+                    throw new Exception(e.Message + " in SQL: " + sql, e);
 
                 }
             }

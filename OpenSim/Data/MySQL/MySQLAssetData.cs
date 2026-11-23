@@ -135,7 +135,7 @@ namespace OpenSim.Data.MySQL
                                     asset.Local = false;
 
                                 asset.Temporary = Convert.ToBoolean(dbReader["temporary"]);
-                                asset.Flags = (AssetFlags)Convert.ToInt32(dbReader["asset_flags"]);
+                                asset.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["asset_flags"]), asset.ID);
                             }
                         }
                     }
@@ -316,7 +316,7 @@ namespace OpenSim.Data.MySQL
                                 metadata.Description = (string)dbReader["description"];
                                 metadata.Type = (sbyte)dbReader["assetType"];
                                 metadata.Temporary = Convert.ToBoolean(dbReader["temporary"]); // Not sure if this is correct.
-                                metadata.Flags = (AssetFlags)Convert.ToInt32(dbReader["asset_flags"]);
+                                metadata.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["asset_flags"]), metadata.ID);
                                 metadata.FullID = DBGuid.FromDB(dbReader["id"]);
                                 metadata.CreatorID = dbReader["CreatorID"].ToString();
 

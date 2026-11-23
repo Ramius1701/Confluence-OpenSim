@@ -58,6 +58,7 @@
     <!-- Tranquillity's compile list, unchanged. -->
     <Compile Include="LSLSystemAPI.cs" />
     <Compile Include="LSLSystemAPI.Confluence.cs" />
+    <Compile Include="WallclockZone.cs" />
     <Compile Include="PhloxExperienceAdapter.cs" />
     <Compile Include="PhloxEngine.cs" />
     <Compile Include="PhloxEngineHeader.cs" />

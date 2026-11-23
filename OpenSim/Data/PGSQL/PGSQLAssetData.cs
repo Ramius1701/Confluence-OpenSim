@@ -136,7 +136,7 @@ namespace OpenSim.Data.PGSQL
                         asset.Description = (string)reader["description"];
                         asset.Local = Convert.ToBoolean(reader["local"]);
                         asset.Temporary = Convert.ToBoolean(reader["temporary"]);
-                        asset.Flags = (AssetFlags)(Convert.ToInt32(reader["asset_flags"]));
+                        asset.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(reader["asset_flags"]), asset.ID);
                         asset.Data = (byte[])reader["data"];
                         return asset;
                     }
@@ -199,16 +199,18 @@ namespace OpenSim.Data.PGSQL
                 command.Parameters.Add(m_database.CreateParameter("creatorid", asset.Metadata.CreatorID));
                 command.Parameters.Add(m_database.CreateParameter("data", asset.Data));
                 conn.Open();
+                // [Tranquillity #478] a write the database refuses is reported as not stored
                 try
                 {
                     command.ExecuteNonQuery();
+                    return true;
                 }
                 catch(Exception e)
                 {
                     m_log.Error("[ASSET DB]: Error storing item :" + e.Message + " sql "+sql);
+                    return false;
                 }
             }
-            return true;
         }
 
 
@@ -278,16 +280,16 @@ namespace OpenSim.Data.PGSQL
         {
             List<AssetMetadata> retList = new List<AssetMetadata>(count);
             string sql = @" SELECT id, name, description, " + "\"assetType\"" + @", temporary, creatorid
-                              FROM assets
-                             order by id
-                             limit :stop
-                            offset :start;";
+                                  FROM assets
+                                 order by id
+                                 limit :count
+                                offset :start;";
 
             using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
             using (NpgsqlCommand cmd = new NpgsqlCommand(sql, conn))
             {
                 cmd.Parameters.Add(m_database.CreateParameter("start", start));
-                cmd.Parameters.Add(m_database.CreateParameter("stop", start + count - 1));
+                cmd.Parameters.Add(m_database.CreateParameter("count", count));
                 conn.Open();
                 using (NpgsqlDataReader reader = cmd.ExecuteReader())
                 {
@@ -310,7 +312,16 @@ namespace OpenSim.Data.PGSQL
 
         public override bool Delete(string id)
         {
-            return false;
+            if (!UUID.TryParse(id, out UUID assetID))
+                return false;
+
+            using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
+            using (NpgsqlCommand cmd = new NpgsqlCommand("DELETE FROM assets WHERE id = :id", conn))
+            {
+                cmd.Parameters.Add(m_database.CreateParameter("id", assetID));
+                conn.Open();
+                return cmd.ExecuteNonQuery() > 0;
+            }
         }
         #endregion
     }

@@ -30002,3 +30002,36 @@ overwritten by a timer step already under way. The "Received texture update" log
 Tests: AppearanceFallbackViewerBakesTests (4; two fail on the old code). TESTING 8.13. A second report, an avatar seen
 spinning by an Aurora viewer, was not reproduced (Firestorm avatar watched from Aurora shows no spin); at the owner's
 decision no server change, the viewer stops extrapolating other avatars' angular velocity.
+
+## Tranquillity fixes batch (2026-11-24, grid down)
+
+Tranquillity merged its backlog on 11-23 (develop c85783e993..1052cbae82: 76 PRs and 58 direct commits, about 10,000
+lines of non-test code). With the grid down the owner chose a fixes batch; Groups V2 (#441-#452), the script engine
+chooser (#453/#454/#498), #439 (account columns), #487, the Hypergrid standalone and private-network commits, and
+server-side baking (#435/#436/#492, a module we do not have) wait for their own batches. opensim-master's one new
+commit (#78, the crash log line) was already fixed here (00346b749e).
+
+Ported (porter: whitespace-insensitive hunk matching with re-indent; the rest merged by hand; Microsoft logger calls
+turned to log4net): see commits e28a2fd163 (direct commits: teleports, crossings, UDP, land, terrain, estate, logins,
+linksets, Phlox resets, control plane) and the PR commit after it (#415, #416, #437, #438, #440, #443, #455, #456,
+#458-#462, #464, #466, #473-#486, #488-#491, #494-#497, #500-#502). Highlights for Casperia:
+- FSAssets (Casperia's asset store): an error getting one asset no longer exits Robust (#461); the writer thread
+  survives a failed pass, writes each file whole (temp file + rename) and backs off on a full disk (#485); a missing
+  or damaged file is answered as missing, not as an empty asset that gets cached (#483); AssetsExist checks the file.
+- Control plane (onto our own ControlPlaneAccess, whose code grew separately): a script's XML-RPC request is never a
+  trusted caller, so a script on a region host can no longer send the grid kick (250) or a god teleport; a child
+  agent's position update needs the agent's session; a trusted-hosts entry "name:port" no longer resolves the empty
+  name (this machine) instead of the name.
+- Hypergrid: a foreign asset must be the one asked for before it is cached under its id (#464).
+- Logins: a user left online by a region that stopped without logging them out logs in at once; a login whose viewer
+  never arrives is closed and logged out after [Startup] LoginConnectWaitSeconds (120); a starting region marks
+  offline the users left online in it.
+- Land and terrain rules held on the server (Block Terraform, Allow Join/Divide, floods kept to their parcel); the
+  estate terrain upload follows its packets with a size limit; the download no longer shares one file per process.
+- #415 ends the "asset with wrong type ... 0 != 57" warning (the viewer's terrain material probe).
+Not taken from the ported commits: the Scene arrival-wait rewrite (needs Tranquillity's presence lifecycle states),
+the crossing-recall resend (code we do not have), #457 (our map tiles are stored as JPEG2000, which decodes), #463
+(Tranquillity's AIS module, not ours). Already here: #476, the SQLite/PGSQL column-list fix.
+Tests: TranquillityFixesBatchTests (12: script callers, trusted-host forms, search words, stale online). TESTING
+9.13-9.16. Upstream (opensim-master) has the same FSAssets exit and writer, the child position session check
+commented out, no foreign asset id check, and no server-side Block Terraform: upstream PR candidates for the owner.

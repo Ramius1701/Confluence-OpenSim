@@ -10695,10 +10695,11 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 {
                     lm = new AssetLandmark(lma);
                 }
-                catch (NullReferenceException)
+                catch (Exception e)
                 {
-                    // asset not found generates null ref inside the assetlandmark constructor.
-                    c.SendTeleportFailed("Could not find the landmark asset data");
+                    // The landmark's data is not a landmark (empty, cut short or of another format).
+                    m_log.WarnFormat("[llClient]: landmark asset {0} could not be read: {1}", lmid, e.Message);
+                    c.SendTeleportFailed("Could not read the landmark asset data");
                     return;
                 }
             }

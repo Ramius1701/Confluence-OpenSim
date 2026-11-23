@@ -180,7 +180,7 @@ namespace OpenSim.Region.CoreModules.Avatar.Chat
 
             if (FreezeCache.Contains(c.Sender.AgentId.ToString()))
             {
-                if (c.Type != ChatTypeEnum.StartTyping || c.Type != ChatTypeEnum.StopTyping)
+                if (c.Type != ChatTypeEnum.StartTyping && c.Type != ChatTypeEnum.StopTyping)
                     c.Sender.SendAgentAlertMessage("You may not talk as you are frozen.", false);
             }
             else

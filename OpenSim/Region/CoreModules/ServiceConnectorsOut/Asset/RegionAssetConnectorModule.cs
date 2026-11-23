@@ -239,11 +239,25 @@ namespace OpenSim.Region.CoreModules.ServiceConnectorsOut.Asset
                 return null;
             AssetBase asset = m_HGConnector.Get(id , ForeignAssetService, true);
 
+            // [Tranquillity #464] The asset is cached and stored under its own id, so it must be the one asked for:
+            // another grid answering with a different asset would have it stored over a local one.
+            if (asset is not null && !IsAssetAskedFor(asset, id))
+            {
+                m_log.WarnFormat("[REGIONASSETCONNECTOR]: {0} answered a request for asset {1} with asset {2}; refused",
+                    ForeignAssetService, id, asset.ID);
+                return null;
+            }
+
             // Object data another grid put here: its scripts' Experience links are cleared before the asset
             // is stored or used on this grid.
             if (asset is not null && asset.Type == (sbyte)AssetType.Object)
                 asset.Data = ForeignExperienceLinks.ClearInObjectXml(asset.Data);
             return asset;
+        }
+
+        private static bool IsAssetAskedFor(AssetBase asset, string id)
+        {
+            return UUID.TryParse(id, out UUID asked) && asset.FullID.Equals(asked) && asset.ID == asked.ToString();
         }
 
         public AssetBase GetForeign(string id)
@@ -588,6 +602,9 @@ namespace OpenSim.Region.CoreModules.ServiceConnectorsOut.Asset
         {
             if (IsHG(id))
                 return false;
+
+            // as the standalone connector does: the cache must not go on serving the deleted asset
+            m_Cache?.Expire(id);
 
             return m_localConnector.Delete(id);
         }

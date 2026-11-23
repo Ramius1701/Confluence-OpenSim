@@ -28,6 +28,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 using System.Reflection;
 using log4net;
 using Mono.Addins;
@@ -511,19 +512,66 @@ namespace OpenSim.Region.CoreModules
             var defaults = new WindVolumeLimits();
             var limits = new WindVolumeLimits
             {
-                MaxVolumesRegion = Math.Max(0, section.GetInt("max_volumes_region", defaults.MaxVolumesRegion)),
-                MaxVolumesObject = Math.Max(0, section.GetInt("max_volumes_object", defaults.MaxVolumesObject)),
-                MaxRadius = Math.Max(0f, section.GetFloat("max_radius", defaults.MaxRadius)),
-                MaxHeight = Math.Max(0f, section.GetFloat("max_height", defaults.MaxHeight)),
-                MaxSpeed = Math.Max(0f, section.GetFloat("max_speed", defaults.MaxSpeed)),
-                MaxLifetimeSeconds = Math.Max(0f, section.GetFloat("max_lifetime", defaults.MaxLifetimeSeconds)),
+                // [Tranquillity #497] a value that cannot be read takes its default (Nini threw, and the region had no
+                // wind module)
+                MaxVolumesRegion = Math.Max(0, ReadCount(section, "max_volumes_region", defaults.MaxVolumesRegion)),
+                MaxVolumesObject = Math.Max(0, ReadCount(section, "max_volumes_object", defaults.MaxVolumesObject)),
+                MaxRadius = Math.Max(0f, ReadNumber(section, "max_radius", defaults.MaxRadius)),
+                MaxHeight = Math.Max(0f, ReadNumber(section, "max_height", defaults.MaxHeight)),
+                MaxSpeed = Math.Max(0f, ReadNumber(section, "max_speed", defaults.MaxSpeed)),
+                MaxLifetimeSeconds = Math.Max(0f, ReadNumber(section, "max_lifetime", defaults.MaxLifetimeSeconds)),
             };
-            bool enabled = section.GetBoolean("enabled", false);
+            bool enabled = ReadSwitch(section, "enabled", false);
             if (enabled)
                 m_log.InfoFormat(
                     "[WIND VOLUMES] Enabled: at most {0} wind volumes per region and {1} per object, radius {2} m, height {3} m, speed {4} m/s, lifetime {5} s.",
                     limits.MaxVolumesRegion, limits.MaxVolumesObject, limits.MaxRadius, limits.MaxHeight, limits.MaxSpeed, limits.MaxLifetimeSeconds);
             return new WindVolumeStore(enabled, limits, clockMs);
+        }
+
+        // Nini's GetInt and GetFloat throw on text that is not a number, which would leave the region without a wind module.
+        // A value that is not a whole number takes the key's default instead, with a warning.
+        private static int ReadCount(IConfig section, string key, int fallback)
+        {
+            string text = section.GetString(key, null);
+            if (text == null)
+                return fallback;
+
+            if (int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+                return value;
+
+            m_log.WarnFormat("[WIND VOLUMES] {0} = {1} is not a whole number; using {2}.", key, text, fallback);
+            return fallback;
+        }
+
+        // Nini's GetBoolean throws on a word it has no alias for (such as a misspelt "true"). Nini still reads the value, so
+        // every spelling it accepts keeps working; any other takes the default, with a warning.
+        private static bool ReadSwitch(IConfig section, string key, bool fallback)
+        {
+            try
+            {
+                return section.GetBoolean(key, fallback);
+            }
+            catch (ArgumentException)
+            {
+                m_log.WarnFormat("[WIND VOLUMES] {0} = {1} is not true or false; using {2}.", key, section.GetString(key, ""), fallback);
+                return fallback;
+            }
+        }
+
+        // As ReadCount, for a number of metres, metres per second or seconds. NaN and infinity are refused too: a cap that
+        // is not a finite number would make every comparison with it false, so it would cap nothing.
+        private static float ReadNumber(IConfig section, string key, float fallback)
+        {
+            string text = section.GetString(key, null);
+            if (text == null)
+                return fallback;
+
+            if (float.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) && float.IsFinite(value))
+                return value;
+
+            m_log.WarnFormat("[WIND VOLUMES] {0} = {1} is not a finite number; using {2}.", key, text, fallback);
+            return fallback;
         }
 
         /// <summary>

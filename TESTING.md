@@ -240,6 +240,17 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
 - [ ] 9.5 Behind a reverse proxy on the same host (unset `XFFTrustedProxies`): login, the WebUI and region bans
       see each visitor's own address, not 127.0.0.1. With a proxy on another machine listed in `XFFTrustedProxies`,
       the same; with it not listed, everything comes from the proxy's address.
+- [ ] 9.13 Region terrain and land rules on the server (Tranquillity, 2026-11-24): with Region/Estate > Block
+      Terraform on, a parcel that allows terraform still cannot be terraformed by anyone but the estate's managers
+      (try with a second viewer or a script); with Allow Land Join/Divide off, a parcel owner cannot join or divide.
+- [ ] 9.14 Estate terrain upload and download (2026-11-24): Region/Estate > Terrain > Upload a .raw of the region
+      applies it; a second manager uploading at the same moment is told to wait; downloading the terrain from two
+      regions at once gives each its own terrain.
+- [ ] 9.15 Logins after a crash (2026-11-24): with an avatar logged in, stop its region process without logging out
+      (end task), start it again, and log in at once: no "You appear to be already logged in", no second try.
+- [ ] 9.16 Teleports and crossings (2026-11-24): walk or fly across region borders and back several times, and
+      teleport back to a region just left; the avatar always arrives, is never logged off, and a region you only
+      see (a neighbour) refuses a teleport request with "You are not in this region".
 
 ## 10. Other databases
 

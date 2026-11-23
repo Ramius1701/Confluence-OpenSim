@@ -167,7 +167,7 @@ namespace OpenSim.Data.PGSQL
                                         asset.Local = false;
 
                                     asset.Temporary = Convert.ToBoolean(dbReader["temporary"]);
-                                    asset.Flags = (AssetFlags)Convert.ToInt32(dbReader["asset_flags"]);
+                                    asset.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["asset_flags"]), asset.ID);
 
                                     if (m_enableCompression)
                                     {
@@ -518,8 +518,9 @@ namespace OpenSim.Data.PGSQL
                 {
                     dbcon.Open();
                     using(NpgsqlCommand cmd = new NpgsqlCommand(@"SELECT name, description, access_time, ""AssetType"", temporary, id, asset_flags, creatorid
-                                            FROM XAssetsMeta
-                                            LIMIT :start, :count", dbcon))
+                                                FROM XAssetsMeta
+                                                ORDER BY id
+                                                LIMIT :count OFFSET :start", dbcon))
                     {
                         cmd.Parameters.Add(m_database.CreateParameter("start", start));
                         cmd.Parameters.Add(m_database.CreateParameter("count", count));
@@ -535,7 +536,7 @@ namespace OpenSim.Data.PGSQL
                                     metadata.Description = (string)dbReader["description"];
                                     metadata.Type = Convert.ToSByte(dbReader["AssetType"]);
                                     metadata.Temporary = Convert.ToBoolean(dbReader["temporary"]);
-                                    metadata.Flags = (AssetFlags)Convert.ToInt32(dbReader["asset_flags"]);
+                                    metadata.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["asset_flags"]), metadata.ID);
                                     metadata.FullID = DBGuid.FromDB(dbReader["id"]);
                                     metadata.CreatorID = dbReader["creatorid"].ToString();
 
@@ -563,6 +564,10 @@ namespace OpenSim.Data.PGSQL
         {
 //            m_log.DebugFormat("[XASSETS DB]: Deleting asset {0}", id);
 
+            // [Tranquillity #480] id is a uuid column: bound as text, PostgreSQL refuses the comparison.
+            if (!UUID.TryParse(id, out UUID asset_id))
+                return false;
+
             lock (m_dbLock)
             {
                 using (NpgsqlConnection dbcon = new NpgsqlConnection(m_connectionString))
@@ -571,7 +576,7 @@ namespace OpenSim.Data.PGSQL
 
                     using (NpgsqlCommand cmd = new NpgsqlCommand(@"delete from XAssetsMeta where id=:ID", dbcon))
                     {
-                        cmd.Parameters.Add(m_database.CreateParameter("ID", id));
+                        cmd.Parameters.Add(m_database.CreateParameter("ID", asset_id));
                         cmd.ExecuteNonQuery();
                     }
 

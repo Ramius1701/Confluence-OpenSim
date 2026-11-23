@@ -154,7 +154,7 @@ namespace OpenSim.Data.MySQL
                                     asset.Local = false;
 
                                 asset.Temporary = Convert.ToBoolean(dbReader["Temporary"]);
-                                asset.Flags = (AssetFlags)Convert.ToInt32(dbReader["AssetFlags"]);
+                                asset.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["AssetFlags"]), asset.ID);
                                 accessTime = (int)dbReader["AccessTime"];
                             }
                         }
@@ -252,7 +252,7 @@ namespace OpenSim.Data.MySQL
                             new MySqlCommand(
                                 "replace INTO XAssetsMeta(ID, Hash, Name, Description, AssetType, Local, Temporary, CreateTime, AccessTime, AssetFlags, CreatorID)" +
                                 "VALUES(?ID, ?Hash, ?Name, ?Description, ?AssetType, ?Local, ?Temporary, ?CreateTime, ?AccessTime, ?AssetFlags, ?CreatorID)",
-                                dbcon))
+                                dbcon, transaction))
                         {
                             // create unix epoch time
                             int now = (int)Utils.DateTimeToUnixTime(DateTime.UtcNow);
@@ -287,7 +287,7 @@ namespace OpenSim.Data.MySQL
                             using (MySqlCommand cmd =
                                 new MySqlCommand(
                                     "INSERT INTO XAssetsData(Hash, Data) VALUES(?Hash, ?Data)",
-                                    dbcon))
+                                    dbcon, transaction))
                             {
                                 cmd.Parameters.AddWithValue("?Hash", hash);
                                 cmd.Parameters.AddWithValue("?Data", data);
@@ -354,9 +354,9 @@ namespace OpenSim.Data.MySQL
         }
 
         /// <summary>
-        /// We assume we already have the m_dbLock.
+        /// Whether the data for <paramref name="hash"/> is stored, read on <paramref name="transaction"/>: MySqlConnector
+        /// refuses a command that is not on the connection's active transaction.
         /// </summary>
-        /// TODO: need to actually use the transaction.
         /// <param name="dbcon"></param>
         /// <param name="transaction"></param>
         /// <param name="hash"></param>
@@ -367,7 +367,7 @@ namespace OpenSim.Data.MySQL
 
             bool exists = false;
 
-            using (MySqlCommand cmd = new MySqlCommand("SELECT Hash FROM XAssetsData WHERE Hash=?Hash", dbcon))
+            using (MySqlCommand cmd = new MySqlCommand("SELECT Hash FROM XAssetsData WHERE Hash=?Hash", dbcon, transaction))
             {
                 cmd.Parameters.AddWithValue("?Hash", hash);
 
@@ -462,7 +462,7 @@ namespace OpenSim.Data.MySQL
                                 metadata.Description = (string)dbReader["Description"];
                                 metadata.Type = (sbyte)dbReader["AssetType"];
                                 metadata.Temporary = Convert.ToBoolean(dbReader["Temporary"]); // Not sure if this is correct.
-                                metadata.Flags = (AssetFlags)Convert.ToInt32(dbReader["AssetFlags"]);
+                                metadata.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["AssetFlags"]), metadata.ID);
                                 metadata.FullID = DBGuid.FromDB(dbReader["ID"]);
                                 metadata.CreatorID = dbReader["CreatorID"].ToString();
 

@@ -1734,7 +1734,34 @@ namespace Phlox.ScriptEngine
         public string llGetSimulatorHostname() => World?.RegionInfo?.ExternalHostName ?? string.Empty;   // as Halcyon (Scene.GetEnv "simulator_hostname")
         public string llGetDate() => DateTime.UtcNow.ToString("yyyy-MM-dd");
         public string llGetTimestamp() => DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
-        public float llGetWallclock() => (float)DateTime.UtcNow.TimeOfDay.TotalSeconds;
+        /// <summary>The source of "now" for llGetWallclock; a test replaces it with a fixed instant.</summary>
+        internal Func<DateTimeOffset> WallclockUtcNow = () => DateTimeOffset.UtcNow;
+
+        private bool m_wallclockResolved;
+        private TimeZoneInfo m_wallclockZone;
+
+        /// <summary>
+        /// The zone llGetWallclock reports in: GetWallclockTimeZone from [InWorldz.Phlox], else the same key from [YEngine]
+        /// (so one setting governs both engines), else UTC. Read once; the zone is cached.
+        /// </summary>
+        private TimeZoneInfo WallclockTimeZone
+        {
+            get
+            {
+                if (m_wallclockResolved) return m_wallclockZone;
+                const string key = "GetWallclockTimeZone";
+                var configs = m_ScriptEngine?.ConfigSource?.Configs;
+                Nini.Config.IConfig own = configs?["InWorldz.Phlox"], yengine = configs?["YEngine"];
+                string id = own != null && own.Contains(key) ? own.GetString(key, "")
+                    : yengine != null && yengine.Contains(key) ? yengine.GetString(key, "")
+                    : "";
+                m_wallclockZone = WallclockZone.Resolve(id, msg => m_log.LogWarning("[PhloxAPI]: {0}", msg));
+                m_wallclockResolved = true;
+                return m_wallclockZone;
+            }
+        }
+
+        public float llGetWallclock() => WallclockZone.SecondsSinceMidnight(WallclockUtcNow(), WallclockTimeZone);
         public float llGetGMTclock() => (float)DateTime.UtcNow.TimeOfDay.TotalSeconds;
         public int llGetUnixTime() => (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         public float llGetTimeOfDay()
@@ -6591,8 +6618,10 @@ public void llRezObject(string inventory, Vector3 pos, Vector3 vel, Quaternion r
 
             if (group1 == group2) return null; // already in same linkset
 
-            // Link group2 into group1 — group2 ceases to exist as a separate object
-            group1.LinkToGroup(group2);
+            // Link group2 into group1 — group2 ceases to exist as a separate object. Its prims are inserted from link 2
+            // and group1's own children move up after them, as SL documents ("are inserted into the parent object's
+            // link set starting at link number 2", https://wiki.secondlife.com/wiki/LlCreateLink) and YEngine does.
+            group1.LinkToGroup(group2, true);
 
             group1.TriggerScriptChangedEvent(Changed.LINK);
             group1.HasGroupChanged = true;

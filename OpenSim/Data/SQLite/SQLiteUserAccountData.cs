@@ -44,17 +44,9 @@ namespace OpenSim.Data.SQLite
 
         public UserAccountData[] GetUsers(UUID scopeID, string query)
         {
-            string[] words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);;
-
-            for (int i = 0 ; i < words.Length ; i++)
-            {
-                if (words[i].Length < 3)
-                {
-                    if (i != words.Length - 1)
-                        Array.Copy(words, i + 1, words, i, words.Length - i - 1);
-                    Array.Resize(ref words, words.Length - 1);
-                }
-            }
+            // [Tranquillity #466] Words shorter than three characters are not searched (the loop that removed them
+            // skipped the word after each one it removed).
+            string[] words = UserSearchWords.From(query);
 
             if (words.Length == 0 || words.Length > 2)
                 return [];

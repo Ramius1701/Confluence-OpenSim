@@ -73,7 +73,8 @@ namespace OpenSim.Data.MySQL
                     scr.Query = sql;
                     scr.Error += delegate(object sender, MySqlScriptErrorEventArgs args)
                     {
-                        throw new Exception(sql);
+                        // [Tranquillity #489] keep the database's own error with the statement
+                        throw new Exception((args.Exception?.Message ?? "error") + " in SQL: " + sql, args.Exception);
                     };
                     scr.Execute();
                 }
