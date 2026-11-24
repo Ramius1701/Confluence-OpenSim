@@ -30042,3 +30042,16 @@ Grid start 14:55 NZDT: Robust and all 15 regions reached "Startup complete" with
 errors were the known baseline (missing scripts in Region F/Region D, Region C mesh) plus "[MESH CACHE]: Failed to write
 ... being used by another process" in two regions that loaded the same meshes into the shared MeshCache folder at the
 same moment (cache-only; no mesh code changed in this batch).
+
+## Deploys carry the shipped config defaults (2026-11-24)
+The deploy script copied binaries only, so config defaults shipped in the repo never reached the grid: the live
+OpenSimDefaults.ini was the 10-05 copy (no [Jolt], [WindVolumes] or engine-chooser documentation), and #496's
+osWindVolume limit was missing from the live osslDefaultEnable.ini. The script now also deploys the shipped defaults
+and templates to the grid root (OpenSimDefaults.ini, the architecture includes, storage includes, *.example), but only
+where the live copy is an unedited copy of a committed version; a live default with local edits is left alone and
+reported. The owner's own files (OpenSim.ini, Robust*.ini, GridCommon.ini, osslEnable.ini, Regions) are never touched.
+The grid's local OSSL choices (partnering open to residents) moved from osslDefaultEnable.ini into osslEnable.ini,
+upstream's file for local overrides, and the repo's osslDefaultEnable.ini was deployed: the effective OSSL settings
+are unchanged except Allow_osWindVolumeCreate/Remove = ESTATE_MANAGER,ESTATE_OWNER,GOD (checked key by key), live at
+each region's next restart. The remaining stale defaults (OpenSimDefaults.ini, two Standalone includes, templates)
+differ from live only by settings equal to the code defaults, and wait for the next deploy run.
