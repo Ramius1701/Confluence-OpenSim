@@ -30035,3 +30035,10 @@ the crossing-recall resend (code we do not have), #457 (our map tiles are stored
 Tests: TranquillityFixesBatchTests (12: script callers, trusted-host forms, search words, stale online). TESTING
 9.13-9.16. Upstream (opensim-master) has the same FSAssets exit and writer, the child position session check
 commented out, no foreign asset id check, and no server-side Block Terraform: upstream PR candidates for the owner.
+Deployed 2026-11-24 with the grid down (fe377d8de4 + e28a2fd163 + 609caa60a6): 16 targets, 3392 files copied and
+md5-verified, 0 problems; previous binaries in Backups\dll-20261124-1053-deploy. The live osslDefaultEnable.ini has
+no osWindVolume lines, so #496's GOD/estate limit is in the repo only until the owner OKs the live config change.
+Grid start 14:55 NZDT: Robust and all 15 regions reached "Startup complete" with no ERROR lines in Robust. Region
+errors were the known baseline (missing scripts in Region F/Region D, Region C mesh) plus "[MESH CACHE]: Failed to write
+... being used by another process" in two regions that loaded the same meshes into the shared MeshCache folder at the
+same moment (cache-only; no mesh code changed in this batch).
