@@ -30063,5 +30063,10 @@ opensim/opensim#79 (FSAssets: no Environment.Exit on a failed read, a missing fi
 never dies and writes through a temporary file) and opensim/opensim#80 (child agent position update needs the agent's
 session), from branches fix/fsassets-missing-file and fix/child-position-session on Ramius1701/OpenSim-Continuum, built in
 G:\work\opensim-upstream. No upstream tests: OpenSim.Tests.Common does not compile against opensim-master (TestClient
-lacks current IClientAPI members). Still candidates: foreign asset id check, server-side Block Terraform, UDP zero
-encoder bounds.
+lacks current IClientAPI members).
+2026-11-25 (owner OK): opensim/opensim#82 (a foreign asset answer is taken only when its id is the one asked for; a
+hostile grid could otherwise poison the region's asset cache), #83 (item update caps: a script in an object needs
+CanEditScript, and each cap saves only items of its own type; the notecard task cap could overwrite a no-modify
+script), #84 (Block Terraform and Allow Land Join/Divide held on the server, not only greyed out in the viewer) and #85
+(LLUDPZeroEncoder bounds and pool size check; hardening, no reproduced fault). Branches fix/foreign-asset-id,
+fix/task-item-update-checks, fix/region-terraform-join-divide, fix/udp-encoder-bounds on OpenSim-Continuum.
