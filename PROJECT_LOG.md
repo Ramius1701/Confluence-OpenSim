@@ -30055,3 +30055,13 @@ upstream's file for local overrides, and the repo's osslDefaultEnable.ini was de
 are unchanged except Allow_osWindVolumeCreate/Remove = ESTATE_MANAGER,ESTATE_OWNER,GOD (checked key by key), live at
 each region's next restart. The remaining stale defaults (OpenSimDefaults.ini, two Standalone includes, templates)
 differ from live only by settings equal to the code defaults, and wait for the next deploy run.
+Config deploy run 2026-11-24 (owner OK): 21 defaults checked, 10 copied (OpenSimDefaults.ini, Standalone.ini,
+StandaloneHypergrid.ini, the new storage\SQLiteRobust.ini, six templates), none with local edits; binaries all current.
+
+## Upstream PRs from the fixes batch (2026-11-24)
+opensim/opensim#79 (FSAssets: no Environment.Exit on a failed read, a missing file answered as missing, the writer
+never dies and writes through a temporary file) and opensim/opensim#80 (child agent position update needs the agent's
+session), from branches fix/fsassets-missing-file and fix/child-position-session on Ramius1701/OpenSim-Continuum, built in
+G:\work\opensim-upstream. No upstream tests: OpenSim.Tests.Common does not compile against opensim-master (TestClient
+lacks current IClientAPI members). Still candidates: foreign asset id check, server-side Block Terraform, UDP zero
+encoder bounds.
