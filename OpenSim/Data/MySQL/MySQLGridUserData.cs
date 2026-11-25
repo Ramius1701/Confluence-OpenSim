@@ -59,7 +59,14 @@ namespace OpenSim.Data.MySQL
         public GridUserData[] GetAll(string userID)
         {
             userID = MySqlHelper.EscapeString(userID);
-            return base.Get(String.Format("UserID LIKE '{0}%'", userID));
+            // [Tranquillity #525] The id comes from the caller: bind it, never write it into the statement.
+            using (MySqlCommand cmd = new MySqlCommand())
+            {
+                cmd.CommandText = $"select * from {m_Realm} where UserID LIKE ?userID ESCAPE '{SqlLike.Escape}'";
+                cmd.Parameters.AddWithValue("?userID", SqlLike.PrefixPattern(userID));
+
+                return DoQuery(cmd);
+            }
         }
 
         // [Tranquillity dfd2353889]

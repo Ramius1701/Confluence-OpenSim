@@ -72,8 +72,10 @@ namespace OpenSim.Services.Friends
             {
                 FriendInfo i = new FriendInfo();
 
-                if (!Util.ParseUniversalUserIdentifier(i.Friend, out UUID friendID))
-                    continue; // junk entry
+                // [Tranquillity #519] The principal is a uuid or a Hypergrid "uuid;url;name" id; any other row is junk.
+                // (This read i.Friend before it was set, so every row was dropped.)
+                if (!Util.ParseUniversalUserIdentifier(d.PrincipalID, out i.PrincipalID))
+                    continue;
                 i.Friend = d.Friend;
                 i.MyFlags = Convert.ToInt32(d.Data["Flags"]);
                 i.TheirFlags = Convert.ToInt32(d.Data["TheirFlags"]);

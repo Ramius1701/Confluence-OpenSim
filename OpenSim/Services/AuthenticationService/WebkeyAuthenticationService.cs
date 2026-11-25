@@ -68,7 +68,14 @@ namespace OpenSim.Services.AuthenticationService
 
         public string Authenticate(UUID principalID, string password, int lifetime)
         {
-            if (new UUID(password).IsZero())
+            // [Tranquillity #521] A web login key is a UUID. Anything else, such as a password sent to
+            // WebkeyOrPasswordAuthenticationService, is not a key and fails here, so that service goes on to try it as
+            // a password.
+            if (!UUID.TryParse(password, out UUID presented))
+            {
+                m_log.DebugFormat("[AUTH SERVICE]: the web_login_key presented for PrincipalID {0} is not a UUID", principalID);
+            }
+            else if (presented.IsZero())
             {
                 m_log.DebugFormat("[AUTH SERVICE]: UUID.Zero is not a valid web_login_key on PrincipalID {0}", principalID);
             }

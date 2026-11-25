@@ -571,10 +571,76 @@ static class Program
         Eq(label + " inventory: folder now in B", fb, folders.Length == 1 ? folders[0].parentFolderID : UUID.Zero);
     }
 
+    // Lookups that take text from a request into a LIKE match (Tranquillity #519, #522, #525): the text must be
+    // bound, never written into the statement, and its % and _ must match only themselves.
+    static void LikeLookups(string label, IGridUserData gu, IFriendsData fr, IRegionData rg)
+    {
+        string tag = UUID.Random().ToString();
+        string hg = tag + ";http://grid.example:8002/;Visitor Name";
+        string other = UUID.Random().ToString();
+
+        Eq(label + " griduser: store", true, gu.Store(new GridUserData { UserID = tag }));
+        Eq(label + " griduser: store HG id", true, gu.Store(new GridUserData { UserID = hg }));
+        Eq(label + " griduser: store other", true, gu.Store(new GridUserData { UserID = other }));
+        Eq(label + " griduser: prefix finds both rows", 2, gu.GetAll(tag).Length);
+        Eq(label + " griduser: quote in the id does not break", 0, gu.GetAll("x' OR '1'='1").Length);
+        Eq(label + " griduser: statement in the id does not run", 0, gu.GetAll("';delete from GridUser;--").Length);
+        Eq(label + " griduser: rows survived", 2, gu.GetAll(tag).Length);
+        Eq(label + " griduser: % matches only itself", 0, gu.GetAll("%").Length);
+        Eq(label + " griduser: _ matches only itself", 0, gu.GetAll(new string('_', 36)).Length);
+        Eq(label + " griduser: empty id lists everyone", true, gu.GetAll("").Length >= 3);
+
+        FriendsData f = new FriendsData { PrincipalID = hg, Friend = other, Data = new Dictionary<string, string> { ["Flags"] = "1" } };
+        Eq(label + " friends: store HG friendship", true, fr.Store(f));
+        // Only the MySQL store matches the text id as a prefix; SQLite and PostgreSQL match it exactly (as upstream).
+        // PostgreSQL takes only a bare uuid here and finds no Hypergrid row at all.
+        if (label != "pgsql")
+            Eq(label + " friends: the text id finds the HG row", 1, fr.GetFriends(label == "mysql" ? tag : hg).Length);
+        Eq(label + " friends: % matches only itself", 0, fr.GetFriends("%").Length);
+        Eq(label + " friends: quote does not break", 0, fr.GetFriends("x' OR '1'='1").Length);
+
+        RegionData MakeRegion(string name, int x)
+        {
+            RegionData r = MakeRegionBase(name, x);
+            // MySQL in strict mode needs regionHandle (a real registration always sends it). The PostgreSQL store binds
+            // it as text against a bigint column, fails, and still answers true, so it is left out there.
+            if (label != "pgsql")
+                r.Data["regionHandle"] = Util.RegionWorldLocToHandle((uint)x, 256000).ToString();
+            return r;
+        }
+        RegionData MakeRegionBase(string name, int x) => new RegionData
+        {
+            RegionID = UUID.Random(), ScopeID = UUID.Zero, RegionName = name, posX = x, posY = 256000, sizeX = 256, sizeY = 256,
+            Data = new Dictionary<string, object>
+            {
+                ["regionName"] = name, ["serverIP"] = "127.0.0.1", ["serverHttpPort"] = "9000", ["serverURI"] = "http://127.0.0.1:9000/",
+                ["serverPort"] = "9000", ["regionMapTexture"] = UUID.Zero.ToString(), ["parcelMapTexture"] = UUID.Zero.ToString(),
+                ["access"] = "13", ["regionSecret"] = UUID.Random().ToString(), ["owner_uuid"] = UUID.Zero.ToString(),
+                ["flags"] = "0", ["last_seen"] = "0", ["Token"] = "", ["sizeX"] = "256", ["sizeY"] = "256",
+                ["locX"] = x.ToString(), ["locY"] = "256000"
+            }
+        };
+        string short8 = tag.Substring(0, 8);
+        string plain = "Plain " + short8, under = "Under_" + short8, slash = "Back\\" + short8;
+        NoThrow(label + " region: store three", () =>
+        {
+            Eq(label + " region: store plain", true, rg.Store(MakeRegion(plain, 256000)));
+            Eq(label + " region: store with _", true, rg.Store(MakeRegion(under, 256256)));
+            Eq(label + " region: store with backslash", true, rg.Store(MakeRegion(slash, 256512)));
+        });
+        int Count(List<RegionData> l) => l is null ? 0 : l.Count;
+        Eq(label + " region: exact name", 1, Count(rg.Get(Util.EscapeForLike(plain), UUID.Zero)));
+        Eq(label + " region: a name with _", 1, Count(rg.Get(Util.EscapeForLike(under), UUID.Zero)));
+        Eq(label + " region: _ is not a wildcard", 0, Count(rg.Get(Util.EscapeForLike("UnderX" + short8), UUID.Zero)));
+        Eq(label + " region: a name with a backslash", 1, Count(rg.Get(Util.EscapeForLike(slash), UUID.Zero)));
+        Eq(label + " region: map search by part", 3, Count(rg.Get("%" + Util.EscapeForLike(short8) + "%", UUID.Zero)));
+    }
+
     static int Main(string[] args)
     {
         string sqliteFile = args.Length > 0 ? args[0] : "datatest.db";
-        string pg = args.Length > 1 ? args[1] : null;
+        string pg = args.Length > 1 && args[1].Length > 0 ? args[1] : null;
+        string my = args.Length > 2 ? args[2] : null;
 
         string sq = "URI=file:" + sqliteFile + ",version=3";
         Market("sqlite", new OpenSim.Data.SQLite.SQLiteMarketplaceListingsData(sq));
@@ -607,6 +673,9 @@ static class Program
         var sqliteEstate = new OpenSim.Data.SQLite.SQLiteEstateStore();
         sqliteEstate.Initialise(sq);
         NoThrow("sqlite estate", () => EstateRegions("sqlite", sqliteEstate));
+
+        NoThrow("sqlite like", () => LikeLookups("sqlite", new OpenSim.Data.SQLite.SQLiteGridUserData(sq, "GridUser"),
+            new OpenSim.Data.SQLite.SQLiteFriendsData(sq, "Friends"), new OpenSim.Data.SQLite.SQLiteRegionData(sq, "regions")));
 
         // constructing again over the same file must not fail (migration is idempotent)
         Eq("sqlite reopen ok", true, new OpenSim.Data.SQLite.SQLiteMarketplaceListingsData(sq) != null);
@@ -643,7 +712,33 @@ static class Program
             NoThrow("pgsql auth", () => AuthSetDataItem("pgsql", new OpenSim.Data.PGSQL.PGSQLAuthenticationData(pg, "auth")));
             NoThrow("pgsql inventory", () => InventoryMoves("pgsql", new OpenSim.Data.PGSQL.PGSQLXInventoryData(pg, string.Empty)));
 
+            NoThrow("pgsql like", () => LikeLookups("pgsql", new OpenSim.Data.PGSQL.PGSQLGridUserData(pg, "GridUser"),
+                new OpenSim.Data.PGSQL.PGSQLFriendsData(pg, "Friends"), new OpenSim.Data.PGSQL.PGSQLRegionData(pg, "regions")));
+
             Eq("pgsql reopen ok", true, new OpenSim.Data.PGSQL.PGSQLMarketplaceListingsData(pg) != null);
+        }
+
+        // MySQL (third argument, an empty database): so far only the LIKE lookups and the group search.
+        if (my != null)
+        {
+            NoThrow("mysql like", () => LikeLookups("mysql", new OpenSim.Data.MySQL.MySQLGridUserData(my, "GridUser"),
+                new OpenSim.Data.MySQL.MySqlFriendsData(my, "Friends"), new OpenSim.Data.MySQL.MySqlRegionData(my, "regions")));
+            NoThrow("mysql groups search", () =>
+            {
+                var g = new OpenSim.Data.MySQL.MySQLGroupsData(my, "os_groups");
+                string tag = UUID.Random().ToString().Substring(0, 8);
+                UUID gid = UUID.Random();
+                GroupData gd = new GroupData { GroupID = gid, Data = new Dictionary<string, string>
+                {
+                    ["Name"] = "Explorers_" + tag, ["Charter"] = "", ["InsigniaID"] = UUID.Zero.ToString(), ["FounderID"] = UUID.Zero.ToString(),
+                    ["MembershipFee"] = "0", ["OpenEnrollment"] = "1", ["ShowInList"] = "1", ["AllowPublish"] = "1", ["MaturePublish"] = "0",
+                    ["OwnerRoleID"] = UUID.Random().ToString(), ["Location"] = ""
+                } };
+                Eq("mysql grp: store", true, g.StoreGroup(gd));
+                Eq("mysql grp: search by part", true, Contains(g.RetrieveGroups("plorers_" + tag), gid));
+                Eq("mysql grp: _ matches only itself", false, Contains(g.RetrieveGroups("plorersX" + tag), gid));
+                Eq("mysql grp: injection attempt matches nothing extra", 0, g.RetrieveGroups("zzz%' OR '1'='1").Length);
+            });
         }
 
         Console.WriteLine(checks + " checks, " + failures + " failures");

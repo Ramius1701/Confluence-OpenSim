@@ -4834,11 +4834,14 @@ namespace OpenSim.Framework
         /// Escapes the special characters used in "LIKE".
         /// </summary>
         /// <remarks>
-        /// For example: EscapeForLike("foo_bar%baz") = "foo\_bar\%baz"
+        /// For example: EscapeForLike(@"foo_bar%baz\") = @"foo\_bar\%baz\\"
+        /// The backslash itself is escaped too [Tranquillity #522]. The query must use the backslash as its LIKE
+        /// escape: PostgreSQL does by default, MySQL only without NO_BACKSLASH_ESCAPES (so say <c>ESCAPE x'5C'</c>),
+        /// SQLite only with an ESCAPE clause.
         /// </remarks>
         public static string EscapeForLike(string str)
         {
-            return str.Replace("_", "\\_").Replace("%", "\\%");
+            return str.Replace("\\", "\\\\").Replace("_", "\\_").Replace("%", "\\%");
         }
 
         /// <summary>

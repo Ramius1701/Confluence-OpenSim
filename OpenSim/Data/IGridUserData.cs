@@ -50,7 +50,13 @@ namespace OpenSim.Data
     public interface IGridUserData
     {
         GridUserData Get(string userID);
-        GridUserData[] GetAll(string query);
+
+        /// <summary>
+        /// The users whose id starts with <paramref name="userID"/>, compared literally (a <c>%</c> or <c>_</c> in it
+        /// matches only itself). A Hypergrid user's id is "uuid;url;name", so the bare uuid finds it. An empty
+        /// string returns every user.
+        /// </summary>
+        GridUserData[] GetAll(string userID);
 
         /// <summary>
         /// [Tranquillity dfd2353889] The users marked online whose last region is <paramref name="regionID"/>.

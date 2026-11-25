@@ -21,6 +21,10 @@ and PostgreSQL:
 - **Estate regions** (SQLite) - `GetRegions` lists exactly the regions linked to that estate.
 - **Authentication `SetDataItem`** (PostgreSQL) - updates the one user's column and leaves others alone.
 - **Inventory moves** (PostgreSQL) - `MoveItem` and `MoveFolder` against the quoted mixed-case columns.
+- **LIKE lookups** (SQLite, PostgreSQL, MySQL) - grid users by id prefix, friends by text id and regions by
+  name, with hostile text (quotes, a statement, `%`, `_`, a backslash): the text is bound and matched literally.
+  Plus the MySQL group search. Against the 2026-11-24 build they report 10 failures, including the grid user
+  rows deleted on PostgreSQL by an id of `';delete from GridUser;--`; after Tranquillity #519/#522/#525, none.
 
 Each of these four groups catches its own exceptions and counts them as failures, so one broken backend does
 not stop the rest of the run. Against the code before the 2026-10-11 fixes they report 15 failures; after, none.
@@ -41,7 +45,12 @@ cd C:\temp\databackend
 dotnet DataBackendCheck.dll test.db "Server=localhost;Port=5432;Database=cfx_datacheck;User Id=postgres;Password=..."
 ```
 
-The first argument is a **new** SQLite file (delete it between runs; leftover rows change the counts). The
-second is optional: an **empty** PostgreSQL database you created for the check (drop it afterwards).
-Without it only SQLite is tested. The last line reports `N checks, M failures`; the exit code is 0 only
+The first argument is a **new** SQLite file (delete it between runs; leftover rows change the counts; the
+provider keeps `,version=3` in the name, so the file on disk is `test.db,version=3`: delete `test.db*`). The
+second is optional: an **empty** PostgreSQL database you created for the check (drop it afterwards); pass ""
+to skip it. The third is optional: an **empty** MySQL/MariaDB database, for example
+`"Data Source=127.0.0.1;Port=3317;Database=cfx_check;User ID=root;Password=;Old Guids=true;SslMode=None;"`.
+Never point either at a server that holds a live grid's data: start a throwaway server with its own data folder
+and port instead (`mariadb-install-db --datadir=... --port=3317`, `initdb -D ...`, then `pg_ctl -o "-p 5442"`).
+Without them only SQLite is tested. The last line reports `N checks, M failures`; the exit code is 0 only
 when there are no failures.

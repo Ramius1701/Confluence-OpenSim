@@ -31,6 +31,7 @@ using System.Data;
 using System.Reflection;
 using System.Threading;
 using log4net;
+using Npgsql;
 using OpenMetaverse;
 using OpenSim.Framework;
 
@@ -61,7 +62,9 @@ namespace OpenSim.Data.PGSQL
 
         public GridUserData[] GetAll(string userID)
         {
-            return base.Get(String.Format("\"UserID\" LIKE '{0}%'", userID));
+            // [Tranquillity #525] The id comes from the caller: bind it, never write it into the statement.
+            return base.Get($"\"UserID\" LIKE :userID ESCAPE '{SqlLike.Escape}'",
+                    new NpgsqlParameter("userID", SqlLike.PrefixPattern(userID)));
         }
 
         public GridUserData[] GetOnlineInRegion(UUID regionID)

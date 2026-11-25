@@ -68,7 +68,9 @@ namespace OpenSim.Data.SQLite
 
         public List<RegionData> Get(string regionName, UUID scopeID)
         {
-            string sql = "select * from " + m_Realm + " where regionName like :regionName ";
+            // The name comes escaped by Util.EscapeForLike, with a backslash; SQLite's LIKE has no escape character
+            // unless the query names one. [as Tranquillity #522 for MySQL]
+            string sql = "select * from " + m_Realm + " where regionName like :regionName escape '\\' ";
             if (!scopeID.IsZero())
                 sql += " and ScopeID = :scopeID";
             sql += " order by regionName";
