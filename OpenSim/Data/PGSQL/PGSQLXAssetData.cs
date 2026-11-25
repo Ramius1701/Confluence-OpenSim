@@ -302,13 +302,31 @@ namespace OpenSim.Data.PGSQL
                             return;
                         }
 
-                        if (!ExistsData(dbcon, transaction, hash))
+                        bool dataExists;
+                        try
+                        {
+                            dataExists = ExistsData(dbcon, transaction, hash);
+                        }
+                        catch (Exception e)
+                        {
+                            m_log.ErrorFormat("[XASSET DB]: PGSQL failure looking up the data of asset {0} with name \"{1}\". Error: {2}",
+                                asset.FullID, asset.Name, e.Message);
+
+                            transaction.Rollback();
+
+                            return;
+                        }
+
+                        if (!dataExists)
                         {
                             try
                             {
+                                // Another store of the same bytes, in this or another process, can insert this hash
+                                // between the lookup and here. That row holds the same data, so the insert leaves it as it
+                                // is and this asset's metadata still commits.
                                 using (NpgsqlCommand cmd =
                                     new NpgsqlCommand(
-                                        @"INSERT INTO XAssetsData(hash, data) VALUES(:Hash, :Data)",
+                                        @"INSERT INTO XAssetsData(hash, data) VALUES(:Hash, :Data) ON CONFLICT (hash) DO NOTHING",
                                         dbcon))
                                 {
                                     cmd.Parameters.Add(m_database.CreateParameter("Hash", hash));
@@ -381,7 +399,7 @@ namespace OpenSim.Data.PGSQL
         }
 
         /// <summary>
-        /// We assume we already have the m_dbLock.
+        /// We assume we already have the m_dbLock. A failed lookup throws: it does not say that the data is missing.
         /// </summary>
         /// TODO: need to actually use the transaction.
         /// <param name="dbcon"></param>
@@ -398,24 +416,15 @@ namespace OpenSim.Data.PGSQL
             {
                 cmd.Parameters.Add(m_database.CreateParameter("Hash", hash));
 
-                try
+                using (NpgsqlDataReader dbReader = cmd.ExecuteReader(CommandBehavior.SingleRow))
                 {
-                    using (NpgsqlDataReader dbReader = cmd.ExecuteReader(CommandBehavior.SingleRow))
+                    if (dbReader.Read())
                     {
-                        if (dbReader.Read())
-                        {
-                            // m_log.DebugFormat("[ASSETS DB]: Found asset {0}", uuid);
-                            exists = true;
+                        // m_log.DebugFormat("[ASSETS DB]: Found asset {0}", uuid);
+                        exists = true;
                         }
                     }
                 }
-                catch (Exception e)
-                {
-                    m_log.ErrorFormat(
-                        "[XASSETS DB]: PGSql failure in ExistsData fetching hash {0}.  Exception {1}{2}",
-                        hash, e.Message, e.StackTrace);
-                }
-            }
 
             return exists;
         }

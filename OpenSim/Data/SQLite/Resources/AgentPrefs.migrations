@@ -18,9 +18,12 @@ COMMIT;
 
 :VERSION 2
 
+# Version 1 makes this table on SQLite too, so this step only makes it where version 1 did not (it failed on every new
+# database and was recorded as done with a warning). [Tranquillity #535]
+
 BEGIN;
 
-CREATE TABLE AgentPrefs(
+CREATE TABLE IF NOT EXISTS AgentPrefs(
     PrincipalID CHAR(36) NOT NULL,
     AccessPrefs CHAR(2) NOT NULL DEFAULT 'M',
     HoverHeight DOUBLE(30, 27) NOT NULL DEFAULT 0,

@@ -149,6 +149,11 @@ namespace OpenSim.Services.InventoryService
             if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.Landmark))
                 CreateFolder(principalID, rootFolder.ID, (int)FolderType.Landmark, "Landmarks");
 
+            // [Tranquillity #537] The Linden viewer and Firestorm make My Outfits at login when the root has none
+            // (LLInventoryModel::createCommonSystemCategories). Made here, it is also there for clients that do not make it.
+            if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.MyOutfits))
+                CreateFolder(principalID, rootFolder.ID, (int)FolderType.MyOutfits, "My Outfits");
+
             if (!Array.Exists(sysFolders, f => f.type == (int)FolderType.LostAndFound))
                 CreateFolder(principalID, rootFolder.ID, (int)FolderType.LostAndFound, "Lost And Found");
 

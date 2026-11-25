@@ -696,6 +696,8 @@ namespace OpenSim
                     if (estateOwnerUuid.IsZero())
                         estateOwnerUuid = UUID.Random();
 
+                    // The owner is created before this region registers with the grid, so the region cannot be found
+                    // as a default region yet. Unless another default region is online, it is the owner's home.
                     account
                         = ((UserAccountService)scene.UserAccountService).CreateUser(
                             regionInfo.ScopeID,
@@ -703,7 +705,8 @@ namespace OpenSim
                             estateOwnerFirstName,
                             estateOwnerLastName,
                             estateOwnerPassword,
-                            estateOwnerEMail);
+                            estateOwnerEMail,
+                            homeRegionIfNoDefault: regionInfo.RegionID);
                 }
             }
 

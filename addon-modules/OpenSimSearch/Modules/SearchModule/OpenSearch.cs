@@ -147,6 +147,16 @@ namespace OpenSimSearch.Modules.OpenSearch
         //
         // Make external XMLRPC request
         //
+        /// <summary>
+        /// The rows of a search reply. A search service answers a query that matches nothing with success and no "data"
+        /// member (opensim-helpers query.php does), which is no rows: the viewer is still sent its reply, empty.
+        /// [Tranquillity #509]
+        /// </summary>
+        private static ArrayList ResultRows(Hashtable result)
+        {
+            return result["data"] as ArrayList ?? new ArrayList();
+        }
+
         private Hashtable GenericXMLRPCRequest(Hashtable ReqParams, string method)
         {
             ArrayList SendParams = new()
@@ -241,7 +251,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
 
             int count = (dataArray.Count > 100) ? 101 : dataArray.Count;
 
@@ -284,7 +294,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
 
             int count = (dataArray.Count > 100) ? 101 : dataArray.Count;
 
@@ -331,7 +341,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
             int count = 0;
 
             /* Count entries in dataArray with valid region name to */
@@ -403,7 +413,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
 
             int count = (dataArray.Count > 100) ? 101 : dataArray.Count;
 
@@ -452,7 +462,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
 
             int count = (dataArray.Count > 100) ? 101 : dataArray.Count;
 
@@ -496,7 +506,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
             if (dataArray.Count == 0)
             {
                 // something bad happened here, if we could return an
@@ -547,7 +557,7 @@ namespace OpenSimSearch.Modules.OpenSearch
             //The viewer seems to issue an info request even when it is
             //creating a new classified which means the data hasn't been
             //saved to the database yet so there is no info to find.
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = ResultRows(result);
             if (dataArray.Count == 0)
             {
                 // Something bad happened here if we could not return an
@@ -607,7 +617,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                     return;
                 }
 
-                ArrayList dataArray = (ArrayList)result["data"];
+                ArrayList dataArray = ResultRows(result);
 
                 List<mapItemReply> mapitems = new();
                 string ParcelRegionUUID;
@@ -622,21 +632,32 @@ namespace OpenSimSearch.Modules.OpenSearch
 
                     mapItemReply mapitem = new();
 
-                    ParcelRegionUUID = d["region_UUID"].ToString();
+                    ParcelRegionUUID = d["region_UUID"]?.ToString();
+                    bool located = true;
 
                     foreach (Scene scene in m_Scenes)
                     {
                         if (scene.RegionInfo.RegionID.ToString() == ParcelRegionUUID)
                         {
-                            landingpoint = d["landing_point"].ToString().Split('/');
+                            // "x/y/z" in the region. A parcel whose landing point cannot be read is left out.
+                            // [Tranquillity #509]
+                            landingpoint = d["landing_point"]?.ToString().Split('/');
+                            if (landingpoint == null || landingpoint.Length < 2 ||
+                                !decimal.TryParse(landingpoint[0], NumberStyles.Float, CultureInfo.InvariantCulture, out decimal landingX) ||
+                                !decimal.TryParse(landingpoint[1], NumberStyles.Float, CultureInfo.InvariantCulture, out decimal landingY))
+                            {
+                                located = false;
+                                break;
+                            }
 
-                            mapitem.x = (uint)((scene.RegionInfo.RegionLocX * 256) +
-                                                Convert.ToDecimal(landingpoint[0]));
-                            mapitem.y = (uint)((scene.RegionInfo.RegionLocY * 256) +
-                                                Convert.ToDecimal(landingpoint[1]));
+                            mapitem.x = (uint)((scene.RegionInfo.RegionLocX * 256) + landingX);
+                            mapitem.y = (uint)((scene.RegionInfo.RegionLocY * 256) + landingY);
                             break;
                         }
                     }
+
+                    if (!located)
+                        continue;
 
                     mapitem.id = new UUID(d["parcel_id"].ToString());
                     mapitem.Extra = Convert.ToInt32(d["area"]);
@@ -688,7 +709,7 @@ namespace OpenSimSearch.Modules.OpenSearch
                     return;
                 }
 
-                ArrayList dataArray = (ArrayList)result["data"];
+                ArrayList dataArray = ResultRows(result);
 
                 List<mapItemReply> mapitems = new();
                 int event_id;
@@ -704,9 +725,12 @@ namespace OpenSimSearch.Modules.OpenSearch
                     mapItemReply mapitem = new();
 
                     //Events use a comma separator in the landing point
-                    landingpoint = d["landing_point"].ToString().Split(',');
-                    mapitem.x = Convert.ToUInt32(landingpoint[0]);
-                    mapitem.y = Convert.ToUInt32(landingpoint[1]);
+                    // "x,y,z" on the grid. An event whose landing point cannot be read is left out. [Tranquillity #509]
+                    landingpoint = d["landing_point"]?.ToString().Split(',');
+                    if (landingpoint == null || landingpoint.Length < 2 ||
+                        !uint.TryParse(landingpoint[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out mapitem.x) ||
+                        !uint.TryParse(landingpoint[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out mapitem.y))
+                        continue;
 
                     //This is a crazy way to pass the event ID back to the
                     //viewer but that is the way it wants the information.

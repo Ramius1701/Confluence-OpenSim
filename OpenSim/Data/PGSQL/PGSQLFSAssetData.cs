@@ -153,7 +153,9 @@ namespace OpenSim.Data.PGSQL
             }
         }
 
-        public bool Store(AssetMetadata meta, string hash)
+        public bool Store(AssetMetadata meta, string hash) => Store(meta, hash, false);
+
+        public bool Store(AssetMetadata meta, string hash, bool force)
         {
             try
             {
@@ -165,7 +167,9 @@ namespace OpenSim.Data.PGSQL
                 string query = String.Format("UPDATE {0} SET \"access_time\" = :access_time WHERE \"id\" = :id", m_Table);
                 // A row holding no data at all is never correct: a later store of real
                 // data for the same ID replaces its hash (see FSAssetHashes.Empty).
-                if (existingAsset != null && oldhash == FSAssetHashes.Empty && hash != FSAssetHashes.Empty)
+                // "force import" [Tranquillity #524] likewise points the row at the new content; its type, flags and
+                // creation time stay.
+                if (existingAsset != null && (force || (oldhash == FSAssetHashes.Empty && hash != FSAssetHashes.Empty)))
                     query = String.Format("UPDATE {0} SET \"hash\" = :hash, \"access_time\" = :access_time WHERE \"id\" = :id", m_Table);
                 if (existingAsset == null)
                 {

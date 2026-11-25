@@ -66,6 +66,10 @@ namespace OpenSim.Services.Connectors
         private const double CACHE_EXPIRATION_SECONDS = 30.0;
         private static readonly ExpiringCacheOS<UUID, InventoryItemBase> m_ItemCache = new(15000);
 
+        // Raised before and after each move. An item read while a move was in flight may be the copy from before the
+        // move, so a read caches what it got only if no move started or ended while it was being read.
+        private static long m_moveGeneration;
+
         public XInventoryServicesConnector()
         {
         }
@@ -475,6 +479,7 @@ namespace OpenSim.Services.Connectors
             List<string> idlist = new();
             List<string> destlist = new();
 
+            Interlocked.Increment(ref m_moveGeneration);
             foreach (InventoryItemBase item in items)
             {
                 idlist.Add(item.ID.ToString());
@@ -489,6 +494,11 @@ namespace OpenSim.Services.Connectors
                         { "IDLIST", idlist },
                         { "DESTLIST", destlist }
                     });
+
+            // A GetItem made while the move was on its way may have cached the item in its old folder.
+            Interlocked.Increment(ref m_moveGeneration);
+            foreach (InventoryItemBase item in items)
+                m_ItemCache.Remove(item.ID);
 
             return CheckReturn(ret);
         }
@@ -518,6 +528,7 @@ namespace OpenSim.Services.Connectors
             if (m_ItemCache.TryGetValue(itemID, out InventoryItemBase retrieved))
                 return retrieved;
 
+            long generation = Interlocked.Read(ref m_moveGeneration);
             try
             {
                 Dictionary<string, object> ret = MakeRequest($"METHOD=GETITEM&ID={itemID}&PRINCIPAL={principalID}");
@@ -528,10 +539,13 @@ namespace OpenSim.Services.Connectors
             }
             catch (Exception e)
             {
+                // Not cached: the next GetItem asks the server again. [Tranquillity #518]
                 m_log.Error("[XINVENTORY SERVICES CONNECTOR]: Exception in GetItem: " + e.Message);
+                return null;
             }
 
-            m_ItemCache.AddOrUpdate(itemID, retrieved, CACHE_EXPIRATION_SECONDS);
+            if (retrieved is not null && Interlocked.Read(ref m_moveGeneration) == generation)
+                m_ItemCache.AddOrUpdate(itemID, retrieved, CACHE_EXPIRATION_SECONDS);
 
             return retrieved;
         }
@@ -568,6 +582,7 @@ namespace OpenSim.Services.Connectors
             sb.Remove(sb.Length - 1, 1);
             sb.Append($"&COUNT={pending}");
 
+            long generation = Interlocked.Read(ref m_moveGeneration);
             try
             {
                 Dictionary<string, object> resultSet = MakeRequest(sb.ToString());
@@ -585,7 +600,8 @@ namespace OpenSim.Services.Connectors
                         if (kvp.Value is Dictionary<string, object> dic)
                         {
                             item = ReadItem(dic);
-                            m_ItemCache.AddOrUpdate(item.ID, item, CACHE_EXPIRATION_SECONDS);
+                            if (Interlocked.Read(ref m_moveGeneration) == generation)
+                                m_ItemCache.AddOrUpdate(item.ID, item, CACHE_EXPIRATION_SECONDS);
                             itemArr[i++] = item;
                         }
                         else

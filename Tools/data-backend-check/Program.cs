@@ -444,6 +444,17 @@ static class Program
         Eq(label + " round trip type", (sbyte)AssetType.Texture, got.Type);
         Eq(label + " round trip flags", AssetFlags.Normal, got.Flags);
 
+        // "force import" (Tranquillity #524): a forced store of an id that has a row points it at the new content;
+        // a plain one keeps the stored content. The SQLite store has no forced update and keeps it either way.
+        const string hashF = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        string idF = UUID.Random().ToString();
+        AssetMetadata f = new AssetMetadata { ID = idF, FullID = new UUID(idF), Type = (sbyte)AssetType.Texture, Flags = AssetFlags.Normal };
+        d.Store(f, hashA);
+        Eq(label + " plain store of an existing id keeps its content", true, d.Store(f, hashF) && d.Get(idF, out string keptHash) != null && keptHash == hashA);
+        Eq(label + " forced store of an existing id", true, d.Store(f, hashF, true));
+        d.Get(idF, out string forcedHash);
+        Eq(label + " forced store points the row at the new content", label == "sqlite" ? hashA : hashF, forcedHash);
+
         // A row with no data at all (the empty-texture/empty-IAR-file case) is never correct:
         // a later store of real data for the same ID must heal it in place, not be ignored as
         // "already exists".
@@ -796,6 +807,10 @@ static class Program
         // MySQL (third argument, an empty database): so far only the LIKE lookups and the group search.
         if (my != null)
         {
+            var myFSAssets = new OpenSim.Data.MySQL.MySQLFSAssetData();
+            myFSAssets.Initialise(my, "fsassets", 0);
+            NoThrow("mysql fsassets", () => FSAssets("mysql", myFSAssets));
+
             var mySim = new OpenSim.Data.MySQL.MySQLSimulationData();
             mySim.Initialise(my);
             NoThrow("mysql region load", () => RegionLoad("mysql", mySim, (t, c, v, idc, id) =>
