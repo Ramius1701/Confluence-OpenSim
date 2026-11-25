@@ -248,6 +248,15 @@ Needs `[NPC] Enabled = true` and the bot functions enabled.
       regions at once gives each its own terrain.
 - [ ] 9.15 Logins after a crash (2026-11-24): with an avatar logged in, stop its region process without logging out
       (end task), start it again, and log in at once: no "You appear to be already logged in", no second try.
+- [ ] 9.17 Tranquillity's open PRs (2026-11-25/26):
+      - Search (Places, Events, Land for sale on the map) for something that does not exist: the viewer shows an empty
+        result at once instead of waiting (#509).
+      - A new account has a My Outfits folder (#537); a resident's display name shows on arrival in another region (#504).
+      - Teleport by a landmark from the inventory, including an old one (#516).
+      - Estate covenant: change it on one region of an estate, and the others show the new one (#517).
+      - A Hypergrid visitor messaged while offline gets the message on their next login, and the sender is not told
+        they are offline (#506).
+      - With `[Chat] FrozenAvatarsCannotChat` unset, a parcel-frozen avatar can still chat; set to true, cannot (#529).
 - [ ] 9.16 Teleports and crossings (2026-11-24): walk or fly across region borders and back several times, and
       teleport back to a region just left; the avatar always arrives, is never logged off, and a region you only
       see (a neighbour) refuses a teleport request with "You are not in this region".
@@ -290,6 +299,10 @@ Try these on a test region first.
       script each set `PRIM_RENDER_MATERIAL` and `PRIM_GLTF_BASE_COLOR` on a PBR prim, then clear one override with
       `""`: the viewer shows each change (Phlox's never showed before), and the other overrides stay (#402).
       A Phlox script calls `llFindNotecardTextCount` and `llGetAttachedListFiltered(avatar, [])` (#409).
+- [ ] 11.11 Jolt vehicle across a border (Tranquillity #544, 2026-11-26): on a Jolt region, drive a scripted car
+      with a linear motor across a region border and back: it keeps driving on the far side instead of stopping.
+- [ ] 11.12 Phlox sensors (Tranquillity #514, 2026-11-26): a Phlox script's `llSensor` among more than 16 objects
+      reports up to 32 (YEngine already did).
 
 ## 12. Open bugs that need a live reproduction
 

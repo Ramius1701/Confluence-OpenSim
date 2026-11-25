@@ -279,6 +279,16 @@ checked by `Tools/data-backend-check`.)*
   #405, #407) ported that day, batch 3 (#400, #402, #409) on 11-22. Still to port: batch 4, Phlox engine structure (#398, #399, #408, #410) and the
   Phlox test harness #396. Not applicable: #386, #392, #393, #394, #406; #387-#391 were ported early and landed
   unchanged. #397 and #411 to confirm with batch 4.
+- **From the 2026-11-25 donor fetch:** opensim-master merged to `3b8874148d`. Tranquillity's open PRs #499 and
+  #503-#544 (single fixes, not stacked) ported in four batches, 2026-11-25/26: security and input (#516, #519, #521,
+  #522, #523, #525, #528), regions that load past unreadable rows (#507, #508, #539, #540, #541), services (#504-#506,
+  #509, #517, #518, #520, #524, #527, #533's module part, #534-#537, #542, #543), and region fixes with the owner's
+  choices (#514, #526's log line and docs, #529 behind `[Chat] FrozenAvatarsCannotChat`, #530, #532, #544). Not
+  applicable: #499, #503, #510-#512, #515, #531, #538. **Waiting on Tranquillity #299** (`ScriptRezzedObjectsDieAtEdge`):
+  #513. **Upstream PR candidate:** the grid user lookup by id prefix writes the id into the statement on MySQL and
+  PostgreSQL in opensim-master too (Tranquillity #525; a test id deleted rows on PostgreSQL); who can reach it from
+  outside the grid is not yet traced. Still to port from the 11-24 review: Groups V2 (#441-#452), the script engine
+  chooser (#453, #454, #498), #439, #487, HG standalone and private networks, server-side baking.
 - **Gloebit is third-party since 2026-10-25** (vendored unmodified from gloebit/opensim-moneymodule-gloebit; refresh
   wholesale at each donor check). Pending: the live migration-version reset after the next deploy
   (`Gloebit-migrations-to-upstream.sql`, local), and the owner's OK to send Gloebit the log-redaction PR (#360's

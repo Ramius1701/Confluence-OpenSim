@@ -409,6 +409,10 @@ subscription required:
 - Deleting a group cleans up its membership, role, and role-membership
   rows, plus any resident's dangling active-group reference.
 - Grid-wide viewer ban by IP range and client signature.
+- **Frozen avatars can be kept from chatting** (`[Chat] FrozenAvatarsCannotChat`, off by default; Tranquillity
+  #529): with it on, an avatar frozen by a parcel or god freeze cannot use local chat. Off by default because
+  `osAvatarFreeze` and a TeamCombat death also freeze an avatar. The remote console refuses sessions that do not
+  exist (#528).
 - Sim protection: opt-in FPS auto-mitigation under load, with
   auto-restart of a genuinely deadlocked region.
 - On-demand/soft-start regions.
@@ -941,6 +945,15 @@ NaN/Infinity before being applied.
   stalled REST-console long-poll no longer throws in the poll service thread (#382). An entry with spaces
   around the `|` in `OutboundDisallowForUserScripts` and its sibling lists is read again (opensim-master
   7a5950df3e had dropped the trim, so the second and later entries were ignored; fixed here 2026-11-08).
+- **From Tranquillity's open PRs, 2026-11-25/26:** a region still loads when some of its stored rows cannot be read
+  (a NULL in a prim column, an item or dynamic attributes that cannot be built): the unreadable item or prim is left
+  out with a warning instead of the whole region starting empty, on MySQL, PostgreSQL and SQLite (#508, #539-#541).
+  Search that finds nothing answers the viewer with an empty list instead of failing (#509); a landmark is read by
+  key, so a short or reordered one still teleports (#516); a Jolt vehicle keeps its motor across a region border
+  (#544); new inventories get a My Outfits folder (#537); a resident's display name is known as soon as they arrive
+  (#504); the estate covenant is sent only when it changes (#517); Phlox sensors report up to 32 objects, as YEngine
+  and Second Life (#514); a new region starts without a FlotsamCache.ini, with the cache's defaults in
+  OpenSimDefaults.ini (#532); the first-start estate owner always gets a home (#536).
 - **From the 2026-11-18 donor batch:** the LLSD login reply carries the region's size, so a viewer that reads it no
   longer takes a varregion as 256 m until it first moves (Tranquillity #395); SimulatorFeatures lists the region's
   script engines under `OpenSimExtras["ScriptEngines"]`, for a viewer's script editor (#401); and every HTTP and HTTPS
@@ -984,7 +997,12 @@ NaN/Infinity before being applied.
   `Tools/fresh-clone-matrix.py` builds and boots a region on all six database x mode combinations from
   a fresh clone (`Tools/fresh-clone-matrix-expected.json` is empty - nothing fails to load), and
   `Tools/data-backend-check` exercises every method of every SQLite/PostgreSQL backend directly against
-  a real database (387 checks). See `SETUP.md`'s "Known gaps by database" table.
+  a real database, now also MySQL (520 checks as of 2026-11-25: LIKE lookups with hostile text, a region that loads
+  past damaged rows, FSAssets force import). See `SETUP.md`'s "Known gaps by database" table.
+- **Lookups that take text from a request bind it and match it literally** (2026-11-25, Tranquillity #519, #522,
+  #523, #525): grid users by id prefix (MySQL and PostgreSQL used to write the id into the statement), friends by
+  text id, region names with `_`, `%` or a backslash, and the group search. SQLite region stores save objects again:
+  a duplicate migration number since 2026-11-24 had kept their LinkNumber column from being added.
 - **A fresh clone that selects the Jolt physics engine (`physics = Jolt`) actually gets it.** The Jolt
   projects are hand-maintained and outside the generated `OpenSim.sln`, so a plain `dotnet build
   OpenSim.sln` silently skipped them; a region configured for Jolt used to reach "Startup complete" and
