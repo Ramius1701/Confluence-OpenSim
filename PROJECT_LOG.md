@@ -30110,3 +30110,14 @@ three stores: 478 checks, 0 failures (10 against the old DLLs). Run against thro
 servers with their own data folders and ports (the live grid's database shares Laragon's MariaDB on 3306).
 Found on the way, not changed: the PostgreSQL region Store answers true when its insert fails (it logs and goes on);
 SQLite and PostgreSQL friends match a text id exactly, MySQL as a prefix.
+## Tranquillity batch 2 (2026-11-25): a region loads past rows it cannot read
+80d6f03994 ports #508 and #539 (MySQL), #540 (SQLite), #541 (PostgreSQL) and #507 (land indexes: MySQL RegionStore
+74, PostgreSQL 62, SQLite 49). With the 2026-11-24 DLLs one damaged row (an item row that cannot be built, unreadable
+DynAttrs, a NULL prim name) stops the whole MySQL or PostgreSQL region load, so the region starts with no objects.
+Found on the way: the 11-24 port gave the SQLite LinkNumber step Tranquillity's number 47, which ours already used (the
+region extra settings table). Migration.GetMigrationsAfter keeps the first step of a number, so no SQLite region store
+got the column and a SQLite region could not save objects since that push. Renumbered to 48. No other migration file
+has a duplicate (all checked). Deploying batch 2 runs MySQL RegionStore 74 (two CREATE INDEX on land tables) at each
+region's first start.
+Tools/data-backend-check: region load with damaged rows on all three stores; 496 checks, 0 failures. A throwaway
+PostgreSQL data folder in the scratchpad lost pg_notify between runs: initdb a new one rather than reuse.
