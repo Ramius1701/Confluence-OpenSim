@@ -451,7 +451,9 @@ CREATE TABLE IF NOT EXISTS regionextra (
 );
 COMMIT;
 
-:VERSION 47         #----- add each prim's link number to prims, as the MySQL and PostgreSQL region stores have
+:VERSION 48         #----- add each prim's link number to prims, as the MySQL and PostgreSQL region stores have
+# (Numbered 47 when ported on 2026-11-24, the number of an existing step: the migrator keeps the first step of a
+# number and skipped this one, so no SQLite region store had the column and objects could not be saved.)
 # The store writes every prim's link number here, and the loader gives each child its stored number back.
 # Rows saved before this step had no number: the loader numbered each linkset's children in the order of their rows
 # (rowid order), after the root. The step writes those same numbers, so a linkset reads as it did before the step:
@@ -465,4 +467,11 @@ CREATE INDEX prims_linknumber_backfill ON prims(SceneGroupID);
 UPDATE prims SET LinkNumber = CASE WHEN EXISTS (SELECT 1 FROM prims c WHERE c.SceneGroupID = prims.UUID AND c.RegionUUID = prims.RegionUUID AND c.UUID <> c.SceneGroupID) THEN 1 ELSE 0 END WHERE UUID = SceneGroupID;
 UPDATE prims SET LinkNumber = 1 + (SELECT count(*) FROM prims c WHERE c.SceneGroupID = prims.SceneGroupID AND c.RegionUUID = prims.RegionUUID AND c.UUID <> c.SceneGroupID AND c.rowid <= prims.rowid) WHERE UUID <> SceneGroupID;
 DROP INDEX prims_linknumber_backfill;
+COMMIT;
+
+:VERSION 49         #----- index the land access lists by parcel and the parcels by region [Tranquillity #507]
+# The store reads and replaces each parcel's access list by LandUUID, and loads a region's parcels by RegionUUID.
+BEGIN;
+CREATE INDEX IF NOT EXISTS landaccesslist_landuuid ON landaccesslist(LandUUID);
+CREATE INDEX IF NOT EXISTS land_regionuuid ON land(RegionUUID);
 COMMIT;

@@ -30,6 +30,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using log4net;
@@ -116,6 +117,7 @@ namespace OpenSim.Data.PGSQL
         public List<SceneObjectGroup> LoadObjects(UUID regionUUID)
         {
             UUID lastGroupID = UUID.Zero;
+            UUID skippedGroupID = UUID.Zero;
 
             Dictionary<UUID, SceneObjectPart> prims = new Dictionary<UUID, SceneObjectPart>();
             Dictionary<UUID, SceneObjectGroup> objects = new Dictionary<UUID, SceneObjectGroup>();
@@ -132,15 +134,40 @@ namespace OpenSim.Data.PGSQL
                 {
                     while (reader.Read())
                     {
-                        SceneObjectPart sceneObjectPart = BuildPrim(reader);
-                        if (reader["Shape"] is DBNull)
-                            sceneObjectPart.Shape = PrimitiveBaseShape.Default;
-                        else
-                            sceneObjectPart.Shape = BuildShape(reader);
+                        SceneObjectPart sceneObjectPart;
+                        UUID groupID;
+                        try
+                        {
+                            groupID = new UUID((Guid)reader["SceneGroupID"]);
+                            if (!skippedGroupID.IsZero() && groupID.Equals(skippedGroupID))
+                            {
+                                _Log.WarnFormat(
+                                    "{0} Prim {1} in region {2} was left out: the root of its linkset {3} could not be loaded",
+                                    LogHeader, reader["UUID"], regionUUID, groupID);
+                                continue;
+                            }
+
+                            sceneObjectPart = BuildPrim(reader);
+                            if (reader["Shape"] is DBNull)
+                                sceneObjectPart.Shape = PrimitiveBaseShape.Default;
+                            else
+                                sceneObjectPart.Shape = BuildShape(reader);
+                        }
+                        catch (Exception e) when (e is not NpgsqlException)
+                        {
+                            // A row that cannot be read (a NULL in a column the prim needs, a value of the wrong type)
+                            // leaves out that prim; the rest of the region still loads. When it is the first row of its
+                            // linkset, the one that would be the root, the rest of that linkset is left out too, so that
+                            // no other part is made the root and saved over the stored root.
+                            _Log.WarnFormat(
+                                "{0} Prim {1} in region {2} could not be loaded and was left out: {3}",
+                                LogHeader, reader["UUID"], regionUUID, e.Message);
+                            if (reader["SceneGroupID"] is Guid failedGroup && new UUID(failedGroup).NotEqual(lastGroupID))
+                                skippedGroupID = new UUID(failedGroup);
+                            continue;
+                        }
 
                         prims[sceneObjectPart.UUID] = sceneObjectPart;
-
-                        UUID groupID = new UUID((Guid)reader["SceneGroupID"]);
 
                         if (groupID != lastGroupID) // New SOG
                         {
@@ -196,7 +223,9 @@ namespace OpenSim.Data.PGSQL
             // most of which probably have no items... get a
             // list from DB of all prims which have items and
             // LoadItems only on those
-            List<SceneObjectPart> primsWithInventory = new List<SceneObjectPart>();
+            // Keyed by the prim id the rows are stored under, which differs from the loaded id for a root forced to
+            // its group id above.
+            List<KeyValuePair<UUID, SceneObjectPart>> primsWithInventory = new List<KeyValuePair<UUID, SceneObjectPart>>();
             string qry = "select distinct \"primID\" from primitems";
             using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
             using (NpgsqlCommand command = new NpgsqlCommand(qry, conn))
@@ -211,7 +240,7 @@ namespace OpenSim.Data.PGSQL
                             if(UUID.TryParse(itemReader["primID"].ToString(), out UUID primID) &&
                                     prims.TryGetValue(primID, out SceneObjectPart sop))
                             {
-                                primsWithInventory.Add(sop);
+                                primsWithInventory.Add(new KeyValuePair<UUID, SceneObjectPart>(primID, sop));
                             }
                         }
                     }
@@ -228,18 +257,20 @@ namespace OpenSim.Data.PGSQL
         /// <summary>
         /// Load in the prim's persisted inventory.
         /// </summary>
-        /// <param name="allPrims">all prims with inventory on a region</param>
-        private void LoadItems(List<SceneObjectPart> allPrimsWithInventory)
+        /// <param name="allPrimsWithInventory">all prims with inventory on a region, each with the prim id its
+        /// items are stored under</param>
+        private void LoadItems(List<KeyValuePair<UUID, SceneObjectPart>> allPrimsWithInventory)
         {
             string sql = @"SELECT * FROM primitems WHERE ""primID"" = :PrimID";
             using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
             using (NpgsqlCommand command = new NpgsqlCommand(sql, conn))
             {
                 conn.Open();
-                foreach (SceneObjectPart objectPart in allPrimsWithInventory)
+                foreach (KeyValuePair<UUID, SceneObjectPart> entry in allPrimsWithInventory)
                 {
+                    SceneObjectPart objectPart = entry.Value;
                     command.Parameters.Clear();
-                    command.Parameters.Add(_Database.CreateParameter("PrimID", objectPart.UUID));
+                    command.Parameters.Add(_Database.CreateParameter("PrimID", entry.Key));
 
                     List<TaskInventoryItem> inventory = new List<TaskInventoryItem>();
 
@@ -247,10 +278,24 @@ namespace OpenSim.Data.PGSQL
                     {
                         while (reader.Read())
                         {
-                            TaskInventoryItem item = BuildItem(reader);
+                            TaskInventoryItem item;
+                            try
+                            {
+                                item = BuildItem(reader);
+                            }
+                            catch (Exception e) when (e is not NpgsqlException)
+                            {
+                                // A row that cannot be read leaves out that item only; the prim and its other items
+                                // still load.
+                                _Log.WarnFormat(
+                                    "{0} Item {1} in prim {2} could not be loaded and was left out: {3}",
+                                    LogHeader, reader["itemID"], entry.Key, e.Message);
+                                continue;
+                            }
 
                             item.ParentID = objectPart.UUID; // Values in database are
                             // often wrong
+                            item.ParentPartID = objectPart.UUID;
                             inventory.Add(item);
                         }
                     }
@@ -501,11 +546,17 @@ namespace OpenSim.Data.PGSQL
             //Delete everything from PrimID
             //TODO add index on PrimID in DB, if not already exist
 
-            string sql = @"delete from primitems where ""primID"" = :primID";
+            // Also by item id: an item loaded from under another prim id (the original id of a root the load forced to
+            // its group id) keeps its row there, and its item id is the key, so writing it under this prim would fail.
+            string sql = @"delete from primitems where ""primID"" = :primID or ""itemID"" = any(:itemIDs)";
             using (NpgsqlConnection conn = new NpgsqlConnection(m_connectionString))
             using (NpgsqlCommand cmd = new NpgsqlCommand(sql, conn))
             {
                 cmd.Parameters.Add(_Database.CreateParameter("primID", primID));
+                cmd.Parameters.Add(new NpgsqlParameter("itemIDs", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid)
+                {
+                    Value = items.Select(i => i.ItemID.Guid).ToArray()
+                });
                 conn.Open();
                 cmd.ExecuteNonQuery();
             }
@@ -1376,10 +1427,21 @@ namespace OpenSim.Data.PGSQL
             if (!(primRow["MediaURL"] is System.DBNull))
                 prim.MediaUrl = (string)primRow["MediaURL"];
 
+            prim.DynAttrs = null;
             if (!(primRow["DynAttrs"] is System.DBNull) && (string)primRow["DynAttrs"] != "")
-                prim.DynAttrs = DAMap.FromXml((string)primRow["DynAttrs"]);
-            else
-                prim.DynAttrs = null;
+            {
+                try
+                {
+                    prim.DynAttrs = DAMap.FromXml((string)primRow["DynAttrs"]);
+                }
+                catch (Exception e)
+                {
+                    // A document that is not an LLSD map leaves the prim without dynamic attributes; the prim loads.
+                    _Log.WarnFormat(
+                        "{0} Dynamic attributes of prim {1} could not be read and were left empty: {2}",
+                        LogHeader, prim.UUID, e.Message);
+                }
+            }
 
             prim.PhysicsShapeType = Convert.ToByte(primRow["PhysicsShapeType"]);
             prim.Density = Convert.ToSingle(primRow["Density"]);

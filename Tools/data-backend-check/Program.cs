@@ -502,6 +502,58 @@ static class Program
         Eq(label + " extra: remove leaves other region", "other", d.GetExtra(b)["flag"]);
     }
 
+    // A region still loads when some of its rows cannot be read (Tranquillity #508, #539, #540, #541): an item row
+    // that cannot be built is left out (the prim keeps its other items), unreadable dynamic attributes leave the prim
+    // without them, and a NULL prim name is read with a default (MySQL) or leaves out that child (PostgreSQL).
+    // sql(table, column, literal, idColumn, id) sets one column of one row to an SQL literal.
+    static void RegionLoad(string label, OpenSim.Region.Framework.Interfaces.ISimulationDataStore d,
+        Action<string, string, string, string, UUID> sql, bool nullName, bool badDynAttrs, int childrenAfterNullName,
+        string itemColumn = "flags", Func<OpenSim.Region.Framework.Interfaces.ISimulationDataStore> reopen = null)
+    {
+        UUID region = UUID.Random(), owner = UUID.Random();
+        var a = new OpenSim.Region.Framework.Scenes.SceneObjectGroup(owner, new Vector3(10, 10, 25), PrimitiveBaseShape.CreateBox());
+        a.RootPart.Name = "object a";
+        var b = new OpenSim.Region.Framework.Scenes.SceneObjectGroup(owner, new Vector3(20, 20, 25), PrimitiveBaseShape.CreateBox());
+        b.RootPart.Name = "object b";
+        var child = new OpenSim.Region.Framework.Scenes.SceneObjectPart(owner, PrimitiveBaseShape.CreateBox(), new Vector3(20, 20, 26), Quaternion.Identity, Vector3.Zero);
+        child.Name = "child of b";
+        b.AddPart(child);
+        d.StoreObject(a, region);
+        d.StoreObject(b, region);
+
+        TaskInventoryItem Item(string name) => new TaskInventoryItem
+        {
+            ItemID = UUID.Random(), AssetID = UUID.Random(), Name = name, Description = name, InvType = 7, Type = 7,
+            OwnerID = owner, CreatorID = owner, ParentID = a.RootPart.UUID, ParentPartID = a.RootPart.UUID,
+            BasePermissions = 0x7fffffff, CurrentPermissions = 0x7fffffff, NextPermissions = 0x7fffffff,
+            EveryonePermissions = 0, GroupPermissions = 0
+        };
+        TaskInventoryItem good = Item("good note"), bad = Item("bad note");
+        d.StorePrimInventory(a.RootPart.UUID, new List<TaskInventoryItem> { good, bad });
+
+        Eq(label + " load: both objects before damage", 2, d.LoadObjects(region).Count);
+
+        sql("primitems", itemColumn, "-1", "itemID", bad.ItemID);
+        if (nullName)
+            sql("prims", "Name", "NULL", "UUID", child.UUID);
+        if (badDynAttrs)
+            sql("prims", "DynAttrs", "'<llsd><integer>5</integer></llsd>'", "UUID", a.RootPart.UUID);
+
+        List<OpenSim.Region.Framework.Scenes.SceneObjectGroup> loaded = null;
+        // a store that keeps its tables in memory (SQLite) sees the damage only when opened again, as at a restart
+        var after = reopen is null ? d : reopen();
+        NoThrow(label + " load: a region with damaged rows loads", () => loaded = after.LoadObjects(region));
+        if (loaded is null)
+            return;
+        Eq(label + " load: both objects after damage", 2, loaded.Count);
+        var la = loaded.Find(g => g.UUID == a.UUID);
+        var lb = loaded.Find(g => g.UUID == b.UUID);
+        Eq(label + " load: the unreadable item is left out, the other kept", "good note",
+            la is null ? "(object missing)" : string.Join(",", la.RootPart.Inventory.GetInventoryItems().ConvertAll(i => i.Name)));
+        if (nullName)
+            Eq(label + " load: linkset parts after a NULL child name", childrenAfterNullName, lb is null ? -1 : lb.PrimCount);
+    }
+
     // An estate's linked regions. SQLite's GetRegions always returned an empty list.
     static void EstateRegions(string label, OpenSim.Data.SQLite.SQLiteEstateStore d)
     {
@@ -674,6 +726,17 @@ static class Program
         sqliteEstate.Initialise(sq);
         NoThrow("sqlite estate", () => EstateRegions("sqlite", sqliteEstate));
 
+        NoThrow("sqlite region load", () => RegionLoad("sqlite", sqliteSim, (t, c, v, idc, id) =>
+        {
+            using (var cn = new System.Data.SQLite.SQLiteConnection(sq))
+            {
+                cn.Open();
+                using (var cmd = new System.Data.SQLite.SQLiteCommand($"update {t} set {c} = {v} where {idc} = '{id}'", cn))
+                    Eq("sqlite load: damage " + t + "." + c, 1, cmd.ExecuteNonQuery());
+            }
+        }, nullName: false, badDynAttrs: false, childrenAfterNullName: 0, itemColumn: "creationDate",
+            reopen: () => { var r = new OpenSim.Data.SQLite.SQLiteSimulationData(); r.Initialise(sq); return r; }));
+
         NoThrow("sqlite like", () => LikeLookups("sqlite", new OpenSim.Data.SQLite.SQLiteGridUserData(sq, "GridUser"),
             new OpenSim.Data.SQLite.SQLiteFriendsData(sq, "Friends"), new OpenSim.Data.SQLite.SQLiteRegionData(sq, "regions")));
 
@@ -712,6 +775,18 @@ static class Program
             NoThrow("pgsql auth", () => AuthSetDataItem("pgsql", new OpenSim.Data.PGSQL.PGSQLAuthenticationData(pg, "auth")));
             NoThrow("pgsql inventory", () => InventoryMoves("pgsql", new OpenSim.Data.PGSQL.PGSQLXInventoryData(pg, string.Empty)));
 
+            var pgSim = new OpenSim.Data.PGSQL.PGSQLSimulationData();
+            pgSim.Initialise(pg);
+            NoThrow("pgsql region load", () => RegionLoad("pgsql", pgSim, (t, c, v, idc, id) =>
+            {
+                using (var cn = new Npgsql.NpgsqlConnection(pg))
+                {
+                    cn.Open();
+                    using (var cmd = new Npgsql.NpgsqlCommand($"update {t} set \"{c}\" = {v} where \"{idc}\"::text = '{id}'", cn))
+                        Eq("pgsql load: damage " + t + "." + c, 1, cmd.ExecuteNonQuery());
+                }
+            }, nullName: true, badDynAttrs: true, childrenAfterNullName: 1));
+
             NoThrow("pgsql like", () => LikeLookups("pgsql", new OpenSim.Data.PGSQL.PGSQLGridUserData(pg, "GridUser"),
                 new OpenSim.Data.PGSQL.PGSQLFriendsData(pg, "Friends"), new OpenSim.Data.PGSQL.PGSQLRegionData(pg, "regions")));
 
@@ -721,6 +796,18 @@ static class Program
         // MySQL (third argument, an empty database): so far only the LIKE lookups and the group search.
         if (my != null)
         {
+            var mySim = new OpenSim.Data.MySQL.MySQLSimulationData();
+            mySim.Initialise(my);
+            NoThrow("mysql region load", () => RegionLoad("mysql", mySim, (t, c, v, idc, id) =>
+            {
+                using (var cn = new MySql.Data.MySqlClient.MySqlConnection(my))
+                {
+                    cn.Open();
+                    using (var cmd = new MySql.Data.MySqlClient.MySqlCommand($"update {t} set `{c}` = {v} where `{idc}` = '{id}'", cn))
+                        Eq("mysql load: damage " + t + "." + c, 1, cmd.ExecuteNonQuery());
+                }
+            }, nullName: true, badDynAttrs: true, childrenAfterNullName: 2));
+
             NoThrow("mysql like", () => LikeLookups("mysql", new OpenSim.Data.MySQL.MySQLGridUserData(my, "GridUser"),
                 new OpenSim.Data.MySQL.MySqlFriendsData(my, "Friends"), new OpenSim.Data.MySQL.MySqlRegionData(my, "regions")));
             NoThrow("mysql groups search", () =>

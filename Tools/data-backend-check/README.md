@@ -25,6 +25,12 @@ and PostgreSQL:
   name, with hostile text (quotes, a statement, `%`, `_`, a backslash): the text is bound and matched literally.
   Plus the MySQL group search. Against the 2026-11-24 build they report 10 failures, including the grid user
   rows deleted on PostgreSQL by an id of `';delete from GridUser;--`; after Tranquillity #519/#522/#525, none.
+- **Region load with damaged rows** (SQLite, PostgreSQL, MySQL) - stores two objects (one a linkset) and a prim's
+  two items, then damages rows as other tools can leave them: an item row that cannot be built, unreadable dynamic
+  attributes, a NULL child name (not SQLite). The region must still load both objects, keeping the readable item;
+  the SQLite store is opened again first, since it keeps its tables in memory. Against the 2026-11-24 build the
+  PostgreSQL and MySQL loads throw (the region would start empty) and SQLite cannot store an object at all (its
+  LinkNumber step had a duplicate version number); after Tranquillity #508/#539/#540/#541, none.
 
 Each of these four groups catches its own exceptions and counts them as failures, so one broken backend does
 not stop the rest of the run. Against the code before the 2026-10-11 fixes they report 15 failures; after, none.
