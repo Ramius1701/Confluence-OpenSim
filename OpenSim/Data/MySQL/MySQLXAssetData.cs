@@ -29,7 +29,6 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
-using System.IO.Compression;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -55,7 +54,6 @@ namespace OpenSim.Data.MySQL
         /// </summary>
         private const int DaysBetweenAccessTimeUpdates = 30;
 
-        private bool m_enableCompression = false;
         private string m_connectionString;
 
         #region IPlugin Members
@@ -179,22 +177,6 @@ namespace OpenSim.Data.MySQL
                 catch { }
             }
 
-            if (m_enableCompression && asset.Data != null)
-            {
-                using(MemoryStream ms = new MemoryStream(asset.Data))
-                using(GZipStream decompressionStream = new GZipStream(ms, CompressionMode.Decompress))
-                {
-                    using(MemoryStream outputStream = new MemoryStream())
-                    {
-                        decompressionStream.CopyTo(outputStream, int.MaxValue);
-//                                               int compressedLength = asset.Data.Length;
-                        asset.Data = outputStream.ToArray();
-                    }
-//                                        m_log.DebugFormat(
-//                                            "[XASSET DB]: Decompressed {0} {1} to {2} bytes from {3}",
-//                                            asset.ID, asset.Name, asset.Data.Length, compressedLength);
-                }                             
-            }
         return asset;
         }
 
@@ -233,18 +215,7 @@ namespace OpenSim.Data.MySQL
                             asset.Description, asset.ID, asset.Description.Length, assetDescription.Length);
                     }
 
-                    byte[] data;
-                    if (m_enableCompression)
-                    {
-                        using MemoryStream inMs = new(asset.Data);
-                        using MemoryStream outputStream = new();
-                        using GZipStream compressionStream = new(outputStream, CompressionMode.Compress);
-                        inMs.CopyTo(compressionStream);
-                        compressionStream.Flush();
-                        data = outputStream.ToArray();
-                    }
-                    else
-                        data = asset.Data;
+                    byte[] data = asset.Data;
 
                     byte[] hash = SHA256.HashData(data);
 

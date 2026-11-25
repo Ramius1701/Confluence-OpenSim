@@ -29,7 +29,6 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
-using System.IO.Compression;
 using System.Reflection;
 using System.Security.Cryptography;
 using log4net;
@@ -53,7 +52,6 @@ namespace OpenSim.Data.PGSQL
         /// </summary>
         private const int DaysBetweenAccessTimeUpdates = 30;
 
-        private bool m_enableCompression = false;
         private PGSQLManager m_database;
         private string m_connectionString;
         private object m_dbLock = new();
@@ -169,23 +167,6 @@ namespace OpenSim.Data.PGSQL
                                     asset.Temporary = Convert.ToBoolean(dbReader["temporary"]);
                                     asset.Flags = StoredAssetFlags.FromStored(Convert.ToInt32(dbReader["asset_flags"]), asset.ID);
 
-                                    if (m_enableCompression)
-                                    {
-                                        using(MemoryStream ms = new MemoryStream(asset.Data))
-                                        using(GZipStream decompressionStream = new GZipStream(ms, CompressionMode.Decompress))
-                                        {
-                                            using(MemoryStream outputStream = new MemoryStream())
-                                            {
-                                                decompressionStream.CopyTo(outputStream,int.MaxValue);
-                                                //                                        int compressedLength = asset.Data.Length;
-                                                asset.Data = outputStream.ToArray();
-                                            }
-                                            //                                        m_log.DebugFormat(
-                                            //                                            "[XASSET DB]: Decompressed {0} {1} to {2} bytes from {3}",
-                                            //                                            asset.ID, asset.Name, asset.Data.Length, compressedLength);
-                                        }
-                                    }
-
                                     UpdateAccessTime(asset.Metadata, (int)dbReader["access_time"]);
                                 }
                             }
@@ -239,24 +220,7 @@ namespace OpenSim.Data.PGSQL
                                 asset.Description, asset.ID, asset.Description.Length, assetDescription.Length);
                         }
 
-                        if (m_enableCompression)
-                        {
-                            MemoryStream outputStream = new MemoryStream();
-
-                            using (GZipStream compressionStream = new GZipStream(outputStream, CompressionMode.Compress, false))
-                            {
-                                // We have to close the compression stream in order to make sure it writes everything out to the underlying memory output stream.
-                                compressionStream.Close();
-                                byte[] compressedData = outputStream.ToArray();
-                                asset.Data = compressedData;
-                            }
-                        }
-
                         byte[] hash = hasher.ComputeHash(asset.Data);
-
-                        //m_log.DebugFormat(
-                        //      "[XASSET DB]: Compressed data size for {0} {1}, hash {2} is {3}",
-                        //      asset.ID, asset.Name, hash, compressedData.Length);
 
                         try
                         {

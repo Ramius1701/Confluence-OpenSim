@@ -57,10 +57,10 @@ namespace OpenSim.Region.CoreModules.Avatar.Chat
         protected float m_whisperdistanceSQ;
 
         protected List<Scene> m_scenes = new List<Scene>();
-        protected List<string> FreezeCache = new List<string>();
         protected string m_adminPrefix = "";
         protected object m_syncy = new object();
         protected IConfig m_config;
+        protected bool m_frozenAvatarsCannotChat = false;
         #region ISharedRegionModule Members
         public virtual void Initialise(IConfigSource config)
         {
@@ -79,6 +79,7 @@ namespace OpenSim.Region.CoreModules.Avatar.Chat
                 m_saydistance = m_config.GetInt("say_distance", m_saydistance);
                 m_shoutdistance = m_config.GetInt("shout_distance", m_shoutdistance);
                 m_adminPrefix = m_config.GetString("admin_prefix", "");
+                m_frozenAvatarsCannotChat = m_config.GetBoolean("FrozenAvatarsCannotChat", m_frozenAvatarsCannotChat);
 
             }
             m_saydistanceSQ = m_saydistance * m_saydistance;
@@ -178,7 +179,12 @@ namespace OpenSim.Region.CoreModules.Avatar.Chat
                 return;
             }
 
-            if (FreezeCache.Contains(c.Sender.AgentId.ToString()))
+            // [Tranquillity #529, off by default] A parcel freeze (LandManagementModule) or a god freeze (GodsModule)
+            // stops the avatar's movement; the entity transfer module already refuses a frozen avatar's teleport on the
+            // same flag. Off by default because here osAvatarFreeze and a TeamCombat death clear the same flag, and
+            // those avatars should still be able to talk.
+            if (m_frozenAvatarsCannotChat &&
+                scene.TryGetScenePresence(c.Sender.AgentId, out ScenePresence sp) && !sp.AllowMovement)
             {
                 if (c.Type != ChatTypeEnum.StartTyping && c.Type != ChatTypeEnum.StopTyping)
                     c.Sender.SendAgentAlertMessage("You may not talk as you are frozen.", false);
@@ -460,34 +466,16 @@ namespace OpenSim.Region.CoreModules.Avatar.Chat
             return true;
         }
 
-        Dictionary<UUID, System.Threading.Timer> Timers = new Dictionary<UUID, System.Threading.Timer>();
+        /// <summary>
+        /// Formerly put <paramref name="target"/> on a freeze list of this module's own; nothing in the tree called it,
+        /// so a frozen avatar could always chat. With [Chat] FrozenAvatarsCannotChat on, chat is refused whenever the
+        /// avatar cannot move (ScenePresence.AllowMovement), as a parcel or god freeze leaves it; this does nothing.
+        /// </summary>
+        [Obsolete("Does nothing. With [Chat] FrozenAvatarsCannotChat on, chat is refused whenever the avatar cannot move " +
+            "(ScenePresence.AllowMovement is false), as a parcel freeze (LandManagementModule.ClientOnParcelFreezeUser) or a " +
+            "god freeze leaves it.")]
         public virtual void ParcelFreezeUser(IClientAPI client, UUID parcelowner, uint flags, UUID target)
         {
-            System.Threading.Timer Timer;
-            if (flags == 0)
-            {
-                FreezeCache.Add(target.ToString());
-                System.Threading.TimerCallback timeCB = new System.Threading.TimerCallback(OnEndParcelFrozen);
-                Timer = new System.Threading.Timer(timeCB, target, 30000, 0);
-                Timers.Add(target, Timer);
-            }
-            else
-            {
-                FreezeCache.Remove(target.ToString());
-                Timers.TryGetValue(target, out Timer);
-                Timers.Remove(target);
-                Timer.Dispose();
-            }
-        }
-
-        protected virtual void OnEndParcelFrozen(object avatar)
-        {
-            UUID target = (UUID)avatar;
-            FreezeCache.Remove(target.ToString());
-            System.Threading.Timer Timer;
-            Timers.TryGetValue(target, out Timer);
-            Timers.Remove(target);
-            Timer.Dispose();
         }
     }
 }

@@ -50,6 +50,13 @@
 ; * [[<ConfigName>@]<port>/]<dll name>[:<class name>]
 ; *
 [Startup]
+    ; The garbage collector and thread pool are not set in this file. The server starts with workstation GC (one
+    ; heap; Robust.runtimeconfig.json, as upstream) and the .NET thread pool defaults; to choose otherwise, set these
+    ; environment variables before starting it:
+    ;   DOTNET_gcServer=1            ; server GC
+    ;   DOTNET_GCConserveMemory=5    ; 0 (default) to 9: compact harder to keep the heap small
+    ;   DOTNET_ThreadPool_ForceMinWorkerThreads=0x40   ; thread pool: at least 64 worker threads (hexadecimal)
+
     ; Place to create a PID file
     ; If no path if specified then a PID file is not created.
     ; PIDFile = "/tmp/Robust.exe.pid"
