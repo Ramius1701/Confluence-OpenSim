@@ -727,6 +727,12 @@
     ; login uri: for grid this is the login server URI
     login = ${Const|BaseURL}:${Const|PublicPort}/
 
+    ;; [Confluence] Optional: an https address for the same login, such as a reverse proxy with a certificate on 443
+    ;; in front of the public port. The WebUI's Get a Viewer and Help pages show it beside the login URI, saying what
+    ;; it is for, and get_grid_info passes it on as SecureLogin. Never https:// with the public port: it speaks http.
+    ;; See HARDENING.md, "Encrypted (HTTPS) logins".
+    ; SecureLogin = "https://${Const|BaseHostname}/"
+
     ; long grid name: the long name of your grid
     gridname = "the lost continent of hippo"
 

@@ -209,6 +209,9 @@ namespace OpenSim.Server.Handlers.WebInterface
         // [GridInfoService] gatekeeper: the grid's identity in hop:// links. The login address can differ (an HTTPS
         // proxy on 443 in front of the gatekeeper's port), and a hop link to it would name another grid.
         private string m_publicGatekeeper = string.Empty;
+        // [GridInfoService] SecureLogin (optional): an https address for the same login, such as a reverse proxy on
+        // 443 in front of the public port. Shown beside the login URI with what it is for; get_grid_info passes it on.
+        private string m_secureLogin = string.Empty;
         // The same [LoginService] Currency value co-operative viewers already
         // read at login for the currency HUD label - was hardcoded as the
         // literal "C$" in ~20 places across this file (predating the Store
@@ -355,6 +358,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 // viewer already points at, rather than a separately-configured URL.
                 m_publicBaseUrl = gridInfo.GetString("login", string.Empty).TrimEnd('/');
                 m_publicGatekeeper = gridInfo.GetString("gatekeeper", string.Empty).TrimEnd('/');
+                m_secureLogin = gridInfo.GetString("SecureLogin", string.Empty).Trim();
             }
 
             IConfig loginService = config.Configs["LoginService"];
@@ -2244,6 +2248,7 @@ namespace OpenSim.Server.Handlers.WebInterface
               .Append("<input type=\"text\" value=\"").Append(Html(loginUri)).Append("\" readonly onclick=\"this.select()\"></label></form>");
             sb.Append("<p><strong>Firestorm:</strong> Preferences &rarr; OpenSim &rarr; Add new grid &rarr; paste the login URI. ")
               .Append("<strong>Most other viewers:</strong> look for a Grid Manager or Grid Selector in Preferences or on the login screen.</p>");
+            AppendSecureLogin(sb);
 
             sb.Append("<h2>Desktop Viewers</h2><div class=\"widget-grid\">");
             foreach ((string name, string url, string note) in DesktopViewers)
@@ -2287,6 +2292,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             sb.Append("<p>Add ").Append(Html(gridName)).Append(" to your viewer's grid manager using this login URI:</p>");
             sb.Append("<form onsubmit=\"return false;\"><label>Login URI<br/>")
               .Append("<input type=\"text\" value=\"").Append(Html(loginUri)).Append("\" readonly onclick=\"this.select()\"></label></form>");
+            AppendSecureLogin(sb);
             sb.Append("<p>Don't have a viewer yet? See <a href=\"").Append(BasePath).Append("/viewers\">Get a Viewer</a>.</p>");
 
             sb.Append("<h2><i class=\"bi bi-person-plus ic-purple\"></i> Creating an Account</h2>");
@@ -19416,6 +19422,25 @@ namespace OpenSim.Server.Handlers.WebInterface
         // browser-clickable links - but only hop:// carries the grid
         // identity a stranger's viewer needs to connect to the right
         // place).
+        /// <summary>
+        /// The encrypted login address and what it is for, when [GridInfoService] SecureLogin is set; nothing otherwise.
+        /// </summary>
+        private void AppendSecureLogin(StringBuilder sb)
+        {
+            if (string.IsNullOrEmpty(m_secureLogin))
+                return;
+
+            sb.Append("<p>The address above sends your login unencrypted. Your viewer sends your password as a hash that ")
+              .Append("someone watching the network could reuse to log in as you, so on a network you don't control ")
+              .Append("(public Wi-Fi, a hotel) use the encrypted address instead:</p>");
+            sb.Append("<form onsubmit=\"return false;\"><label>Encrypted login URI<br/>")
+              .Append("<input type=\"text\" value=\"").Append(Html(m_secureLogin)).Append("\" readonly onclick=\"this.select()\"></label></form>");
+            sb.Append("<p>Use it exactly as shown: <code>https://</code> with a port number such as <code>:8002</code> does not work ")
+              .Append("(the viewer reports a network error). Some viewers, such as Aurora, ask before an unencrypted login; ")
+              .Append("this address avoids that. If your viewer refreshes the grid's details it may switch back to the plain ")
+              .Append("address; enter the encrypted one again.</p>");
+        }
+
         private string BuildHopUrl(string regionName)
         {
             string hostPort = string.IsNullOrEmpty(m_publicGatekeeper) ? m_publicBaseUrl ?? string.Empty : m_publicGatekeeper;

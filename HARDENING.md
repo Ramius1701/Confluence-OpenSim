@@ -127,6 +127,10 @@ address the user typed. So:
 - Advertise `https://<host>/` and every new resident logs in encrypted, through the proxy; their logins then
   depend on the proxy being up.
 
+Either way, `[GridInfoService] SecureLogin` (optional) names the https address: the WebUI's Get a Viewer and Help
+pages then show it beside the login URI, with what it is for and how not to mistype it, and `get_grid_info` passes
+it on, so a viewer can offer it.
+
 Hypergrid is not affected either way: it uses `[GridInfoService] gatekeeper` (and the `[Hypergrid]`
 GatekeeperURI), which stay on the public port. The WebUI's `hop://` links use the gatekeeper too (since
 2026-11-26); its password-reset and verify links use the login address.
