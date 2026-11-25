@@ -30128,3 +30128,12 @@ database checks ran alongside, had one failure that did not repeat: a load-sensi
 Ports #504, #505, #506, #509, #517, #518, #520, #524, #527, #534, #535, #536, #537, #542, #543 and #533's module change;
 see the commit. #515 not applicable (server-side baking). Our SQLite FSAssets store ignores force import (interface
 default). Tools/data-backend-check: 520 checks, 0 failures (FSAssets now also on MySQL, with force import).
+## Tranquillity batch 4 and the owner's choices (2026-11-26)
+82fa163e68 (owner: "do batch 4, 514, 526, 530, 532, and 529 (off by default)"): #544 Jolt crossing keeps its linear
+motor; #514 Phlox SensorMaxResults default 32 (YEngine here was already 32); #530 XAssets compression option removed
+(never enabled); #532 [AssetCache] defaults in OpenSimDefaults.ini with our FlotsamCache.ini.example values, the
+*Common.ini examples comment out Include-FlotsamCache (the live grid keeps its own FlotsamCache.ini and include);
+#526 startup GC/thread pool log line and DOTNET_* docs only: our runtimeconfig templates were already correct and
+keep workstation GC, since server GC per region process on one host would multiply memory; #529 behind
+[Chat] FrozenAvatarsCannotChat = false. Not applicable: #510/#511/#512 (Tranquillity's SkiaSharp code), #513 (needs
+their #299 ScriptRezzedObjectsDieAtEdge). From Tranquillity's open PRs #499-#544, everything applicable is now ported.
