@@ -30159,3 +30159,14 @@ Deploy-Casperia-MoveAside.ps1 -Copy: 212 files to the root and 15 region bins, 3
 (OpenSimDefaults.ini, OpenSim.ini.example, the two Robust examples, FlotsamCache and GridCommon examples); the live
 StandaloneCommon.ini.example has local edits and was left alone (a template, not loaded). First region start runs
 MySQL RegionStore 74 (land indexes).
+## Robust hang after the deploy, and the Aurora "network error" (2026-11-26)
+Robust stopped answering on its public port from 11:08 (log ends there; watchdog gaps of 95 s at 11:00-11:02, thread
+pool starvation: even get_grid_info, which needs no database, timed out; MariaDB answered). The website showed
+Apache's "Proxy Error". No dump was taken; the owner restarted Windows and the grid (Robust 12:31, regions 12:33-12:35)
+has answered normally since. If it recurs, take a dump first (Task Manager > Details > Robust.exe > Create memory dump
+file) before restarting, to see whether the new build is the cause.
+Aurora's "network error: error sending request" was not the server: the owner's saved Aurora account had
+`https://<grid host>:8002/`, https to the plain-http port, so the handshake failed before any request. Fixed in the
+viewer by using `http://<grid host>:8002/` (or `https://<grid host>/`). Documented in HARDENING.md "Encrypted (HTTPS)
+logins" (why it matters: the login's MD5 hash is replayable over http; how to offer https; what to advertise; this
+mistake) and SETUP.md.

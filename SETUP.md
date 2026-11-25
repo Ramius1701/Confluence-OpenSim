@@ -112,6 +112,10 @@ Grid mode is Robust plus regions. Start Robust first; regions register with it.
 3. In `[DatabaseService]` set your database (section 3). For SQLite change the active line to
    `Include-Storage = "config-include/storage/SQLiteRobust.ini";`. Every service section below it inherits
    this connection.
+   Viewers log in at `http://<BaseHostname>:<PublicPort>/`, which sends the login unencrypted. To offer an
+   encrypted login as well, put a reverse proxy with a certificate in front of the public port and give residents
+   `https://<BaseHostname>/` (never `https://` with the public port: that port speaks plain http). See
+   HARDENING.md, "Encrypted (HTTPS) logins".
 4. Optional: turn on the in-world profile service by uncommenting `UserProfilesServiceConnector` in
    `[ServiceList]` and setting `Enabled = true` in `[UserProfilesService]`.
 5. Run `Robust.exe -inifile=Robust.HG.ini`. Add `-background=true` to run with no console window (for a

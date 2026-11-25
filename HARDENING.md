@@ -101,6 +101,41 @@ claim this machine's or its gateway's address and pass the control-plane checks.
 `RequestHeader unset X-Forwarded-For early` and `RequestHeader unset Forwarded early` in the virtual host strip the
 client's own copies before the proxy adds its own.)
 
+## Encrypted (HTTPS) logins
+
+**Why it matters.** A viewer logs in by sending the resident's name and an MD5 hash of the password (`$1$...`).
+Over plain `http://` both travel unencrypted, and the hash is as good as the password: anyone who captures it can
+log in as that resident without ever learning the password. The risk is on networks the resident doesn't control
+(public Wi-Fi, hotels, a compromised router); a login from the grid's own machine never leaves it. Second Life
+accepts only https logins. Aurora Viewer 0.9.14 and later (and Confluence Viewer when it takes that change) ask
+once per server before sending a login to a plain `http://` address that is not on the same PC; other OpenSim
+viewers log in over http without asking, and all current ones can also log in over https.
+
+**Offering it.** Robust's login handler answers on its public port (`[Const] PublicPort`, 8002 by default). The
+simplest way to add https is a reverse proxy that already serves the grid's host name with a valid certificate
+(Apache, nginx, Caddy), forwarding to that port. Robust answers an XML-RPC login on any path, so the proxy can
+forward the whole site or a path of it. Keep the plain port open: residents who saved it keep working. See
+"Reverse proxies and client IPs" above so the login sees each resident's own address. Robust's own SSL listener
+works too, but needs its certificate in PFX form after every renewal.
+
+**What to advertise.** `[GridInfoService] login` in Robust.HG.ini (or Robust.ini) is the address `get_grid_info`
+hands viewers, and a viewer copies it when the grid is added and when it refreshes the grid info, replacing an
+address the user typed. So:
+
+- Advertise `http://<host>:<PublicPort>/` (the common choice) and residents who want encryption type
+  `https://<host>/`; a viewer that refreshes the grid info puts the http address back.
+- Advertise `https://<host>/` and every new resident logs in encrypted, through the proxy; their logins then
+  depend on the proxy being up.
+
+Hypergrid is not affected either way: it uses `[GridInfoService] gatekeeper` (and the `[Hypergrid]`
+GatekeeperURI), which stay on the public port. The WebUI's `hop://` links use the gatekeeper too (since
+2026-11-26); its password-reset and verify links use the login address.
+
+**The usual mistake.** `https://` with the plain port (`https://<host>:8002/`) cannot work: the port speaks
+http, so the encrypted handshake fails before any request is sent, and nothing reaches Robust's or the proxy's
+log. Aurora shows it as "network error: error sending request". Use `https://<host>/` (the proxy's port 443) or
+`http://<host>:8002/`, never the two mixed.
+
 ## Hypergrid behavior
 
 - **Returning home** to this grid over Hypergrid (not a fresh login) is allowed only
