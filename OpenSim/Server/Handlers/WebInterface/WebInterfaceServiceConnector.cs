@@ -206,6 +206,9 @@ namespace OpenSim.Server.Handlers.WebInterface
         private string m_gridNick = "OpenSim";
         private string m_welcomeMessage = "";
         private string m_publicBaseUrl = string.Empty;
+        // [GridInfoService] gatekeeper: the grid's identity in hop:// links. The login address can differ (an HTTPS
+        // proxy on 443 in front of the gatekeeper's port), and a hop link to it would name another grid.
+        private string m_publicGatekeeper = string.Empty;
         // The same [LoginService] Currency value co-operative viewers already
         // read at login for the currency HUD label - was hardcoded as the
         // literal "C$" in ~20 places across this file (predating the Store
@@ -351,6 +354,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 // so password-reset links use the exact same host a user's
                 // viewer already points at, rather than a separately-configured URL.
                 m_publicBaseUrl = gridInfo.GetString("login", string.Empty).TrimEnd('/');
+                m_publicGatekeeper = gridInfo.GetString("gatekeeper", string.Empty).TrimEnd('/');
             }
 
             IConfig loginService = config.Configs["LoginService"];
@@ -19414,7 +19418,7 @@ namespace OpenSim.Server.Handlers.WebInterface
         // place).
         private string BuildHopUrl(string regionName)
         {
-            string hostPort = m_publicBaseUrl ?? string.Empty;
+            string hostPort = string.IsNullOrEmpty(m_publicGatekeeper) ? m_publicBaseUrl ?? string.Empty : m_publicGatekeeper;
             foreach (string prefix in new[] { "https://", "http://" })
             {
                 if (hostPort.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
