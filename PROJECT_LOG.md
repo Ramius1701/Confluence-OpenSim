@@ -30070,3 +30070,28 @@ CanEditScript, and each cap saves only items of its own type; the notecard task 
 script), #84 (Block Terraform and Allow Land Join/Divide held on the server, not only greyed out in the viewer) and #85
 (LLUDPZeroEncoder bounds and pool size check; hardening, no reproduced fault). Branches fix/foreign-asset-id,
 fix/task-item-update-checks, fix/region-terraform-join-divide, fix/udp-encoder-bounds on OpenSim-Continuum.
+#85: UbitUmarov commented that FreeUDPBuffer only ever sees fixed-size UDPPacketBuffers. True for a running region
+(only the test helpers make smaller ones), so the pool check is dead code upstream; the AddBytes check stands.
+
+## Donor fetch 2026-11-25
+opensim-master merged to 3b8874148d (9ec06720d9): #80 merged and reworked by UbitUmarov (TryGetSceneChildPresence,
+upstream's version taken in the conflict), feccd9cc53 profile flags keep their bits when the online bit is set, the
+#78 Application.cs log line (ours kept, same output), and mantis 9263's ubOde hook for DreamGrid's threaded native ODE
+(inactive with upstream's ODE library). The 11-24 note "opensim-master 79bfba70bd" was a review point, not a merge:
+the merge base was still 9d00a55552.
+Tranquillity develop 923a4cd70b: build settings and version 1.3-alpha only; release/v1.2 cut (c7adf90034). Open PRs
+#499 and #503-#544, all single fixes on develop (not stacked), sized by their own code (tests excluded):
+- security / input: #525 grid user prefix lookup (MySQL and PGSQL format the id into the statement; ours too, and
+  upstream: report candidate), #523 MySQL group search (ours escapes it; LIKE wildcards only), #519 friends by text id
+  (junk-row check read an unset field; ours is parameterised), #522 region names with \ % _, #528 remote console
+  unknown sessions, #529 frozen avatar can talk, #516 landmark read by key, #521 web login key not a UUID.
+  #519/#523/#525 share a new SqlLike.cs helper: port together.
+- region load survives bad rows: #508, #539 (MySQL), #540 (SQLite), #541 (PGSQL), #507 (indexes, migrations).
+- services: #504 display names, #505/#506 Hypergrid, #509 search, #515, #517 covenant, #518 inventory cache, #520
+  avatar height locale, #524 FSAssets force import, #527, #533 SQLite offline IM, #534/#535 migrations, #536 first-start
+  homes, #537 My Outfits, #542 XAssets, #543 simulation connector.
+- region: #510 map tiles, #511/#512 dynamic textures, #513 YEngine rez die-at-edge, #514 sensor default 16 to 32 (owner
+  decision: changes behaviour), #544 Jolt vehicle linear motor across a border.
+- owner decision: #530 removes the XAssets compression option, #526 server GC from runtimeconfig, #532 cache defaults.
+- not applicable: #499 CI, #503 docs, #531 publish targets, #538 (server-side baking not ported).
+Their tests use upstream's test helpers in Source/ layout and do not carry over to our suites.
