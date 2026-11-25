@@ -30095,3 +30095,18 @@ Tranquillity develop 923a4cd70b: build settings and version 1.3-alpha only; rele
 - owner decision: #530 removes the XAssets compression option, #526 server GC from runtimeconfig, #532 cache defaults.
 - not applicable: #499 CI, #503 docs, #531 publish targets, #538 (server-side baking not ported).
 Their tests use upstream's test helpers in Source/ layout and do not carry over to our suites.
+#85 follow-up (owner OK): replied to UbitUmarov, pushed 5eeff87e63 (FreeUDPBuffer size check dropped; only the AddBytes
+bounds check remains) and updated the PR description. Confluence keeps the pool check from the Tranquillity port.
+
+## Tranquillity batch 1 (2026-11-25): security and input fixes from the open PRs
+fcf3d89cef ports #525, #519, #523, #522, #528 (server half), #516, #521; see the commit for each. Held: #529 (frozen
+avatars cannot chat), because AllowMovement is also cleared here by osAvatarFreeze and TeamCombat deaths; owner decision.
+Not taken: #528's ConsoleClient display half.
+The grid user injection is real: with the 2026-11-24 data DLLs, a GridUser id of "';delete from GridUser;--" deleted
+the rows on PostgreSQL (MySQL only escaped because "--" needs a following space there). Same code in opensim-master
+(MySQLGridUserData/PGSQLGridUserData GetAll): upstream PR candidate; who can reach it from outside is not yet traced.
+Tools/data-backend-check now takes a MySQL connection string as a third argument and checks the LIKE lookups on all
+three stores: 478 checks, 0 failures (10 against the old DLLs). Run against throwaway MariaDB 11.8.8 / PostgreSQL
+servers with their own data folders and ports (the live grid's database shares Laragon's MariaDB on 3306).
+Found on the way, not changed: the PostgreSQL region Store answers true when its insert fails (it logs and goes on);
+SQLite and PostgreSQL friends match a text id exactly, MySQL as a prefix.
