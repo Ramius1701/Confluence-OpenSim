@@ -30148,3 +30148,14 @@ verify links become https.
 Batch 4 suites: Jolt 1200 passed; Phlox 6911 passed, 1 failed: WebRegionStatusCacheTests.AnUncheckedRegionIsUpThen
 TheCheckTellsADownOneFromAnUpOne, which asserts a cache read under 500 ms and fails when the suite runs on a busy
 machine (passes 5 of 5 alone). A timing-sensitive test to loosen some time; not caused by batch 4.
+Same day, reversed before the grid started: the owner keeps get_grid_info's login at the plain public port, the current
+standard, until other viewers move to https (Robust.HG.ini restored from the backup; the https version kept as
+Robust.HG.ini.with-https). The https address keeps working for anyone who types it, but a viewer's grid info refresh
+puts the advertised address back. The WebUI hop-link fix stays (correct either way).
+
+## Deploy 2026-11-26 (grid down, owner: "grid is down deploy")
+Deploy-Casperia-MoveAside.ps1 -Copy: 212 files to the root and 15 region bins, 301/301 md5 each, 0 problems (live =
+1fc24f4f93: opensim-master 3b8874148d merge + Tranquillity batches 1-4 + the hop fix). Config defaults: 6 copied
+(OpenSimDefaults.ini, OpenSim.ini.example, the two Robust examples, FlotsamCache and GridCommon examples); the live
+StandaloneCommon.ini.example has local edits and was left alone (a template, not loaded). First region start runs
+MySQL RegionStore 74 (land indexes).
