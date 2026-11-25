@@ -30137,3 +30137,14 @@ motor; #514 Phlox SensorMaxResults default 32 (YEngine here was already 32); #53
 keep workstation GC, since server GC per region process on one host would multiply memory; #529 behind
 [Chat] FrozenAvatarsCannotChat = false. Not applicable: #510/#511/#512 (Tranquillity's SkiaSharp code), #513 (needs
 their #299 ScriptRezzedObjectsDieAtEdge). From Tranquillity's open PRs #499-#544, everything applicable is now ported.
+## HTTPS login address (2026-11-26)
+Asked by the Confluence-Viewer session: Aurora 0.9.14 asks before sending a login to a plain http:// address off the PC.
+The grid's Apache already proxies its 443 site (Let's Encrypt, renewed by win-acme) to Robust's public port, and an
+XML-RPC call over https reaches the login handler, so no Apache change was needed. Owner chose "path on 443"; the live
+Robust.HG.ini now advertises `login = https://<grid host>/` in [GridInfoService] (backup Backups\config-20261126-https-login),
+in force at the next Robust restart; the plain port keeps working. The WebUI built hop:// links from that address,
+which would have dropped the gatekeeper's port: they now use [GridInfoService] gatekeeper. Its password-reset and
+verify links become https.
+Batch 4 suites: Jolt 1200 passed; Phlox 6911 passed, 1 failed: WebRegionStatusCacheTests.AnUncheckedRegionIsUpThen
+TheCheckTellsADownOneFromAnUpOne, which asserts a cache read under 500 ms and fails when the suite runs on a busy
+machine (passes 5 of 5 alone). A timing-sensitive test to loosen some time; not caused by batch 4.
