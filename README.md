@@ -1,5 +1,18 @@
 <p align="center"><img src="doc/assets/confluence-opensim-logo.svg" alt="Confluence-OpenSim" width="160"></p>
 
+<p align="center">
+  <a href="https://github.com/Ramius1701/Confluence-OpenSim/blob/merge-experiment/LICENSE.txt"><img alt="License: BSD-3-Clause" src="https://img.shields.io/badge/license-BSD--3--Clause-8B5CF6?style=flat-square&labelColor=0D1330"></a>
+  <a href="https://dotnet.microsoft.com/download/dotnet/10.0"><img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-8B5CF6?style=flat-square&labelColor=0D1330"></a>
+  <a href="http://opensimulator.org/"><img alt="Based on OpenSimulator" src="https://img.shields.io/badge/based%20on-OpenSimulator-5EEAD4?style=flat-square&labelColor=0D1330"></a>
+  <a href="SETUP.md"><img alt="Databases: SQLite, MySQL, PostgreSQL" src="https://img.shields.io/badge/databases-SQLite%20%7C%20MySQL%20%7C%20PostgreSQL-5EEAD4?style=flat-square&labelColor=0D1330"></a>
+  <a href="HARDENING.md#hypergrid-behavior"><img alt="Hypergrid ready" src="https://img.shields.io/badge/Hypergrid-ready-5EEAD4?style=flat-square&labelColor=0D1330"></a>
+  <a href="doc/PhloxSetup.md"><img alt="Script engines: YEngine, Phlox" src="https://img.shields.io/badge/scripts-YEngine%20%7C%20Phlox-A78BFA?style=flat-square&labelColor=0D1330"></a>
+  <a href="doc/JoltPhysics.md"><img alt="Physics: ubODE, BulletSim, Jolt" src="https://img.shields.io/badge/physics-ubODE%20%7C%20BulletSim%20%7C%20Jolt-A78BFA?style=flat-square&labelColor=0D1330"></a>
+  <a href="https://github.com/Ramius1701/Confluence-OpenSim/commits/merge-experiment"><img alt="Last commit" src="https://img.shields.io/github/last-commit/Ramius1701/Confluence-OpenSim/merge-experiment?style=flat-square&labelColor=0D1330&color=4F46E5"></a>
+  <a href="https://github.com/Ramius1701/Confluence-OpenSim/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/Ramius1701/Confluence-OpenSim?style=flat-square&labelColor=0D1330&color=4F46E5"></a>
+  <a href="https://confluence.ddns.net"><img alt="Website: confluence.ddns.net" src="https://img.shields.io/badge/website-confluence.ddns.net-FBBF24?style=flat-square&labelColor=0D1330"></a>
+</p>
+
 # Confluence-OpenSim
 
 Confluence is an independent OpenSimulator fork — in the same vein as
