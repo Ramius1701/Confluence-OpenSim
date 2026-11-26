@@ -5325,7 +5325,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(text))
                 return string.Empty;
 
-            string color = GetSetting("AnnouncementColor", "#3b82f6");
+            string color = GetSetting("AnnouncementColor", "#8B5CF6");
             StringBuilder sb = new StringBuilder();
             sb.Append("<div class=\"announcement\" style=\"border-left-color:").Append(Html(color)).Append(";\">");
             if (!string.IsNullOrEmpty(title))
@@ -8491,7 +8491,7 @@ namespace OpenSim.Server.Handlers.WebInterface
             bool announcementEnabled = GetSetting("AnnouncementEnabled", "false") == "true";
             string announcementTitle = GetSetting("AnnouncementTitle", string.Empty);
             string announcementText = GetSetting("AnnouncementText", string.Empty);
-            string announcementColor = GetSetting("AnnouncementColor", "#3b82f6");
+            string announcementColor = GetSetting("AnnouncementColor", "#8B5CF6");
 
             string body = "<h1>Special Announcement</h1>"
                     + "<p><a href=\"" + BasePath + "/admin/settings\">Back to settings</a></p>"
@@ -19503,15 +19503,19 @@ namespace OpenSim.Server.Handlers.WebInterface
         // that one renders inside the viewer's own small embedded panel,
         // not a full browser window.
         private const string PageCss =
-                ":root{--accent:#3b82f6;--accent-bright:#60a5fa;--accent-dark:#1d4ed8;" +
-                "--accent-tint:rgba(59,130,246,.16);--dark:#000000;--bg:#0b0d10;--card-bg:#15181d;" +
-                "--input-bg:#0f1114;--text:#e8eaed;--muted:#9199a6;--border:#262a31;" +
-                "--danger:#f87171;--danger-bg:#2a1616;--success:#4ade80;--radius:8px;}" +
+                // Palette and type follow the Confluence website (Confluence-Website src/static/style.css): deep
+                // navy, purple accent, teal links, Inter where installed.
+                ":root{--accent:#8B5CF6;--accent-bright:#A78BFA;--accent-dark:#6D28D9;" +
+                "--accent-tint:rgba(139,92,246,.16);--dark:#0D1330;--bg:#070B1F;--card-bg:#111a3d;" +
+                "--input-bg:#0D1330;--text:#E6E9F5;--muted:#9AA3C7;--border:#22305f;" +
+                "--teal:#5EEAD4;--indigo:#4F46E5;--amber:#FBBF24;" +
+                "--danger:#f87171;--danger-bg:#2a1616;--success:#4ade80;--radius:14px;}" +
                 "*{box-sizing:border-box;}" +
-                "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
-                "margin:0;padding:0;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh;" +
+                "body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" +
+                "margin:0;padding:0;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;" +
                 "display:flex;flex-direction:column;}" +
-                ".site-header{background:var(--dark);padding:0 24px;border-bottom:1px solid var(--border);}" +
+                ".site-header{background:rgba(7,11,31,.86);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);" +
+                "position:sticky;top:0;z-index:50;padding:0 24px;border-bottom:1px solid var(--border);}" +
                 // Full-width header bar in a real browser window - was
                 // capped at max-width:1100px and centered, same as the
                 // narrower page-content column, leaving dead space on both
@@ -19523,7 +19527,8 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;" +
                 "font-weight:700;font-size:17px;letter-spacing:.2px;}" +
                 ".brand:hover{text-decoration:none;color:var(--accent-bright);}" +
-                ".brand-mark{width:30px;height:30px;border-radius:8px;flex-shrink:0;background:var(--accent);" +
+                ".brand-mark{width:30px;height:30px;border-radius:8px;flex-shrink:0;" +
+                "background:linear-gradient(135deg,var(--accent),var(--teal));" +
                 "display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;}" +
                 ".site-nav{display:flex;gap:20px;flex:1;}" +
                 ".site-nav a{color:var(--muted);font-size:14px;font-weight:600;}" +
@@ -19541,9 +19546,9 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".site-actions a{color:var(--muted);font-size:14px;font-weight:600;}" +
                 ".site-actions a:hover{color:#fff;text-decoration:none;}" +
                 ".site-actions .nav-user{color:#fff;font-size:14px;font-weight:600;}" +
-                ".site-actions a.nav-cta{background:var(--accent);color:#fff;padding:8px 18px;" +
-                "border-radius:40px;text-transform:uppercase;font-size:12px;letter-spacing:.3px;}" +
-                ".site-actions a.nav-cta:hover{background:var(--accent-dark);text-decoration:none;}" +
+                ".site-actions a.nav-cta{background:linear-gradient(135deg,var(--accent),var(--indigo));color:#fff;" +
+                "padding:8px 18px;border-radius:10px;font-size:13px;}" +
+                ".site-actions a.nav-cta:hover{filter:brightness(1.1);text-decoration:none;}" +
                 ".nav-dropdown{position:relative;}" +
                 ".nav-dropdown .dropdown-toggle{display:inline-flex;align-items:center;gap:4px;" +
                 "text-decoration:none;}" +
@@ -19576,25 +19581,26 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".icon-badge{width:38px;height:38px;border-radius:9px;background:var(--input-bg);" +
                 "display:flex;align-items:center;justify-content:center;font-size:1.15em;flex:0 0 auto;margin:0 0 10px;}" +
                 ".site-nav .dropdown-toggle .bi:last-child{font-size:10px;margin-left:2px;color:var(--muted);}" +
-                ".hero{background:linear-gradient(135deg,#000000 0%,#0d1a30 100%);" +
+                ".hero{background:radial-gradient(40% 120% at 18% 0%,rgba(139,92,246,.28),transparent 70%)," +
+                "radial-gradient(40% 120% at 82% 0%,rgba(94,234,212,.16),transparent 70%),var(--bg);" +
                 "border-bottom:1px solid var(--border);padding:36px 24px;}" +
                 ".hero-inner{max-width:1600px;margin:0 auto;padding:0 24px;}" +
-                ".hero h1{font-size:30px;margin:0;color:#fff;}" +
+                ".hero h1{font-size:32px;margin:0;color:#fff;letter-spacing:-.02em;}" +
                 // Home-page marketing CTA row - deliberately separate from
                 // .nav-cta (header sign-up link) since this needs a matching
                 // secondary/outline button next to it, which the header never does.
                 ".tagline-lead{font-size:16px;color:var(--muted);margin:0 0 22px;}" +
                 ".cta-row{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 30px;}" +
-                ".cta-primary{background:var(--accent);color:#fff;padding:12px 28px;border-radius:40px;" +
-                "text-transform:uppercase;font-size:13px;font-weight:700;letter-spacing:.3px;}" +
-                ".cta-primary:hover{background:var(--accent-dark);text-decoration:none;}" +
-                ".cta-secondary{border:2px solid var(--border);color:var(--text);padding:10px 26px;" +
-                "border-radius:40px;text-transform:uppercase;font-size:13px;font-weight:700;letter-spacing:.3px;}" +
-                ".cta-secondary:hover{border-color:var(--accent);color:var(--accent-bright);text-decoration:none;}" +
+                ".cta-primary{background:linear-gradient(135deg,var(--accent),var(--indigo));color:#fff;" +
+                "padding:11px 22px;border-radius:10px;font-size:15px;font-weight:600;}" +
+                ".cta-primary:hover{filter:brightness(1.1);text-decoration:none;}" +
+                ".cta-secondary{border:1px solid var(--border);background:var(--card-bg);color:var(--text);" +
+                "padding:11px 22px;border-radius:10px;font-size:15px;font-weight:600;}" +
+                ".cta-secondary:hover{border-color:var(--accent);text-decoration:none;}" +
                 ".site-main{padding:0 24px;flex:1 0 auto;}" +
                 ".page{max-width:1600px;margin:0 auto;padding:32px 24px 60px;}" +
                 ".card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);" +
-                "box-shadow:0 8px 24px rgba(0,0,0,.35);padding:32px 36px;}" +
+                "box-shadow:0 20px 60px rgba(0,0,0,.35);padding:32px 36px;}" +
                 // Genuinely missing until now - .content-card is used as a
                 // distinct raised section (Features' Platform Overview, My
                 // Balance, Admin's Powered By/Membership Perks/Service
@@ -19608,7 +19614,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 // for a heading that opens one of these, so no extra rule
                 // needed for that.
                 ".content-card{background:var(--input-bg);border:1px solid var(--border);" +
-                "border-radius:var(--radius);padding:20px 24px;margin:0 0 20px;}" +
+                "border-radius:12px;padding:20px 24px;margin:0 0 20px;}" +
                 ".content-card:last-child{margin-bottom:0;}" +
                 // Live "this grid is real right now" strip for the home
                 // page - same proof point welcome.php's own top bar leads
@@ -19625,24 +19631,24 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".home-2col{display:flex;gap:20px;flex-wrap:wrap;margin:0 0 20px;}" +
                 ".home-2col>.content-card{flex:1 1 320px;margin-bottom:0;}" +
                 ".home-2col>.home-2col-wide{flex:2 1 420px;}" +
-                ".site-footer{background:var(--dark);border-top:1px solid var(--border);padding:20px 24px;" +
+                ".site-footer{background:var(--bg);border-top:1px solid var(--border);padding:20px 24px;" +
                 "margin-top:40px;}" +
                 ".site-footer-inner{color:var(--muted);font-size:13.5px;}" +
                 // Matches .hero h1 below - one h1 size site-wide instead of a
                 // smaller default that made plain pages feel inconsistent
                 // with hero-banner pages (explicit feedback).
-                "h1{font-size:30px;margin:0 0 14px;color:var(--text);}" +
-                "h2{font-size:16px;margin:26px 0 12px;color:var(--text);border-top:1px solid var(--border);" +
+                "h1{font-size:30px;margin:0 0 14px;color:var(--text);letter-spacing:-.01em;}" +
+                "h2{font-size:17px;margin:26px 0 12px;color:var(--text);border-top:1px solid var(--border);" +
                 "padding-top:20px;}" +
                 "h2:first-child{border-top:none;padding-top:0;margin-top:0;}" +
                 "h3{font-size:14.5px;margin:0 0 6px;color:var(--text);}" +
                 "p{margin:0 0 14px;}" +
-                "a{color:var(--accent-bright);text-decoration:none;}" +
+                "a{color:var(--teal);text-decoration:none;}" +
                 "a:hover{text-decoration:underline;}" +
                 "table{width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:13.5px;}" +
-                "th{text-align:left;background:var(--accent-tint);color:var(--accent-bright);font-weight:700;" +
+                "th{text-align:left;background:transparent;color:var(--muted);font-weight:600;" +
                 "padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap;" +
-                "text-transform:uppercase;font-size:11.5px;letter-spacing:.3px;}" +
+                "text-transform:uppercase;font-size:11.5px;letter-spacing:.06em;}" +
                 "td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}" +
                 "tr:last-child td{border-bottom:none;}" +
                 "tr:hover td{background:rgba(255,255,255,.03);}" +
@@ -19651,20 +19657,20 @@ namespace OpenSim.Server.Handlers.WebInterface
                 "form{margin:0 0 6px;}" +
                 "form label{display:block;margin:0 0 14px;font-size:13.5px;font-weight:600;color:var(--muted);}" +
                 "input,textarea,select{margin-top:6px;padding:9px 11px;width:100%;box-sizing:border-box;" +
-                "border:1px solid var(--border);border-radius:6px;font-size:14px;font-family:inherit;" +
+                "border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;" +
                 "background:var(--input-bg);color:var(--text);}" +
                 "td input,td select{width:auto;margin-top:0;}" +
                 "input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);" +
                 "box-shadow:0 0 0 3px var(--accent-tint);}" +
                 "label input[type=checkbox]{width:auto;margin:0 8px 0 0;vertical-align:middle;}" +
-                "button{margin-top:6px;padding:11px 26px;border:2px solid var(--accent);border-radius:40px;" +
-                "background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;" +
-                "text-transform:uppercase;letter-spacing:.3px;transition:background .15s ease,border-color .15s ease;}" +
-                "button:hover{background:var(--accent-dark);border-color:var(--accent-dark);}" +
+                "button{margin-top:6px;padding:10px 22px;border:1px solid transparent;border-radius:10px;" +
+                "background:linear-gradient(135deg,var(--accent),var(--indigo));color:#fff;font-size:14px;" +
+                "font-weight:600;cursor:pointer;font-family:inherit;transition:filter .15s ease,border-color .15s ease;}" +
+                "button:hover{filter:brightness(1.1);}" +
                 "button:active{transform:translateY(1px);}" +
                 "td button{padding:6px 16px;font-size:12px;margin-top:0;background:transparent;color:var(--danger);" +
                 "border-color:var(--border);}" +
-                "td button:hover{background:var(--danger-bg);border-color:var(--danger);}" +
+                "td button:hover{background:var(--danger-bg);border-color:var(--danger);filter:none;}" +
                 ".balance{display:inline-block;font-size:1.25em;font-weight:700;color:var(--accent-bright);" +
                 "background:var(--accent-tint);padding:8px 18px;border-radius:999px;margin-bottom:6px;}" +
                 ".error{background:var(--danger-bg);color:var(--danger);border-left:3px solid var(--danger);" +
@@ -19828,7 +19834,8 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".sidebar-brand:hover{text-decoration:none;color:var(--accent-bright);}" +
                 ".sidebar-user{display:flex;align-items:center;gap:10px;padding:16px 20px;" +
                 "border-bottom:1px solid var(--border);}" +
-                ".sidebar-user-avatar{width:36px;height:36px;border-radius:50%;background:var(--accent);" +
+                ".sidebar-user-avatar{width:36px;height:36px;border-radius:50%;" +
+                "background:linear-gradient(135deg,var(--accent),var(--teal));" +
                 "color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;" +
                 "justify-content:center;flex-shrink:0;}" +
                 ".sidebar-user-name{color:var(--text);font-size:13.5px;font-weight:700;" +
@@ -19860,7 +19867,9 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".sidebar-logout:hover{background:var(--danger-bg);text-decoration:none;}" +
                 ".app-main{flex:1;min-width:0;display:flex;flex-direction:column;}" +
                 ".app-topbar{display:flex;align-items:center;justify-content:space-between;" +
-                "padding:14px 24px;background:var(--dark);border-bottom:1px solid var(--border);}" +
+                "padding:14px 24px;background:rgba(7,11,31,.86);backdrop-filter:blur(10px);" +
+                "-webkit-backdrop-filter:blur(10px);position:sticky;top:0;z-index:50;" +
+                "border-bottom:1px solid var(--border);}" +
                 ".sidebar-toggle{display:none;background:transparent;border:none;color:var(--text);" +
                 "font-size:20px;padding:4px 8px;margin:0;cursor:pointer;}" +
                 ".app-topbar .site-nav{gap:16px;}" +
