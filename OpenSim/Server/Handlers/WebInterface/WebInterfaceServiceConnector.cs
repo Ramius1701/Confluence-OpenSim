@@ -1261,6 +1261,8 @@ namespace OpenSim.Server.Handlers.WebInterface
                         // routes above.
                         if (path.StartsWith(BasePath + "/page/", StringComparison.Ordinal))
                             HandleStaticPage(request, response, path.Substring((BasePath + "/page/").Length));
+                        else if (path == BasePath + "/static/site-logo")
+                            HandleSiteLogo(response);
                         else if (path.StartsWith(BasePath + "/static/", StringComparison.Ordinal))
                             HandleStaticAsset(request, response, path.Substring((BasePath + "/static/").Length));
                         else if (path.StartsWith(BasePath + "/welcome-photos/", StringComparison.Ordinal))
@@ -1814,8 +1816,12 @@ namespace OpenSim.Server.Handlers.WebInterface
             sb.Append(RenderWelcomeSlideshow());
 
             sb.Append("<div class=\"welcome-topbar\">");
-            sb.Append("<div class=\"welcome-brand\"><span class=\"welcome-brand-mark\">")
-              .Append(Html(gridName.Length > 0 ? gridName.Substring(0, 1) : "?")).Append("</span><div>")
+            if (HasSiteLogo)
+                sb.Append("<div class=\"welcome-brand\"><img class=\"welcome-brand-logo\" src=\"/static/site-logo\" alt=\"\"><div>");
+            else
+                sb.Append("<div class=\"welcome-brand\"><span class=\"welcome-brand-mark\">")
+                  .Append(Html(gridName.Length > 0 ? gridName.Substring(0, 1) : "?")).Append("</span><div>");
+            sb
               .Append("<div class=\"welcome-brand-name\">").Append(Html(gridName)).Append("</div>")
               .Append("<div class=\"welcome-tagline\">").Append(Html(tagline)).Append("</div></div></div>");
             sb.Append("<div class=\"welcome-topstats\">");
@@ -2078,6 +2084,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".welcome-topbar{display:flex;justify-content:space-between;align-items:center;" +
                 "flex-wrap:wrap;gap:16px;max-width:1300px;margin:0 auto;padding:20px 24px;}" +
                 ".welcome-brand{display:flex;align-items:center;gap:12px;}" +
+                ".welcome-brand-logo{width:42px;height:42px;flex-shrink:0;display:block;}" +
                 ".welcome-brand-mark{display:flex;align-items:center;justify-content:center;width:40px;" +
                 "height:40px;border-radius:10px;background:var(--accent);color:#fff;font-weight:800;" +
                 "font-size:18px;flex-shrink:0;}" +
@@ -18131,7 +18138,7 @@ namespace OpenSim.Server.Handlers.WebInterface
 
             string head = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + Html(title) + "</title>"
                     + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-                    + "<link rel=\"stylesheet\" href=\"/static/bootstrap-icons.css\">"
+                    + "<link rel=\"stylesheet\" href=\"/static/bootstrap-icons.css\">" + SiteIconLink
                     + "<style>" + PageCss + "</style></head><body>";
 
             string footerLinks = "";
@@ -18184,7 +18191,7 @@ namespace OpenSim.Server.Handlers.WebInterface
 
                 html = head
                         + "<header class=\"site-header\"><div class=\"site-header-inner\">"
-                        + "<a class=\"brand\" href=\"/\"><span class=\"brand-mark\">C</span>" + Html(gridName) + "</a>"
+                        + "<a class=\"brand\" href=\"/\">" + BrandMarkHtml() + Html(gridName) + "</a>"
                         + "<nav class=\"site-nav\"><a href=\"/\"><i class=\"bi bi-house-door ic-blue\"></i> Home</a>" +
                         "<a href=\"" + BasePath + "/features\"><i class=\"bi bi-stars ic-amber\"></i> Features</a>" +
                         "<a href=\"" + BasePath + "/viewers\"><i class=\"bi bi-display ic-blue\"></i> Get a Viewer</a>" +
@@ -18282,7 +18289,7 @@ namespace OpenSim.Server.Handlers.WebInterface
 
             StringBuilder sb = new StringBuilder();
             sb.Append("<aside id=\"appSidebar\" class=\"app-sidebar\">");
-            sb.Append("<a class=\"sidebar-brand\" href=\"/\"><span class=\"brand-mark\">C</span>").Append(Html(gridName)).Append("</a>");
+            sb.Append("<a class=\"sidebar-brand\" href=\"/\">").Append(BrandMarkHtml()).Append(Html(gridName)).Append("</a>");
 
             // Avatar switcher - a dropdown reusing the same .nav-dropdown/
             // .dropdown-toggle/.dropdown-menu/DropdownScript mechanism the
@@ -18454,7 +18461,7 @@ namespace OpenSim.Server.Handlers.WebInterface
         {
             string html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + Html(title) + "</title>"
                     + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-                    + "<link rel=\"stylesheet\" href=\"/static/bootstrap-icons.css\">"
+                    + "<link rel=\"stylesheet\" href=\"/static/bootstrap-icons.css\">" + SiteIconLink
                     + "<style>" + PageCss + "</style></head><body>"
                     + "<main class=\"site-main\"><div class=\"page\"><div class=\"card\">" + bodyHtml + "</div></div></main>"
                     + "</body></html>";
@@ -18526,6 +18533,64 @@ namespace OpenSim.Server.Handlers.WebInterface
                 }
             }
         }
+
+        // The grid's own logo: WebBranding/logo.svg (or .png, .webp, .jpg) next to Robust.exe, the same "drop a file in
+        // a conventionally named folder, no config key" pattern as WebSplash. With one, the header, the sidebar and the
+        // login splash show it and pages use it as their icon; without one, a badge with the grid name's first letter.
+        private static readonly (string Ext, string Type)[] SiteLogoTypes =
+            { (".svg", "image/svg+xml"), (".png", "image/png"), (".webp", "image/webp"), (".jpg", "image/jpeg") };
+
+        private static string SiteLogoPath(out string contentType)
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebBranding");
+            foreach ((string ext, string type) in SiteLogoTypes)
+            {
+                string file = Path.Combine(dir, "logo" + ext);
+                if (File.Exists(file))
+                {
+                    contentType = type;
+                    return file;
+                }
+            }
+            contentType = null;
+            return null;
+        }
+
+        private static bool HasSiteLogo => SiteLogoPath(out _) != null;
+
+        private static void HandleSiteLogo(IOSHttpResponse response)
+        {
+            string file = SiteLogoPath(out string contentType);
+            byte[] bytes = null;
+            try
+            {
+                if (file != null)
+                    bytes = File.ReadAllBytes(file);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+
+            if (bytes == null)
+            {
+                response.StatusCode = (int)HttpStatusCode.NotFound;
+                return;
+            }
+            response.ContentType = contentType;
+            // The operator can replace the file at any time: a short cache, not the vendored assets' year.
+            response.AddHeader("Cache-Control", "public, max-age=3600");
+            response.RawBuffer = bytes;
+        }
+
+        /// <summary>The grid's logo, or a badge with the first letter of its name, for the header and sidebar.</summary>
+        private string BrandMarkHtml(string cssClass = "brand-mark", string logoClass = "brand-logo")
+        {
+            if (HasSiteLogo)
+                return "<img class=\"" + logoClass + "\" src=\"/static/site-logo\" alt=\"\">";
+            string name = m_gridName ?? string.Empty;
+            return "<span class=\"" + cssClass + "\">" + Html(name.Length > 0 ? name.Substring(0, 1).ToUpperInvariant() : "?") + "</span>";
+        }
+
+        private static string SiteIconLink => HasSiteLogo ? "<link rel=\"icon\" href=\"/static/site-logo\">" : string.Empty;
 
         private void HandleStaticAsset(IOSHttpRequest request, IOSHttpResponse response, string fileName)
         {
@@ -19527,6 +19592,7 @@ namespace OpenSim.Server.Handlers.WebInterface
                 ".brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;" +
                 "font-weight:700;font-size:17px;letter-spacing:.2px;}" +
                 ".brand:hover{text-decoration:none;color:var(--accent-bright);}" +
+                ".brand-logo{width:32px;height:32px;flex-shrink:0;display:block;}" +
                 ".brand-mark{width:30px;height:30px;border-radius:8px;flex-shrink:0;" +
                 "background:linear-gradient(135deg,var(--accent),var(--teal));" +
                 "display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;}" +
