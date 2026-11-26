@@ -1,3 +1,5 @@
+<p align="center"><img src="doc/assets/confluence-opensim-logo.svg" alt="Confluence-OpenSim" width="160"></p>
+
 # Confluence-OpenSim
 
 Confluence is an independent OpenSimulator fork — in the same vein as
